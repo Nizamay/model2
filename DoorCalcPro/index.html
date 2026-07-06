@@ -50,6 +50,24 @@
     </div>
 
     <div class="field">
+      <label>Внешний вид двери</label>
+      <div class="door-preview">
+        <svg id="doorPreview" viewBox="0 0 220 400" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Превью двери">
+          <defs>
+            <linearGradient id="doorFillGradient" x1="0%" y1="0%" x2="100%" y2="100%"></linearGradient>
+            <linearGradient id="glassFillGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#eef6fb" stop-opacity="0.75"/>
+              <stop offset="100%" stop-color="#c3d8e6" stop-opacity="0.55"/>
+            </linearGradient>
+          </defs>
+          <rect id="doorLeafRect" fill="url(#doorFillGradient)" stroke="rgba(0,0,0,.25)" stroke-width="1.5"></rect>
+          <g id="doorGlassGroup"></g>
+          <g id="doorHandleGroup"></g>
+        </svg>
+      </div>
+    </div>
+
+    <div class="field">
       <label>Опции</label>
       <div id="options" class="options"></div>
     </div>

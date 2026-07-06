@@ -92,6 +92,23 @@ select:focus, input:focus { outline: 2px solid var(--accent); outline-offset: -1
 
 .warning { display: none; font-size: 12px; color: var(--warn); }
 
+.door-preview {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+#doorPreview {
+  width: 100%;
+  max-width: 190px;
+  height: 320px;
+  filter: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.18));
+}
+
 .options { display: flex; flex-direction: column; gap: 10px; }
 
 .option-row { display: flex; align-items: center; gap: 8px; font-size: 14px; }
@@ -151,6 +168,24 @@ select:focus, input:focus { outline: 2px solid var(--accent); outline-offset: -1
     <div class="size-info">
       <span id="sizeBadge" class="badge"></span>
       <div id="thicknessWarning" class="warning">42 мм доступна только для щитовых полотен</div>
+    </div>
+
+    <div class="field">
+      <label>Внешний вид двери</label>
+      <div class="door-preview">
+        <svg id="doorPreview" viewBox="0 0 220 400" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Превью двери">
+          <defs>
+            <linearGradient id="doorFillGradient" x1="0%" y1="0%" x2="100%" y2="100%"></linearGradient>
+            <linearGradient id="glassFillGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#eef6fb" stop-opacity="0.75"/>
+              <stop offset="100%" stop-color="#c3d8e6" stop-opacity="0.55"/>
+            </linearGradient>
+          </defs>
+          <rect id="doorLeafRect" fill="url(#doorFillGradient)" stroke="rgba(0,0,0,.25)" stroke-width="1.5"></rect>
+          <g id="doorGlassGroup"></g>
+          <g id="doorHandleGroup"></g>
+        </svg>
+      </div>
     </div>
 
     <div class="field">
@@ -226,6 +261,48 @@ const DB = {
   categorySurcharge: {
     "пвх": { 1: 0, 2: 600, 3: 1300, 4: 2700 },
     "эмаль": { 1: 0, 2: 2600 }
+  },
+
+  // --- Заливка цвета для превью двери ----------------------------------
+  // TODO: точные оттенки/образцы заливки не были предоставлены —
+  // здесь условные значения-заглушки для механики закраски превью.
+  // kind "wood" — имитация древесной текстуры (база + прожилка),
+  // kind "solid" — однотонная матовая/эмалевая поверхность.
+  colorFills: {
+    "Эшвайт": { base: "#ece7df", grain: "#d9d2c4", kind: "wood" },
+    "Беленый дуб": { base: "#e8dfd0", grain: "#cfc2a8", kind: "wood" },
+    "Ривьера Айс": { base: "#e4e7e6", grain: "#cfd4d3", kind: "wood" },
+    "Ривьера Грей": { base: "#b9bcbe", grain: "#a2a6a8", kind: "wood" },
+    "Белая структурная": { base: "#f5f4f0", kind: "solid" },
+
+    "Бетон Антрацит": { base: "#4b4d50", kind: "solid" },
+    "Бетон Светлый": { base: "#b7b7b3", kind: "solid" },
+    "Грей": { base: "#9a9a9a", kind: "solid" },
+    "Дуб Белый": { base: "#e0d9c8", grain: "#c7bda3", kind: "wood" },
+    "Дуб Шале Золото": { base: "#a97c46", grain: "#7c5527", kind: "wood" },
+    "Орех": { base: "#6b4a30", grain: "#4a3020", kind: "wood" },
+    "Шагрень Белая": { base: "#efece4", kind: "solid" },
+    "Шагрень Серая": { base: "#9b9b93", kind: "solid" },
+    "Ясень Серебристый": { base: "#c7c9c6", grain: "#aeb0ac", kind: "wood" },
+
+    "Бетон Лофт Натуральный": { base: "#c9c2b3", kind: "solid" },
+    "Дуб Санремо Шоколад": { base: "#5b3c28", grain: "#3a2416", kind: "wood" },
+    "Софт Белый": { base: "#f2f0ec", kind: "solid" },
+
+    "Белоснежная Эмаль": { base: "#fbfbf9", kind: "solid" },
+    "Ваниль": { base: "#ecd9b0", kind: "solid" },
+    "Графит Черный": { base: "#26282b", kind: "solid" },
+    "Кварцит": { base: "#8d9096", kind: "solid" },
+    "Макиато": { base: "#8a6a52", kind: "solid" },
+    "Эмалит Серый": { base: "#8b8f94", kind: "solid" },
+
+    "Белая": { base: "#ffffff", kind: "solid" },
+    "Крем 1013": { base: "#e9dfc0", kind: "solid" },
+    "Жемчуг 9016": { base: "#f4f5f2", kind: "solid" },
+    "Серая 7040": { base: "#9a9c9d", kind: "solid" },
+    "Серая 7042": { base: "#8f9294", kind: "solid" },
+    "RAL": { base: "#7f8a93", kind: "solid" },
+    "Любой цвет на заказ": { base: "#b98fca", kind: "solid" }
   },
 
   glass: [
@@ -313,11 +390,150 @@ const DB = {
     options: document.getElementById("options"),
     discount: document.getElementById("discount"),
     breakdown: document.getElementById("breakdown"),
-    total: document.getElementById("total")
+    total: document.getElementById("total"),
+    doorLeafRect: document.getElementById("doorLeafRect"),
+    doorFillGradient: document.getElementById("doorFillGradient"),
+    doorGlassGroup: document.getElementById("doorGlassGroup"),
+    doorHandleGroup: document.getElementById("doorHandleGroup")
   };
 
   function getModel(id) {
     return DB.models.find((m) => m.id === id);
+  }
+
+  // --- Механика закраски превью двери ---------------------------------
+
+  function hexToRgb(hex) {
+    const clean = hex.replace("#", "");
+    const full = clean.length === 3 ? clean.split("").map((c) => c + c).join("") : clean;
+    const num = parseInt(full, 16);
+    return { r: (num >> 16) & 255, g: (num >> 8) & 255, b: num & 255 };
+  }
+
+  function rgbToHex(r, g, b) {
+    return "#" + [r, g, b]
+      .map((v) => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, "0"))
+      .join("");
+  }
+
+  // Осветление (percent > 0) или затемнение (percent < 0) цвета —
+  // используется, чтобы закраска двери выглядела объёмно/естественно.
+  function shade(hex, percent) {
+    const { r, g, b } = hexToRgb(hex);
+    const target = percent < 0 ? 0 : 255;
+    const p = Math.abs(percent) / 100;
+    return rgbToHex(r + (target - r) * p, g + (target - g) * p, b + (target - b) * p);
+  }
+
+  function getColorFill(colorName) {
+    return (DB.colorFills && DB.colorFills[colorName]) || { base: "#c9cbcd", kind: "solid" };
+  }
+
+  function buildGradientStops(fill) {
+    if (fill.kind === "wood") {
+      const grain = fill.grain || shade(fill.base, -18);
+      return [
+        { offset: "0%", color: shade(fill.base, 12) },
+        { offset: "32%", color: fill.base },
+        { offset: "48%", color: grain, opacity: 0.85 },
+        { offset: "62%", color: fill.base },
+        { offset: "100%", color: shade(fill.base, -12) }
+      ];
+    }
+    return [
+      { offset: "0%", color: shade(fill.base, 14) },
+      { offset: "100%", color: shade(fill.base, -10) }
+    ];
+  }
+
+  function applyGradientStops(gradientEl, stops) {
+    gradientEl.innerHTML = stops
+      .map((s) => `<stop offset="${s.offset}" stop-color="${s.color}"${s.opacity != null ? ` stop-opacity="${s.opacity}"` : ""}/>`)
+      .join("");
+  }
+
+  const DOOR_VB_W = 220;
+  const DOOR_VB_H = 400;
+  const DOOR_PAD = 18;
+
+  function renderDoorPreview() {
+    const width = Math.max(Number(state.width) || 0, 1);
+    const height = Math.max(Number(state.height) || 0, 1);
+    const aspect = width / height;
+
+    const availW = DOOR_VB_W - DOOR_PAD * 2;
+    const availH = DOOR_VB_H - DOOR_PAD * 2;
+
+    let w, h;
+    if (availW / aspect <= availH) {
+      w = availW;
+      h = w / aspect;
+    } else {
+      h = availH;
+      w = h * aspect;
+    }
+
+    const x = (DOOR_VB_W - w) / 2;
+    const y = DOOR_PAD + (availH - h); // дверь стоит на полу — выравниваем по низу
+
+    el.doorLeafRect.setAttribute("x", x);
+    el.doorLeafRect.setAttribute("y", y);
+    el.doorLeafRect.setAttribute("width", w);
+    el.doorLeafRect.setAttribute("height", h);
+    el.doorLeafRect.setAttribute("rx", Math.min(w, h) * 0.015);
+
+    applyGradientStops(el.doorFillGradient, buildGradientStops(getColorFill(state.color)));
+
+    const stileW = w * 0.09;
+    const topRail = h * 0.06;
+
+    if (state.glassId === "none") {
+      // Глухая дверь — обычное полотно без остекления.
+      el.doorGlassGroup.innerHTML = "";
+    } else {
+      // Остекление — пока 6 одинаковых квадратных стекол (2 колонки × 3 ряда).
+      const zoneTop = y + topRail;
+      const zoneBottom = y + h * 0.64;
+      const zoneLeft = x + stileW;
+      const zoneRight = x + w - stileW;
+      const zoneW = zoneRight - zoneLeft;
+      const zoneH = zoneBottom - zoneTop;
+
+      const cols = 2;
+      const rows = 3;
+      const gap = w * 0.045;
+      const sByWidth = (zoneW - (cols + 1) * gap) / cols;
+      const sByHeight = (zoneH - (rows + 1) * gap) / rows;
+      const s = Math.max(4, Math.min(sByWidth, sByHeight));
+
+      const gridW = cols * s + (cols + 1) * gap;
+      const gridH = rows * s + (rows + 1) * gap;
+      const offsetX = zoneLeft + (zoneW - gridW) / 2;
+      const offsetY = zoneTop + (zoneH - gridH) / 2;
+
+      let panes = "";
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          const px = offsetX + gap + c * (s + gap);
+          const py = offsetY + gap + r * (s + gap);
+          panes += `<rect x="${px}" y="${py}" width="${s}" height="${s}" rx="${s * 0.06}" fill="url(#glassFillGradient)" stroke="rgba(255,255,255,.5)" stroke-width="1"/>`;
+        }
+      }
+      el.doorGlassGroup.innerHTML = panes;
+    }
+
+    // Ручка есть на любой двери, независимо от остекления.
+    const handleY = y + h * 0.47;
+    const handleThickness = Math.max(2, w * 0.018);
+    const plateH = h * 0.09;
+    const plateX = x + w - stileW * 0.62;
+    const leverLen = w * 0.14;
+
+    el.doorHandleGroup.innerHTML = `
+      <rect x="${plateX - handleThickness}" y="${handleY - plateH / 2}" width="${handleThickness * 2}" height="${plateH}" rx="${handleThickness}" fill="#cfd3d6" stroke="#8b8f93" stroke-width="0.6"/>
+      <rect x="${plateX - leverLen}" y="${handleY - handleThickness / 2}" width="${leverLen}" height="${handleThickness}" rx="${handleThickness / 2}" fill="#cfd3d6" stroke="#8b8f93" stroke-width="0.6"/>
+      <circle cx="${plateX}" cy="${handleY + plateH * 0.32}" r="${handleThickness * 0.55}" fill="#6f7377"/>
+    `;
   }
 
   function roundUp10(value) {
@@ -466,6 +682,7 @@ const DB = {
     const total = Math.round(subtotal * (1 - discount / 100));
 
     updateSizeUI();
+    renderDoorPreview();
 
     const rows = [];
     rows.push(`Полотно (${model.name}): ${leafBeforeNonstandard} ₽`);
