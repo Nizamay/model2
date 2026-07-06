@@ -103,6 +103,28 @@ select:focus, input:focus { outline: 2px solid var(--accent); outline-offset: -1
 .option-choice { display: flex; align-items: center; gap: 6px; font-size: 14px; }
 .option-choice .option-price { color: var(--muted); font-size: 12px; }
 
+.color-preview {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background-size: cover;
+  background-position: center;
+  display: flex;
+  align-items: flex-end;
+  overflow: hidden;
+}
+
+.color-preview-label {
+  width: 100%;
+  padding: 6px 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.45);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+}
+
 .result { border-top: 1px solid var(--border); padding-top: 16px; display: flex; flex-direction: column; gap: 8px; }
 .breakdown { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); }
 
@@ -127,6 +149,12 @@ select:focus, input:focus { outline: 2px solid var(--accent); outline-offset: -1
     <div class="field">
       <label for="color">Цвет</label>
       <select id="color"></select>
+    </div>
+
+    <div class="field">
+      <div id="colorPreview" class="color-preview">
+        <span id="colorPreviewLabel" class="color-preview-label"></span>
+      </div>
     </div>
 
     <div class="field">
@@ -336,6 +364,8 @@ const DB = {
     model: document.getElementById("model"),
     material: document.getElementById("material"),
     color: document.getElementById("color"),
+    colorPreview: document.getElementById("colorPreview"),
+    colorPreviewLabel: document.getElementById("colorPreviewLabel"),
     glass: document.getElementById("glass"),
     height: document.getElementById("height"),
     width: document.getElementById("width"),
@@ -479,6 +509,13 @@ const DB = {
     el.thicknessWarning.style.display = thicknessInvalid ? "block" : "none";
   }
 
+  function updateColorPreview() {
+    const swatch = DB.colorSwatches[state.color];
+    el.colorPreview.style.backgroundImage = swatch ? `url("${swatch.image}")` : "none";
+    el.colorPreview.style.backgroundColor = swatch ? swatch.hex : "var(--border)";
+    el.colorPreviewLabel.textContent = state.color || "";
+  }
+
   function render() {
     const model = getModel(state.modelId);
     const category = findCategory(state.material, state.color);
@@ -498,6 +535,7 @@ const DB = {
     const total = Math.round(subtotal * (1 - discount / 100));
 
     updateSizeUI();
+    updateColorPreview();
 
     const rows = [];
     rows.push(`Полотно (${model.name}): ${leafBeforeNonstandard} ₽`);
