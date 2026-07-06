@@ -103,6 +103,23 @@ select:focus, input:focus { outline: 2px solid var(--accent); outline-offset: -1
 .option-choice { display: flex; align-items: center; gap: 6px; font-size: 14px; }
 .option-choice .option-price { color: var(--muted); font-size: 12px; }
 
+.door-preview {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+#doorPreview {
+  width: 100%;
+  max-width: 190px;
+  height: 320px;
+  filter: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.18));
+}
+
 .color-preview {
   width: 100%;
   aspect-ratio: 4 / 3;
@@ -179,6 +196,32 @@ select:focus, input:focus { outline: 2px solid var(--accent); outline-offset: -1
     <div class="size-info">
       <span id="sizeBadge" class="badge"></span>
       <div id="thicknessWarning" class="warning">42 мм доступна только для щитовых полотен</div>
+    </div>
+
+    <div class="field">
+      <label>Внешний вид двери</label>
+      <div class="door-preview">
+        <svg id="doorPreview" viewBox="0 0 220 400" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Превью двери">
+          <defs>
+            <clipPath id="doorClip">
+              <rect id="doorClipRect"></rect>
+            </clipPath>
+            <linearGradient id="doorShadeGradient" x1="0%" y1="0%" x2="100%" y2="100%"></linearGradient>
+            <linearGradient id="glassFillGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#eef6fb" stop-opacity="0.75"/>
+              <stop offset="100%" stop-color="#c3d8e6" stop-opacity="0.55"/>
+            </linearGradient>
+          </defs>
+          <g clip-path="url(#doorClip)">
+            <rect id="doorLeafRect" fill="#c9cbcd"></rect>
+            <image id="doorTextureImage" href="" preserveAspectRatio="xMidYMid slice"></image>
+            <rect id="doorShadeRect" fill="url(#doorShadeGradient)"></rect>
+          </g>
+          <rect id="doorOutlineRect" fill="none" stroke="rgba(0,0,0,.25)" stroke-width="1.5"></rect>
+          <g id="doorGlassGroup"></g>
+          <g id="doorHandleGroup"></g>
+        </svg>
+      </div>
     </div>
 
     <div class="field">
@@ -375,7 +418,15 @@ const DB = {
     options: document.getElementById("options"),
     discount: document.getElementById("discount"),
     breakdown: document.getElementById("breakdown"),
-    total: document.getElementById("total")
+    total: document.getElementById("total"),
+    doorClipRect: document.getElementById("doorClipRect"),
+    doorLeafRect: document.getElementById("doorLeafRect"),
+    doorTextureImage: document.getElementById("doorTextureImage"),
+    doorShadeRect: document.getElementById("doorShadeRect"),
+    doorShadeGradient: document.getElementById("doorShadeGradient"),
+    doorOutlineRect: document.getElementById("doorOutlineRect"),
+    doorGlassGroup: document.getElementById("doorGlassGroup"),
+    doorHandleGroup: document.getElementById("doorHandleGroup")
   };
 
   function getModel(id) {
@@ -516,6 +567,149 @@ const DB = {
     el.colorPreviewLabel.textContent = state.color || "";
   }
 
+  // --- Механика закраски превью двери ----------------------------------
+
+  function hexToRgb(hex) {
+    const clean = hex.replace("#", "");
+    const full = clean.length === 3 ? clean.split("").map((c) => c + c).join("") : clean;
+    const num = parseInt(full, 16);
+    return { r: (num >> 16) & 255, g: (num >> 8) & 255, b: num & 255 };
+  }
+
+  // Осветление (percent > 0) или затемнение (percent < 0) цвета —
+  // используется для лёгкого объёмного затенения полотна поверх реальной
+  // текстуры (или как заливка для цветов без сфотографированного образца).
+  function shade(hex, percent) {
+    const { r, g, b } = hexToRgb(hex);
+    const target = percent < 0 ? 0 : 255;
+    const p = Math.abs(percent) / 100;
+    const mix = (c) => Math.max(0, Math.min(255, Math.round(c + (target - c) * p)));
+    return "#" + [mix(r), mix(g), mix(b)].map((v) => v.toString(16).padStart(2, "0")).join("");
+  }
+
+  // Цвета эмали пока без сфотографированных образцов (в отличие от ПВХ в
+  // DB.colorSwatches) — условные значения-заглушки для механики закраски.
+  const EMAL_COLOR_HEX = {
+    "Белая": "#ffffff",
+    "Крем 1013": "#e9dfc0",
+    "Жемчуг 9016": "#f4f5f2",
+    "Серая 7040": "#9a9c9d",
+    "Серая 7042": "#8f9294",
+    "RAL": "#7f8a93",
+    "Любой цвет на заказ": "#b98fca"
+  };
+
+  const DOOR_VB_W = 220;
+  const DOOR_VB_H = 400;
+  const DOOR_PAD = 18;
+
+  function renderDoorPreview() {
+    const width = Math.max(Number(state.width) || 0, 1);
+    const height = Math.max(Number(state.height) || 0, 1);
+    const aspect = width / height;
+
+    const availW = DOOR_VB_W - DOOR_PAD * 2;
+    const availH = DOOR_VB_H - DOOR_PAD * 2;
+
+    let w, h;
+    if (availW / aspect <= availH) {
+      w = availW;
+      h = w / aspect;
+    } else {
+      h = availH;
+      w = h * aspect;
+    }
+
+    const x = (DOOR_VB_W - w) / 2;
+    const y = DOOR_PAD + (availH - h); // дверь стоит на полу — выравниваем по низу
+    const rx = Math.min(w, h) * 0.015;
+
+    [el.doorClipRect, el.doorLeafRect, el.doorOutlineRect].forEach((rect) => {
+      rect.setAttribute("x", x);
+      rect.setAttribute("y", y);
+      rect.setAttribute("width", w);
+      rect.setAttribute("height", h);
+      rect.setAttribute("rx", rx);
+    });
+    el.doorShadeRect.setAttribute("x", x);
+    el.doorShadeRect.setAttribute("y", y);
+    el.doorShadeRect.setAttribute("width", w);
+    el.doorShadeRect.setAttribute("height", h);
+
+    // Заливка — реальная сфотографированная текстура образца (см. DB.colorSwatches),
+    // те же файлы, что и в свотче цвета. Для цветов без образца (пока это
+    // категории "эмаль") — просто ровный цвет.
+    const swatch = DB.colorSwatches[state.color];
+    const baseHex = (swatch && swatch.hex) || EMAL_COLOR_HEX[state.color] || "#c9cbcd";
+    el.doorLeafRect.setAttribute("fill", baseHex);
+    if (swatch) {
+      el.doorTextureImage.setAttribute("href", swatch.image);
+      el.doorTextureImage.setAttribute("x", x);
+      el.doorTextureImage.setAttribute("y", y);
+      el.doorTextureImage.setAttribute("width", w);
+      el.doorTextureImage.setAttribute("height", h);
+      el.doorTextureImage.style.display = "";
+    } else {
+      el.doorTextureImage.style.display = "none";
+    }
+    el.doorShadeGradient.innerHTML = `
+      <stop offset="0%" stop-color="${shade(baseHex, 25)}" stop-opacity="0.35"/>
+      <stop offset="55%" stop-color="${baseHex}" stop-opacity="0"/>
+      <stop offset="100%" stop-color="${shade(baseHex, -35)}" stop-opacity="0.35"/>
+    `;
+
+    const stileW = w * 0.09;
+    const topRail = h * 0.06;
+
+    if (state.glassId === "none") {
+      // Глухая дверь — обычное полотно без остекления.
+      el.doorGlassGroup.innerHTML = "";
+    } else {
+      // Остекление — пока 6 одинаковых квадратных стекол (2 колонки × 3 ряда).
+      const zoneTop = y + topRail;
+      const zoneBottom = y + h * 0.64;
+      const zoneLeft = x + stileW;
+      const zoneRight = x + w - stileW;
+      const zoneW = zoneRight - zoneLeft;
+      const zoneH = zoneBottom - zoneTop;
+
+      const cols = 2;
+      const rows = 3;
+      const gap = w * 0.045;
+      const sByWidth = (zoneW - (cols + 1) * gap) / cols;
+      const sByHeight = (zoneH - (rows + 1) * gap) / rows;
+      const s = Math.max(4, Math.min(sByWidth, sByHeight));
+
+      const gridW = cols * s + (cols + 1) * gap;
+      const gridH = rows * s + (rows + 1) * gap;
+      const offsetX = zoneLeft + (zoneW - gridW) / 2;
+      const offsetY = zoneTop + (zoneH - gridH) / 2;
+
+      let panes = "";
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          const px = offsetX + gap + c * (s + gap);
+          const py = offsetY + gap + r * (s + gap);
+          panes += `<rect x="${px}" y="${py}" width="${s}" height="${s}" rx="${s * 0.06}" fill="url(#glassFillGradient)" stroke="rgba(255,255,255,.5)" stroke-width="1"/>`;
+        }
+      }
+      el.doorGlassGroup.innerHTML = panes;
+    }
+
+    // Ручка есть на любой двери, независимо от остекления.
+    const handleY = y + h * 0.47;
+    const handleThickness = Math.max(2, w * 0.018);
+    const plateH = h * 0.09;
+    const plateX = x + w - stileW * 0.62;
+    const leverLen = w * 0.14;
+
+    el.doorHandleGroup.innerHTML = `
+      <rect x="${plateX - handleThickness}" y="${handleY - plateH / 2}" width="${handleThickness * 2}" height="${plateH}" rx="${handleThickness}" fill="#cfd3d6" stroke="#8b8f93" stroke-width="0.6"/>
+      <rect x="${plateX - leverLen}" y="${handleY - handleThickness / 2}" width="${leverLen}" height="${handleThickness}" rx="${handleThickness / 2}" fill="#cfd3d6" stroke="#8b8f93" stroke-width="0.6"/>
+      <circle cx="${plateX}" cy="${handleY + plateH * 0.32}" r="${handleThickness * 0.55}" fill="#6f7377"/>
+    `;
+  }
+
   function render() {
     const model = getModel(state.modelId);
     const category = findCategory(state.material, state.color);
@@ -536,6 +730,7 @@ const DB = {
 
     updateSizeUI();
     updateColorPreview();
+    renderDoorPreview();
 
     const rows = [];
     rows.push(`Полотно (${model.name}): ${leafBeforeNonstandard} ₽`);
