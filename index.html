@@ -211,10 +211,12 @@ select:focus, input:focus { outline: 2px solid var(--accent); outline-offset: -1
               <stop offset="0%" stop-color="#eef6fb" stop-opacity="0.75"/>
               <stop offset="100%" stop-color="#c3d8e6" stop-opacity="0.55"/>
             </linearGradient>
+            <pattern id="doorTexturePattern" patternUnits="userSpaceOnUse">
+              <image id="doorTextureImage" href="" preserveAspectRatio="none"></image>
+            </pattern>
           </defs>
           <g clip-path="url(#doorClip)">
             <rect id="doorLeafRect" fill="#c9cbcd"></rect>
-            <image id="doorTextureImage" href="" preserveAspectRatio="xMidYMid slice"></image>
             <rect id="doorShadeRect" fill="url(#doorShadeGradient)"></rect>
           </g>
           <rect id="doorOutlineRect" fill="none" stroke="rgba(0,0,0,.25)" stroke-width="1.5"></rect>
@@ -423,6 +425,7 @@ const DB = {
     total: document.getElementById("total"),
     doorClipRect: document.getElementById("doorClipRect"),
     doorLeafRect: document.getElementById("doorLeafRect"),
+    doorTexturePattern: document.getElementById("doorTexturePattern"),
     doorTextureImage: document.getElementById("doorTextureImage"),
     doorShadeRect: document.getElementById("doorShadeRect"),
     doorShadeGradient: document.getElementById("doorShadeGradient"),
@@ -653,20 +656,29 @@ const DB = {
     el.doorShadeRect.setAttribute("height", h);
 
     // Заливка — реальная сфотографированная текстура образца (см. DB.colorSwatches),
-    // те же файлы, что и в свотче цвета. Для цветов без образца (пока это
-    // категории "эмаль") — просто ровный цвет.
+    // те же файлы, что и в свотче цвета. Тайлим в реальном масштабе относительно
+    // образца 15x20 см (как и в .color-preview), а не растягиваем один кадр на
+    // всю дверь — иначе рисунок плёнки визуально "гиперзумится". Для цветов без
+    // образца (пока это категории "эмаль") — просто ровный цвет.
     const swatch = DB.colorSwatches[state.color];
     const baseHex = (swatch && swatch.hex) || EMAL_COLOR_HEX[state.color] || "#c9cbcd";
-    el.doorLeafRect.setAttribute("fill", baseHex);
     if (swatch) {
+      const { widthMm: sampleW, heightMm: sampleH } = DB.colorSwatchSampleSize;
+      const unitsPerMm = w / width;
+      const tileW = sampleW * unitsPerMm;
+      const tileH = sampleH * unitsPerMm;
+      el.doorTexturePattern.setAttribute("x", x);
+      el.doorTexturePattern.setAttribute("y", y);
+      el.doorTexturePattern.setAttribute("width", tileW);
+      el.doorTexturePattern.setAttribute("height", tileH);
       el.doorTextureImage.setAttribute("href", swatch.image);
-      el.doorTextureImage.setAttribute("x", x);
-      el.doorTextureImage.setAttribute("y", y);
-      el.doorTextureImage.setAttribute("width", w);
-      el.doorTextureImage.setAttribute("height", h);
-      el.doorTextureImage.style.display = "";
+      el.doorTextureImage.setAttribute("x", 0);
+      el.doorTextureImage.setAttribute("y", 0);
+      el.doorTextureImage.setAttribute("width", tileW);
+      el.doorTextureImage.setAttribute("height", tileH);
+      el.doorLeafRect.setAttribute("fill", "url(#doorTexturePattern)");
     } else {
-      el.doorTextureImage.style.display = "none";
+      el.doorLeafRect.setAttribute("fill", baseHex);
     }
     el.doorShadeGradient.innerHTML = `
       <stop offset="0%" stop-color="${shade(baseHex, 25)}" stop-opacity="0.35"/>
