@@ -118,7 +118,36 @@ select:focus, input:focus { outline: 2px solid var(--accent); outline-offset: -1
   max-width: 320px;
   aspect-ratio: 220 / 400;
   filter: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.18));
+  transition: max-width 0.2s ease;
 }
+
+/* Режим «на стене» — сцена с интерьером: полотно шире и без внешней тени
+   (тени рисуются внутри самой сцены). */
+#doorPreview.scene {
+  max-width: 440px;
+  aspect-ratio: 360 / 400;
+  filter: none;
+}
+
+.preview-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.scene-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  cursor: pointer;
+  user-select: none;
+}
+
+.scene-toggle input { width: auto; cursor: pointer; }
 
 .color-preview {
   width: 100%;
@@ -200,7 +229,13 @@ select:focus, input:focus { outline: 2px solid var(--accent); outline-offset: -1
     </div>
 
     <div class="field">
-      <label>Внешний вид двери</label>
+      <div class="preview-head">
+        <label>Внешний вид двери</label>
+        <label class="scene-toggle" for="sceneToggle">
+          <input type="checkbox" id="sceneToggle">
+          <span>На стене (интерьер)</span>
+        </label>
+      </div>
       <div class="door-preview">
         <svg id="doorPreview" viewBox="0 0 220 400" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Превью двери">
           <defs>
@@ -215,7 +250,16 @@ select:focus, input:focus { outline: 2px solid var(--accent); outline-offset: -1
             <pattern id="doorTexturePattern" patternUnits="userSpaceOnUse">
               <image id="doorTextureImage" href="" preserveAspectRatio="none"></image>
             </pattern>
+            <linearGradient id="sceneWallGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+              <stop offset="0%" stop-color="#efeae1"/>
+              <stop offset="100%" stop-color="#ddd6c8"/>
+            </linearGradient>
+            <linearGradient id="sceneFloorGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+              <stop offset="0%" stop-color="#c9a878"/>
+              <stop offset="100%" stop-color="#b48d5f"/>
+            </linearGradient>
           </defs>
+          <g id="doorSceneGroup"></g>
           <g clip-path="url(#doorClip)">
             <rect id="doorLeafRect" fill="#c9cbcd"></rect>
             <rect id="doorShadeRect" fill="url(#doorShadeGradient)"></rect>
@@ -408,7 +452,8 @@ const DB = {
     width: DB.standard.widths[3],
     thickness: DB.standard.thickness,
     options: {},
-    discount: 0
+    discount: 0,
+    sceneMode: false
   };
 
   const el = {
@@ -427,6 +472,9 @@ const DB = {
     discount: document.getElementById("discount"),
     breakdown: document.getElementById("breakdown"),
     total: document.getElementById("total"),
+    sceneToggle: document.getElementById("sceneToggle"),
+    doorPreview: document.getElementById("doorPreview"),
+    doorSceneGroup: document.getElementById("doorSceneGroup"),
     doorClipRect: document.getElementById("doorClipRect"),
     doorLeafRect: document.getElementById("doorLeafRect"),
     doorTexturePattern: document.getElementById("doorTexturePattern"),
@@ -611,17 +659,24 @@ const DB = {
     "Любой цвет на заказ": "#b98fca"
   };
 
-  const DOOR_VB_W = 220;
-  const DOOR_VB_H = 400;
-  const DOOR_PAD = 18;
+  // Две раскладки холста: обычная (только полотно) и «сцена» (полотно в
+  // интерьере — шире по горизонтали, чтобы поместились стена и мебель).
+  const LAYOUTS = {
+    plain: { vbW: 220, vbH: 400, padTop: 18, floorY: 382, doorCenterX: 110, doorMaxW: 184 },
+    scene: { vbW: 360, vbH: 400, padTop: 28, floorY: 330, doorCenterX: 118, doorMaxW: 120 }
+  };
 
   function renderDoorPreview() {
+    const layout = state.sceneMode ? LAYOUTS.scene : LAYOUTS.plain;
+    el.doorPreview.setAttribute("viewBox", `0 0 ${layout.vbW} ${layout.vbH}`);
+    el.doorPreview.classList.toggle("scene", state.sceneMode);
+
     const width = Math.max(Number(state.width) || 0, 1);
     const height = Math.max(Number(state.height) || 0, 1);
     const aspect = width / height;
 
-    const availW = DOOR_VB_W - DOOR_PAD * 2;
-    const availH = DOOR_VB_H - DOOR_PAD * 2;
+    const availW = layout.doorMaxW;
+    const availH = layout.floorY - layout.padTop;
 
     let w, h;
     if (availW / aspect <= availH) {
@@ -632,8 +687,8 @@ const DB = {
       w = h * aspect;
     }
 
-    const x = (DOOR_VB_W - w) / 2;
-    const y = DOOR_PAD + (availH - h); // дверь стоит на полу — выравниваем по низу
+    const x = layout.doorCenterX - w / 2;
+    const y = layout.floorY - h; // дверь стоит на полу — выравниваем по низу
     const rx = Math.min(w, h) * 0.015;
 
     [el.doorClipRect, el.doorLeafRect, el.doorOutlineRect].forEach((rect) => {
@@ -730,6 +785,117 @@ const DB = {
       <rect x="${plateX - leverLen}" y="${handleY - handleThickness / 2}" width="${leverLen}" height="${handleThickness}" rx="${handleThickness / 2}" fill="#cfd3d6" stroke="#8b8f93" stroke-width="0.6"/>
       <circle cx="${plateX}" cy="${handleY + plateH * 0.32}" r="${handleThickness * 0.55}" fill="#6f7377"/>
     `;
+
+    // Сцена «на стене» рисуется ПОЗАДИ полотна (группа #doorSceneGroup идёт
+    // раньше в DOM), поэтому мебель и наличник не перекрывают дверь.
+    el.doorSceneGroup.innerHTML = state.sceneMode
+      ? buildScene(layout, { x: x, y: y, w: w, h: h })
+      : "";
+  }
+
+  // --- Сцена интерьера (стена, пол, наличник, мебель) ------------------
+  //
+  // Все координаты — в пространстве viewBox сцены (360 x 400). Мебель и кот
+  // нарисованы простыми SVG-примитивами, каждый элемент сдвигается на своё
+  // место через translate, чтобы «стоять» на полу рядом с дверью.
+
+  function floorShadow(cx, cy, rx, ry) {
+    return `<ellipse cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}" fill="rgba(60,45,30,0.22)"/>`;
+  }
+
+  function catSVG(cx, floorY) {
+    // Сидящий кот в профиль, тёмно-серый — контрастирует со светлой стеной.
+    const C = "#565b63";      // основной
+    const CL = "#61666f";     // светлее (голова)
+    const D = "#3f434a";      // темнее (тень/лапы)
+    return `
+      <g transform="translate(${cx},${floorY})">
+        ${floorShadow(2, 1, 26, 6)}
+        <path d="M 15 -3 q 20 3 17 -20 q -2 -12 -10 -12" fill="none" stroke="${C}" stroke-width="7" stroke-linecap="round"/>
+        <path d="M -15 0 Q -20 -36 -7 -47 Q 4 -55 14 -42 Q 18 -30 17 0 Z" fill="${C}"/>
+        <rect x="-11" y="-15" width="8" height="15" rx="4" fill="${D}"/>
+        <rect x="2" y="-15" width="8" height="15" rx="4" fill="${D}"/>
+        <circle cx="3" cy="-55" r="14" fill="${CL}"/>
+        <path d="M -8 -63 L -12 -77 L 0 -66 Z" fill="${CL}"/>
+        <path d="M 14 -63 L 18 -77 L 6 -66 Z" fill="${CL}"/>
+        <path d="M -7 -65 L -9 -73 L -2 -67 Z" fill="#d9aeb3"/>
+        <path d="M 13 -65 L 15 -73 L 8 -67 Z" fill="#d9aeb3"/>
+        <ellipse cx="-2" cy="-56" rx="1.7" ry="2.6" fill="#2b2e33"/>
+        <ellipse cx="8" cy="-56" rx="1.7" ry="2.6" fill="#2b2e33"/>
+        <path d="M 1 -51 L 5 -51 L 3 -48 Z" fill="#d98ba0"/>
+        <path d="M 3 -48 L 3 -45" stroke="#2b2e33" stroke-width="0.8"/>
+        <path d="M -3 -50 L -14 -52 M -3 -48 L -14 -47" stroke="#e7e2d6" stroke-width="0.6"/>
+        <path d="M 9 -50 L 20 -52 M 9 -48 L 20 -47" stroke="#e7e2d6" stroke-width="0.6"/>
+      </g>`;
+  }
+
+  function plantSVG(cx, floorY) {
+    // Растение в горшке (типа сансевиерии) — несколько вытянутых листьев.
+    const pot = "#c07a4e", potDark = "#a5623b", leaf = "#3f8f5a", leafDark = "#2f7a49";
+    const leaves = [
+      { a: -22, len: 78 }, { a: -8, len: 92 }, { a: 6, len: 88 }, { a: 20, len: 72 }, { a: -34, len: 60 }, { a: 32, len: 58 }
+    ].map((L) => {
+      const col = L.a % 2 === 0 ? leaf : leafDark;
+      return `<g transform="rotate(${L.a})"><path d="M 0 0 Q -6 ${-L.len * 0.6} 0 ${-L.len} Q 6 ${-L.len * 0.6} 0 0 Z" fill="${col}"/></g>`;
+    }).join("");
+    return `
+      <g transform="translate(${cx},${floorY})">
+        ${floorShadow(0, 2, 24, 6)}
+        <g transform="translate(0,-26)">${leaves}</g>
+        <path d="M -17 -26 L 17 -26 L 13 2 L -13 2 Z" fill="${pot}"/>
+        <path d="M -17 -26 L 17 -26 L 15 -19 L -15 -19 Z" fill="${potDark}"/>
+        <ellipse cx="0" cy="-26" rx="17" ry="4" fill="${potDark}"/>
+      </g>`;
+  }
+
+  function chairSVG(cx, floorY) {
+    // Мягкое кресло (вид спереди-сбоку), тёплый горчичный цвет.
+    const body = "#d2913a", bodyDark = "#b9792a", cushion = "#e0a750", leg = "#5b4632";
+    return `
+      <g transform="translate(${cx},${floorY})">
+        ${floorShadow(0, 2, 64, 8)}
+        <rect x="-46" y="-16" width="9" height="16" rx="2" fill="${leg}"/>
+        <rect x="37" y="-16" width="9" height="16" rx="2" fill="${leg}"/>
+        <rect x="-58" y="-84" width="17" height="70" rx="8" fill="${bodyDark}"/>
+        <rect x="41" y="-84" width="17" height="70" rx="8" fill="${bodyDark}"/>
+        <rect x="-46" y="-112" width="92" height="66" rx="16" fill="${body}"/>
+        <rect x="-38" y="-104" width="76" height="52" rx="12" fill="${cushion}"/>
+        <rect x="-50" y="-58" width="100" height="42" rx="12" fill="${body}"/>
+        <rect x="-44" y="-62" width="88" height="26" rx="10" fill="${cushion}"/>
+      </g>`;
+  }
+
+  function buildScene(layout, door) {
+    const W = layout.vbW;
+    const H = layout.vbH;
+    const floorY = layout.floorY;
+
+    // Стена + пол.
+    let s = "";
+    s += `<rect x="0" y="0" width="${W}" height="${floorY}" fill="url(#sceneWallGradient)"/>`;
+    s += `<rect x="0" y="${floorY}" width="${W}" height="${H - floorY}" fill="url(#sceneFloorGradient)"/>`;
+    // Доски пола (лёгкие горизонтальные линии).
+    for (let i = 1; i <= 3; i++) {
+      const ly = floorY + (H - floorY) * (i / 4);
+      s += `<line x1="0" y1="${ly}" x2="${W}" y2="${ly}" stroke="rgba(90,65,40,0.18)" stroke-width="0.8"/>`;
+    }
+    // Плинтус вдоль стыка стены и пола.
+    s += `<rect x="0" y="${floorY - 8}" width="${W}" height="8" fill="#f2eee5"/>`;
+    s += `<rect x="0" y="${floorY - 8}" width="${W}" height="2" fill="rgba(0,0,0,0.06)"/>`;
+
+    // Наличник (рамка вокруг полотна) — рисуется до полотна, поэтому виден
+    // только выступающий по краям кант.
+    const casing = 9;
+    s += `<rect x="${door.x - casing}" y="${door.y - casing}" width="${door.w + casing * 2}" height="${door.h + casing}" rx="3" fill="#f2eee5" stroke="rgba(0,0,0,0.10)" stroke-width="1"/>`;
+    // Тень от полотна на пол.
+    s += floorShadow(door.x + door.w / 2, floorY + 3, door.w * 0.55, 7);
+
+    // Мебель и кот. Кот — слева у двери, кресло и растение — справа.
+    s += catSVG(30, floorY - 2);
+    s += chairSVG(258, floorY - 2);
+    s += plantSVG(335, floorY - 2);
+
+    return s;
   }
 
   function render() {
@@ -808,6 +974,10 @@ const DB = {
     });
     el.discount.addEventListener("input", () => {
       state.discount = el.discount.value;
+      render();
+    });
+    el.sceneToggle.addEventListener("change", () => {
+      state.sceneMode = el.sceneToggle.checked;
       render();
     });
   }
