@@ -194,6 +194,66 @@ select:focus, input:focus { outline: 2px solid var(--accent); outline-offset: -1
   max-width: 440px;
   aspect-ratio: 220 / 400;
   filter: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.18));
+  transition: max-width 0.2s ease;
+}
+
+/* Режим «на стене» — сцена с интерьером: полотно шире и без внешней тени
+   (тени рисуются внутри самой сцены). */
+#doorPreview.scene {
+  max-width: 440px;
+  aspect-ratio: 360 / 400;
+  filter: none;
+}
+
+.preview-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.scene-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  cursor: pointer;
+  user-select: none;
+}
+
+.scene-toggle input { width: auto; cursor: pointer; }
+
+.wall-color-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: -6px;
+}
+
+.wall-swatches { display: flex; gap: 6px; flex-wrap: wrap; }
+
+.wall-swatch {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  padding: 0;
+  cursor: pointer;
+}
+
+.wall-swatch.active { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+.wall-color-row input[type="color"] {
+  width: 34px;
+  height: 28px;
+  padding: 2px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  cursor: pointer;
 }
 
 .color-preview {
@@ -287,7 +347,13 @@ select:focus, input:focus { outline: 2px solid var(--accent); outline-offset: -1
     </div>
 
     <div class="field">
-      <label>Внешний вид двери</label>
+      <div class="preview-head">
+        <label>Внешний вид двери</label>
+        <label class="scene-toggle" for="sceneToggle">
+          <input type="checkbox" id="sceneToggle">
+          <span>На стене (интерьер)</span>
+        </label>
+      </div>
       <div class="door-preview">
         <svg id="doorPreview" viewBox="0 0 220 400" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Превью двери">
           <defs>
@@ -303,6 +369,7 @@ select:focus, input:focus { outline: 2px solid var(--accent); outline-offset: -1
               <image id="doorTextureImage" href="" preserveAspectRatio="none"></image>
             </pattern>
           </defs>
+          <g id="doorSceneGroup"></g>
           <g clip-path="url(#doorClip)">
             <rect id="doorLeafRect" fill="#c9cbcd"></rect>
             <rect id="doorShadeRect" fill="url(#doorShadeGradient)"></rect>
@@ -311,6 +378,11 @@ select:focus, input:focus { outline: 2px solid var(--accent); outline-offset: -1
           <g id="doorGlassGroup"></g>
           <g id="doorHandleGroup"></g>
         </svg>
+      </div>
+      <div class="wall-color-row" id="wallColorRow" style="display:none">
+        <label for="wallColor">Цвет стены</label>
+        <div class="wall-swatches" id="wallSwatches"></div>
+        <input type="color" id="wallColor" aria-label="Свой цвет стены">
       </div>
     </div>
 
@@ -507,8 +579,23 @@ const DB = {
     width: DB.standard.widths[3],
     thickness: DB.standard.thickness,
     options: {},
-    discount: 0
+    discount: 0,
+    sceneMode: false,
+    wallColor: "#e8e2d5"
   };
+
+  // Пресеты цвета стены для быстрого выбора (можно задать и свой через
+  // input[type=color]).
+  const WALL_PRESETS = [
+    { name: "Тёплый белый", hex: "#e8e2d5" },
+    { name: "Светло-серый", hex: "#d7d8d3" },
+    { name: "Шалфей", hex: "#cdd6cb" },
+    { name: "Голубой", hex: "#cdd8e2" },
+    { name: "Бежевый", hex: "#e3d3c1" },
+    { name: "Песочный", hex: "#d9c7ac" },
+    { name: "Капучино", hex: "#c9b6a4" },
+    { name: "Терракота", hex: "#d9b9a3" }
+  ];
 
   const el = {
     model: document.getElementById("model"),
@@ -526,6 +613,12 @@ const DB = {
     discount: document.getElementById("discount"),
     breakdown: document.getElementById("breakdown"),
     total: document.getElementById("total"),
+    sceneToggle: document.getElementById("sceneToggle"),
+    wallColorRow: document.getElementById("wallColorRow"),
+    wallSwatches: document.getElementById("wallSwatches"),
+    wallColor: document.getElementById("wallColor"),
+    doorPreview: document.getElementById("doorPreview"),
+    doorSceneGroup: document.getElementById("doorSceneGroup"),
     doorClipRect: document.getElementById("doorClipRect"),
     doorLeafRect: document.getElementById("doorLeafRect"),
     doorTexturePattern: document.getElementById("doorTexturePattern"),
@@ -722,17 +815,24 @@ const DB = {
     "Любой цвет на заказ": "#b98fca"
   };
 
-  const DOOR_VB_W = 220;
-  const DOOR_VB_H = 400;
-  const DOOR_PAD = 18;
+  // Две раскладки холста: обычная (только полотно) и «сцена» (полотно в
+  // интерьере — шире по горизонтали, чтобы поместились стена и мебель).
+  const LAYOUTS = {
+    plain: { vbW: 220, vbH: 400, padTop: 18, floorY: 382, doorCenterX: 110, doorMaxW: 184 },
+    scene: { vbW: 360, vbH: 400, padTop: 28, floorY: 330, doorCenterX: 118, doorMaxW: 120 }
+  };
 
   function renderDoorPreview() {
+    const layout = state.sceneMode ? LAYOUTS.scene : LAYOUTS.plain;
+    el.doorPreview.setAttribute("viewBox", `0 0 ${layout.vbW} ${layout.vbH}`);
+    el.doorPreview.classList.toggle("scene", state.sceneMode);
+
     const width = Math.max(Number(state.width) || 0, 1);
     const height = Math.max(Number(state.height) || 0, 1);
     const aspect = width / height;
 
-    const availW = DOOR_VB_W - DOOR_PAD * 2;
-    const availH = DOOR_VB_H - DOOR_PAD * 2;
+    const availW = layout.doorMaxW;
+    const availH = layout.floorY - layout.padTop;
 
     let w, h;
     if (availW / aspect <= availH) {
@@ -743,8 +843,8 @@ const DB = {
       w = h * aspect;
     }
 
-    const x = (DOOR_VB_W - w) / 2;
-    const y = DOOR_PAD + (availH - h); // дверь стоит на полу — выравниваем по низу
+    const x = layout.doorCenterX - w / 2;
+    const y = layout.floorY - h; // дверь стоит на полу — выравниваем по низу
     const rx = Math.min(w, h) * 0.015;
 
     [el.doorClipRect, el.doorLeafRect, el.doorOutlineRect].forEach((rect) => {
@@ -767,6 +867,9 @@ const DB = {
     // образца (пока это категории "эмаль") — просто ровный цвет.
     const swatch = DB.colorSwatches[state.color];
     const baseHex = (swatch && swatch.hex) || EMAL_COLOR_HEX[state.color] || "#c9cbcd";
+    // Заливка полотна — используется и для наличника, чтобы коробка была той
+    // же расцветки/текстуры, что и дверь.
+    const doorFill = swatch ? "url(#doorTexturePattern)" : baseHex;
     if (swatch) {
       const { widthMm: sampleW, heightMm: sampleH } = DB.colorSwatchSampleSize;
       const unitsPerMm = w / width;                 // масштаб: единицы SVG на мм двери
@@ -841,6 +944,166 @@ const DB = {
       <rect x="${plateX - leverLen}" y="${handleY - handleThickness / 2}" width="${leverLen}" height="${handleThickness}" rx="${handleThickness / 2}" fill="#cfd3d6" stroke="#8b8f93" stroke-width="0.6"/>
       <circle cx="${plateX}" cy="${handleY + plateH * 0.32}" r="${handleThickness * 0.55}" fill="#6f7377"/>
     `;
+
+    // Сцена «на стене» рисуется ПОЗАДИ полотна (группа #doorSceneGroup идёт
+    // раньше в DOM), поэтому мебель и наличник не перекрывают дверь.
+    el.doorSceneGroup.innerHTML = state.sceneMode
+      ? buildScene(layout, { x: x, y: y, w: w, h: h }, baseHex, doorFill, state.wallColor)
+      : "";
+  }
+
+  // --- Сцена интерьера (стена, пол, наличник, мебель) ------------------
+  //
+  // Все координаты — в пространстве viewBox сцены (360 x 400). Реалистичность
+  // достигается не за счёт фото, а за счёт средств самого SVG: процедурные
+  // текстуры (feTurbulence) для штукатурки стены и волокон дерева пола,
+  // направленный свет (свет слева-сверху), мягкие тени с размытием
+  // (feGaussianBlur), объёмный профиль наличника и глянцевое отражение
+  // полотна на полу.
+
+  // Все фильтры и градиенты сцены. Держим их прямо в группе сцены, чтобы
+  // весь код визуализации был в одном месте; при перерисовке группа
+  // заменяется целиком, поэтому дубликатов id не возникает.
+  function sceneDefs(baseHex, wallColor) {
+    // Градиент стены строим из выбранного цвета: сверху чуть светлее (свет),
+    // снизу чуть темнее.
+    const wallTop = shade(wallColor, 6);
+    const wallBottom = shade(wallColor, -12);
+    return `
+      <defs>
+        <linearGradient id="sc-wall" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="${wallTop}"/>
+          <stop offset="1" stop-color="${wallBottom}"/>
+        </linearGradient>
+        <radialGradient id="sc-wallGlow" cx="27%" cy="16%" r="85%">
+          <stop offset="0" stop-color="#ffffff" stop-opacity="0.35"/>
+          <stop offset="55%" stop-color="#ffffff" stop-opacity="0"/>
+        </radialGradient>
+        <radialGradient id="sc-vignette" cx="50%" cy="40%" r="80%">
+          <stop offset="52%" stop-color="#000000" stop-opacity="0"/>
+          <stop offset="100%" stop-color="#241708" stop-opacity="0.22"/>
+        </radialGradient>
+        <linearGradient id="sc-floor" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#d7b57d"/>
+          <stop offset="1" stop-color="#a2703f"/>
+        </linearGradient>
+        <linearGradient id="sc-gloss" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#ffffff" stop-opacity="0.30"/>
+          <stop offset="40%" stop-color="#ffffff" stop-opacity="0.03"/>
+          <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
+        </linearGradient>
+        <linearGradient id="sc-doorRefl" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="${baseHex}" stop-opacity="0.32"/>
+          <stop offset="100%" stop-color="${baseHex}" stop-opacity="0"/>
+        </linearGradient>
+        <filter id="sc-paint" x="0" y="0" width="100%" height="100%">
+          <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" seed="4" stitchTiles="stitch"/>
+          <feColorMatrix type="saturate" values="0"/>
+          <feComponentTransfer><feFuncA type="linear" slope="0.05"/></feComponentTransfer>
+        </filter>
+        <filter id="sc-wood" x="0" y="0" width="100%" height="100%">
+          <feTurbulence type="fractalNoise" baseFrequency="0.012 0.42" numOctaves="3" seed="11" stitchTiles="stitch"/>
+          <feColorMatrix type="saturate" values="0"/>
+          <feComponentTransfer><feFuncA type="linear" slope="0.14"/></feComponentTransfer>
+        </filter>
+        <filter id="sc-soft" x="-60%" y="-60%" width="220%" height="220%">
+          <feGaussianBlur stdDeviation="2.6"/>
+        </filter>
+        <filter id="sc-soft6" x="-80%" y="-80%" width="260%" height="260%">
+          <feGaussianBlur stdDeviation="5"/>
+        </filter>
+      </defs>`;
+  }
+
+  // Мягкая контактная тень (размытие через фильтр — как настоящая рассеянная).
+  function softShadow(cx, cy, rx, ry, alpha, big) {
+    const f = big ? "sc-soft6" : "sc-soft";
+    return `<ellipse cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}" fill="rgba(28,18,8,${alpha})" filter="url(#${f})"/>`;
+  }
+
+  function buildScene(layout, door, baseHex, doorFill, wallColor) {
+    const W = layout.vbW;
+    const H = layout.vbH;
+    const floorY = layout.floorY;
+    const floorH = H - floorY;
+
+    let s = sceneDefs(baseHex, wallColor);
+
+    // --- Стена: базовый градиент + световое пятно слева-сверху + матовая
+    //     фактура штукатурки + виньетка по краям.
+    s += `<rect x="0" y="0" width="${W}" height="${floorY}" fill="url(#sc-wall)"/>`;
+    s += `<rect x="0" y="0" width="${W}" height="${floorY}" fill="url(#sc-wallGlow)"/>`;
+    s += `<rect x="0" y="0" width="${W}" height="${floorY}" filter="url(#sc-paint)" opacity="0.55"/>`;
+    s += `<rect x="0" y="0" width="${W}" height="${floorY}" fill="url(#sc-vignette)"/>`;
+
+    // --- Пол: паркетная доска в перспективе. Ряды сгущаются к линии пола
+    //     (даль), швы между досками смещены. Поверх — волокна дерева и глянец.
+    s += `<rect x="0" y="${floorY}" width="${W}" height="${floorH}" fill="url(#sc-floor)"/>`;
+    const rows = 4;
+    let plankY = floorY;
+    for (let r = 0; r < rows; r++) {
+      // Ближние ряды выше (перспектива): высота растёт к низу.
+      const rowH = floorH * (0.12 + 0.16 * r);
+      const y0 = plankY;
+      const y1 = Math.min(H, plankY + rowH);
+      // Шов вдоль доски (горизонтальный).
+      s += `<line x1="0" y1="${y1}" x2="${W}" y2="${y1}" stroke="rgba(60,38,18,0.35)" stroke-width="0.8"/>`;
+      s += `<line x1="0" y1="${y1 + 0.9}" x2="${W}" y2="${y1 + 0.9}" stroke="rgba(255,232,190,0.18)" stroke-width="0.6"/>`;
+      // Поперечные швы между досками (в шахматном порядке).
+      const seamStep = 74 + r * 16;
+      const seamOff = (r % 2) * (seamStep / 2);
+      for (let sx = seamOff; sx < W; sx += seamStep) {
+        s += `<line x1="${sx}" y1="${y0}" x2="${sx}" y2="${y1}" stroke="rgba(60,38,18,0.28)" stroke-width="0.7"/>`;
+      }
+      plankY = y1;
+    }
+    s += `<rect x="0" y="${floorY}" width="${W}" height="${floorH}" filter="url(#sc-wood)" opacity="0.6"/>`;
+    s += `<rect x="0" y="${floorY}" width="${W}" height="${floorH}" fill="url(#sc-gloss)"/>`;
+    // Мягкое затемнение в стыке стены и пола (ambient occlusion).
+    s += `<rect x="0" y="${floorY - 3}" width="${W}" height="6" fill="rgba(20,12,4,0.16)" filter="url(#sc-soft)"/>`;
+
+    // --- Плинтус с лёгким профилем.
+    s += `<rect x="0" y="${floorY - 9}" width="${W}" height="9" fill="#f4f0e7"/>`;
+    s += `<rect x="0" y="${floorY - 9}" width="${W}" height="2" fill="#ffffff" opacity="0.6"/>`;
+    s += `<rect x="0" y="${floorY - 2}" width="${W}" height="2" fill="rgba(0,0,0,0.14)"/>`;
+
+    // --- Отражение полотна на глянцевом полу (перед тенью).
+    const reflH = Math.min(floorH * 0.85, door.h * 0.5);
+    s += `<rect x="${door.x}" y="${floorY}" width="${door.w}" height="${reflH}" fill="url(#sc-doorRefl)"/>`;
+
+    // --- Контактная тень под полотном (смещена вправо — свет слева).
+    s += softShadow(door.x + door.w / 2 + 4, floorY + 4, door.w * 0.52, 7, 0.34, true);
+
+    // --- Наличник (дверная коробка) с объёмным профилем. Рисуется до
+    //     полотна, поэтому виден только выступающий кант.
+    const casing = 12;
+    const ox = door.x - casing, oy = door.y - casing;
+    const ow = door.w + casing * 2, oh = door.h + casing;
+    // Тень коробки на стену (падает вправо-вниз).
+    s += `<rect x="${ox + 3}" y="${oy + 3}" width="${ow}" height="${oh}" rx="2" fill="rgba(20,12,4,0.20)" filter="url(#sc-soft)"/>`;
+    // Лицевые доски коробки — той же расцветки/текстуры, что и полотно
+    // (текстура-паттерн задана в userSpaceOnUse и продолжается на коробке
+    // без разрыва).
+    s += `<rect x="${ox}" y="${oy}" width="${casing}" height="${oh}" fill="${doorFill}"/>`;
+    s += `<rect x="${door.x + door.w}" y="${oy}" width="${casing}" height="${oh}" fill="${doorFill}"/>`;
+    s += `<rect x="${ox}" y="${oy}" width="${ow}" height="${casing}" fill="${doorFill}"/>`;
+    // Объёмное затенение профиля: освещённая сторона (слева/сверху) чуть
+    // светлее, теневая (справа) чуть темнее — коробка читается рельефом,
+    // оставаясь в цвете двери.
+    s += `<rect x="${ox}" y="${oy}" width="${casing}" height="${oh}" fill="#ffffff" opacity="0.08"/>`;
+    s += `<rect x="${ox}" y="${oy}" width="${ow}" height="${casing}" fill="#ffffff" opacity="0.06"/>`;
+    s += `<rect x="${door.x + door.w}" y="${oy}" width="${casing}" height="${oh}" fill="#000000" opacity="0.16"/>`;
+    // Блик на внешней грани (со стороны света) и тень на внутренней.
+    s += `<rect x="${ox}" y="${oy}" width="1.4" height="${oh}" fill="#ffffff" opacity="0.6"/>`;
+    s += `<rect x="${ox}" y="${oy}" width="${ow}" height="1.4" fill="#ffffff" opacity="0.6"/>`;
+    s += `<rect x="${ox + ow - 1.6}" y="${oy}" width="1.6" height="${oh}" fill="rgba(0,0,0,0.20)"/>`;
+    // Косой стык (ус) в верхних углах коробки.
+    s += `<line x1="${ox}" y1="${oy}" x2="${door.x}" y2="${door.y}" stroke="rgba(0,0,0,0.22)" stroke-width="0.8"/>`;
+    s += `<line x1="${ox + ow}" y1="${oy}" x2="${door.x + door.w}" y2="${door.y}" stroke="rgba(0,0,0,0.22)" stroke-width="0.8"/>`;
+    // Теневая четверть между коробкой и полотном (полотно чуть утоплено).
+    s += `<rect x="${door.x - 2}" y="${door.y - 2}" width="${door.w + 4}" height="${door.h + 2}" fill="none" stroke="rgba(0,0,0,0.24)" stroke-width="2"/>`;
+
+    return s;
   }
 
   function render() {
@@ -922,6 +1185,32 @@ const DB = {
       state.discount = el.discount.value;
       render();
     });
+    el.sceneToggle.addEventListener("change", () => {
+      state.sceneMode = el.sceneToggle.checked;
+      el.wallColorRow.style.display = state.sceneMode ? "flex" : "none";
+      render();
+    });
+    el.wallSwatches.addEventListener("click", (e) => {
+      const btn = e.target.closest(".wall-swatch");
+      if (!btn) return;
+      state.wallColor = btn.dataset.hex;
+      el.wallColor.value = state.wallColor;
+      renderWallSwatches();
+      render();
+    });
+    el.wallColor.addEventListener("input", () => {
+      state.wallColor = el.wallColor.value;
+      renderWallSwatches();
+      render();
+    });
+  }
+
+  function renderWallSwatches() {
+    const cur = state.wallColor.toLowerCase();
+    el.wallSwatches.innerHTML = WALL_PRESETS.map(
+      (p) =>
+        `<button type="button" class="wall-swatch${p.hex.toLowerCase() === cur ? " active" : ""}" data-hex="${p.hex}" style="background:${p.hex}" title="${p.name}" aria-label="${p.name}"></button>`
+    ).join("");
   }
 
   // --- Вкладки (меню) --------------------------------------------------
@@ -1232,6 +1521,8 @@ const DB = {
     el.width.value = state.width;
     el.thickness.value = state.thickness;
     el.discount.value = state.discount;
+    el.wallColor.value = state.wallColor;
+    renderWallSwatches();
     bind();
 
     el.menuBtn.addEventListener("click", (e) => { e.stopPropagation(); toggleMenu(); });
