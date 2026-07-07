@@ -664,7 +664,9 @@ const DB = {
     { id: "plaster", name: "Штукатурка" },
     { id: "stripes", name: "Обои в полоску" },
     { id: "concrete", name: "Бетон" },
-    { id: "brick", name: "Кирпич" }
+    { id: "brick", name: "Кирпич" },
+    { id: "wood", name: "Вагонка" },
+    { id: "logs", name: "Бревна круглые" }
   ];
 
   const el = {
@@ -1094,14 +1096,14 @@ const DB = {
           <feComponentTransfer><feFuncA type="linear" slope="0.05"/></feComponentTransfer>
         </filter>
         <filter id="${idf("plaster")}" x="0" y="0" width="100%" height="100%">
-          <feTurbulence type="fractalNoise" baseFrequency="0.12" numOctaves="4" seed="9" stitchTiles="stitch"/>
+          <feTurbulence type="fractalNoise" baseFrequency="0.16" numOctaves="4" seed="9" stitchTiles="stitch"/>
           <feColorMatrix type="saturate" values="0"/>
-          <feComponentTransfer><feFuncA type="linear" slope="0.10"/></feComponentTransfer>
+          <feComponentTransfer><feFuncA type="linear" slope="0.32"/></feComponentTransfer>
         </filter>
         <filter id="${idf("concrete")}" x="0" y="0" width="100%" height="100%">
-          <feTurbulence type="fractalNoise" baseFrequency="0.05" numOctaves="4" seed="21" stitchTiles="stitch"/>
+          <feTurbulence type="fractalNoise" baseFrequency="0.022" numOctaves="5" seed="21" stitchTiles="stitch"/>
           <feColorMatrix type="saturate" values="0"/>
-          <feComponentTransfer><feFuncA type="linear" slope="0.13"/></feComponentTransfer>
+          <feComponentTransfer><feFuncA type="linear" slope="0.30"/></feComponentTransfer>
         </filter>
         <filter id="${idf("wood")}" x="0" y="0" width="100%" height="100%">
           <feTurbulence type="fractalNoise" baseFrequency="0.012 0.42" numOctaves="3" seed="11" stitchTiles="stitch"/>
@@ -1126,18 +1128,51 @@ const DB = {
   // Наложение выбранной текстуры на стену (поверх базового цвета, до виньетки).
   // Цвет стены остаётся выбранным — текстура лишь модулирует его.
   function wallTextureSVG(W, floorY, wallColor, texture, idf) {
-    const paint = (op) => `<rect x="0" y="0" width="${W}" height="${floorY}" filter="url(#${idf("paint")})" opacity="${op}"/>`;
+    const noise = (filt, op) => `<rect x="0" y="0" width="${W}" height="${floorY}" filter="url(#${idf(filt)})" opacity="${op}"/>`;
+
     if (texture === "plaster") {
-      return paint(0.45) + `<rect x="0" y="0" width="${W}" height="${floorY}" filter="url(#${idf("plaster")})" opacity="0.55"/>`;
-    }
-    if (texture === "concrete") {
-      let g = paint(0.3) + `<rect x="0" y="0" width="${W}" height="${floorY}" filter="url(#${idf("concrete")})" opacity="0.6"/>`;
-      const spots = [[W * 0.2, floorY * 0.3, 42, -8], [W * 0.62, floorY * 0.55, 56, 6], [W * 0.82, floorY * 0.22, 34, -6], [W * 0.42, floorY * 0.76, 48, 5]];
-      spots.forEach((sp) => {
-        g += `<ellipse cx="${sp[0]}" cy="${sp[1]}" rx="${sp[2]}" ry="${sp[2] * 0.7}" fill="${shade(wallColor, sp[3])}" opacity="0.2" filter="url(#${idf("soft6")})"/>`;
-      });
+      // Штукатурка: выраженное мелко-среднее зерно + мягкие наплывы «кельмой».
+      let g = noise("plaster", 0.9);
+      for (let i = 0; i < 5; i++) {
+        const y = floorY * (0.12 + i * 0.19);
+        g += `<path d="M -10 ${y} Q ${W * 0.5} ${y - 26} ${W + 10} ${y}" fill="none" stroke="#ffffff" stroke-width="10" opacity="0.05" filter="url(#${idf("soft6")})"/>`;
+        g += `<path d="M -10 ${y + 12} Q ${W * 0.5} ${y - 8} ${W + 10} ${y + 12}" fill="none" stroke="#000000" stroke-width="9" opacity="0.05" filter="url(#${idf("soft6")})"/>`;
+      }
       return g;
     }
+
+    if (texture === "concrete") {
+      // Бетон: холодный серый подтон, крупные разводы, потёки, швы плит и
+      // отверстия от опалубки — явно «промышленный» вид.
+      let g = `<rect x="0" y="0" width="${W}" height="${floorY}" fill="#8b9298" opacity="0.16"/>`;
+      g += noise("concrete", 0.85);
+      // крупные пятна
+      const spots = [[W * 0.18, floorY * 0.28, 60, -12], [W * 0.6, floorY * 0.5, 80, 8], [W * 0.85, floorY * 0.2, 46, -8], [W * 0.4, floorY * 0.78, 66, 7], [W * 0.75, floorY * 0.8, 52, -6]];
+      spots.forEach((sp) => {
+        g += `<ellipse cx="${sp[0]}" cy="${sp[1]}" rx="${sp[2]}" ry="${sp[2] * 0.7}" fill="${shade(wallColor, sp[3])}" opacity="0.28" filter="url(#${idf("soft6")})"/>`;
+      });
+      // вертикальные потёки
+      [W * 0.3, W * 0.55, W * 0.9].forEach((dx, i) => {
+        g += `<rect x="${dx}" y="0" width="${3 + i}" height="${floorY * (0.5 + 0.15 * i)}" fill="#000000" opacity="0.07" filter="url(#${idf("soft")})"/>`;
+      });
+      // швы плит опалубки
+      const seamsX = [W / 3, (2 * W) / 3];
+      const seamsY = [floorY * 0.5];
+      seamsX.forEach((sx) => {
+        g += `<rect x="${sx}" y="0" width="1.5" height="${floorY}" fill="rgba(0,0,0,0.18)"/>`;
+        g += `<rect x="${sx + 1.5}" y="0" width="1" height="${floorY}" fill="rgba(255,255,255,0.08)"/>`;
+      });
+      seamsY.forEach((sy) => {
+        g += `<rect x="0" y="${sy}" width="${W}" height="1.5" fill="rgba(0,0,0,0.16)"/>`;
+      });
+      // отверстия от стяжек опалубки на пересечениях
+      seamsX.forEach((sx) => seamsY.concat([floorY * 0.16, floorY * 0.84]).forEach((sy) => {
+        g += `<circle cx="${sx}" cy="${sy}" r="2.4" fill="rgba(0,0,0,0.28)"/>`;
+        g += `<circle cx="${sx - 0.6}" cy="${sy - 0.6}" r="1" fill="rgba(255,255,255,0.15)"/>`;
+      }));
+      return g;
+    }
+
     if (texture === "stripes") {
       let g = "";
       const stripeW = 16;
@@ -1145,8 +1180,9 @@ const DB = {
       for (let sx = 0; sx < W; sx += stripeW * 2) {
         g += `<rect x="${sx}" y="0" width="${stripeW}" height="${floorY}" fill="${dark}" opacity="0.5"/>`;
       }
-      return g + paint(0.3);
+      return g + noise("paint", 0.3);
     }
+
     if (texture === "brick") {
       let g = "";
       const bh = 24, bw = 52, mortar = "rgba(0,0,0,0.16)", hi = "rgba(255,255,255,0.10)";
@@ -1162,9 +1198,59 @@ const DB = {
         }
         course++;
       }
-      return g + paint(0.22);
+      return g + noise("paint", 0.22);
     }
-    return paint(0.4); // smooth (гладкая окраска)
+
+    if (texture === "wood") {
+      // Вагонка: вертикальные доски с V-образным пазом, объёмом и волокном.
+      let g = "";
+      const bw = 22;
+      let b = 0;
+      for (let bx = 0; bx < W; bx += bw, b++) {
+        // объём доски: блик слева, тень справа
+        g += `<rect x="${bx}" y="0" width="${bw * 0.5}" height="${floorY}" fill="#ffffff" opacity="0.05"/>`;
+        g += `<rect x="${bx + bw * 0.6}" y="0" width="${bw * 0.4}" height="${floorY}" fill="#000000" opacity="0.07"/>`;
+        // паз между досками (тень + блик)
+        g += `<rect x="${bx}" y="0" width="1.6" height="${floorY}" fill="rgba(0,0,0,0.3)"/>`;
+        g += `<rect x="${bx + 1.6}" y="0" width="1" height="${floorY}" fill="rgba(255,255,255,0.14)"/>`;
+        // волокна дерева (слегка волнистые вертикальные линии)
+        const gc = shade(wallColor, -12);
+        for (let k = 1; k <= 2; k++) {
+          const gx = bx + bw * (0.35 * k);
+          g += `<path d="M ${gx} 0 q 3 ${floorY * 0.33} 0 ${floorY * 0.66} q -3 ${floorY * 0.2} 0 ${floorY}" fill="none" stroke="${gc}" stroke-width="0.8" opacity="0.18"/>`;
+        }
+        // редкий сучок
+        if (b % 4 === 2) {
+          const ky = floorY * (0.2 + (b % 3) * 0.25);
+          g += `<ellipse cx="${bx + bw * 0.5}" cy="${ky}" rx="2.4" ry="3.4" fill="${shade(wallColor, -24)}" opacity="0.4"/>`;
+        }
+      }
+      return g + noise("paint", 0.2);
+    }
+
+    if (texture === "logs") {
+      // Бревна круглые (сруб): горизонтальные брёвна с цилиндрическим объёмом.
+      let g = "";
+      const lh = 34;
+      // тон по сечению цилиндра: доля высоты → сдвиг яркости
+      const bands = [[0.0, 0.08, -26], [0.08, 0.3, 14], [0.3, 0.55, 4], [0.55, 0.8, -8], [0.8, 1.0, -24]];
+      for (let ly = 0; ly < floorY; ly += lh) {
+        bands.forEach((bd) => {
+          const y0 = ly + lh * bd[0];
+          const hh = lh * (bd[1] - bd[0]);
+          g += `<rect x="0" y="${y0}" width="${W}" height="${hh}" fill="${shade(wallColor, bd[2])}"/>`;
+        });
+        // тонкий блик вдоль верхней трети
+        g += `<rect x="0" y="${ly + lh * 0.22}" width="${W}" height="1.4" fill="#ffffff" opacity="0.18"/>`;
+        // паз-стык между брёвнами
+        g += `<rect x="0" y="${ly + lh - 1.5}" width="${W}" height="1.5" fill="rgba(0,0,0,0.35)"/>`;
+        // продольные волокна
+        g += `<path d="M 0 ${ly + lh * 0.5} q ${W * 0.5} 3 ${W} 0" fill="none" stroke="${shade(wallColor, -18)}" stroke-width="0.7" opacity="0.2"/>`;
+      }
+      return g + noise("paint", 0.15);
+    }
+
+    return noise("paint", 0.15); // smooth (гладкая окраска) — почти без фактуры
   }
 
   function buildScene(layout, door, baseHex, doorFill, wallColor, wallTexture, pfx) {
