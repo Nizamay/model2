@@ -122,12 +122,12 @@ select:focus, input:focus { outline: 2px solid var(--accent); outline-offset: -1
 
 .color-preview {
   width: 100%;
-  aspect-ratio: 2 / 5;
+  aspect-ratio: 15 / 20;
   border-radius: 8px;
   border: 1px solid var(--border);
   background-position: center;
   background-repeat: no-repeat;
-  background-size: contain;
+  background-size: cover;
   display: flex;
   align-items: flex-end;
   overflow: hidden;
@@ -564,12 +564,9 @@ const DB = {
 
   function updateColorPreview() {
     const swatch = DB.colorSwatches[state.color];
-    const width = Number(state.width) || DB.standard.widths[3];
-    const height = Number(state.height) || DB.standard.height;
 
-    // Один кадр образца целиком (без повтора/мозаики), вписанный в рамку
-    // пропорций реальной двери.
-    el.colorPreview.style.aspectRatio = `${width} / ${height}`;
+    // Один кадр образца (пропорции 15x20 см, задаются в CSS), заполняет рамку
+    // целиком — без полей сверху/снизу и без повтора.
     el.colorPreview.style.backgroundImage = swatch ? `url("${swatch.image}")` : "none";
     el.colorPreview.style.backgroundColor = swatch ? swatch.hex : "var(--border)";
     el.colorPreviewLabel.textContent = state.color || "";
