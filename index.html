@@ -789,111 +789,261 @@ const DB = {
     // Сцена «на стене» рисуется ПОЗАДИ полотна (группа #doorSceneGroup идёт
     // раньше в DOM), поэтому мебель и наличник не перекрывают дверь.
     el.doorSceneGroup.innerHTML = state.sceneMode
-      ? buildScene(layout, { x: x, y: y, w: w, h: h })
+      ? buildScene(layout, { x: x, y: y, w: w, h: h }, baseHex)
       : "";
   }
 
   // --- Сцена интерьера (стена, пол, наличник, мебель) ------------------
   //
-  // Все координаты — в пространстве viewBox сцены (360 x 400). Мебель и кот
-  // нарисованы простыми SVG-примитивами, каждый элемент сдвигается на своё
-  // место через translate, чтобы «стоять» на полу рядом с дверью.
+  // Все координаты — в пространстве viewBox сцены (360 x 400). Реалистичность
+  // достигается не за счёт фото, а за счёт средств самого SVG: процедурные
+  // текстуры (feTurbulence) для штукатурки стены и волокон дерева пола,
+  // направленный свет (свет слева-сверху), мягкие тени с размытием
+  // (feGaussianBlur), объёмный профиль наличника и глянцевое отражение
+  // полотна на полу.
 
-  function floorShadow(cx, cy, rx, ry) {
-    return `<ellipse cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}" fill="rgba(60,45,30,0.22)"/>`;
+  // Все фильтры и градиенты сцены. Держим их прямо в группе сцены, чтобы
+  // весь код визуализации был в одном месте; при перерисовке группа
+  // заменяется целиком, поэтому дубликатов id не возникает.
+  function sceneDefs(baseHex) {
+    return `
+      <defs>
+        <linearGradient id="sc-wall" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#efe9df"/>
+          <stop offset="1" stop-color="#d9d0c1"/>
+        </linearGradient>
+        <radialGradient id="sc-wallGlow" cx="27%" cy="16%" r="85%">
+          <stop offset="0" stop-color="#fff8ec" stop-opacity="0.55"/>
+          <stop offset="55%" stop-color="#fff8ec" stop-opacity="0"/>
+        </radialGradient>
+        <radialGradient id="sc-vignette" cx="50%" cy="40%" r="80%">
+          <stop offset="52%" stop-color="#000000" stop-opacity="0"/>
+          <stop offset="100%" stop-color="#241708" stop-opacity="0.22"/>
+        </radialGradient>
+        <linearGradient id="sc-floor" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#d7b57d"/>
+          <stop offset="1" stop-color="#a2703f"/>
+        </linearGradient>
+        <linearGradient id="sc-gloss" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#ffffff" stop-opacity="0.30"/>
+          <stop offset="40%" stop-color="#ffffff" stop-opacity="0.03"/>
+          <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
+        </linearGradient>
+        <linearGradient id="sc-casingFace" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0" stop-color="#fcfbf7"/>
+          <stop offset="1" stop-color="#e0d9ca"/>
+        </linearGradient>
+        <linearGradient id="sc-doorRefl" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="${baseHex}" stop-opacity="0.32"/>
+          <stop offset="100%" stop-color="${baseHex}" stop-opacity="0"/>
+        </linearGradient>
+        <linearGradient id="sc-chairBody" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#e0a24a"/>
+          <stop offset="1" stop-color="#b06f22"/>
+        </linearGradient>
+        <linearGradient id="sc-chairSeat" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#eeb862"/>
+          <stop offset="1" stop-color="#c98a34"/>
+        </linearGradient>
+        <linearGradient id="sc-pot" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0" stop-color="#cf8354"/>
+          <stop offset="0.5" stop-color="#b06a3e"/>
+          <stop offset="1" stop-color="#8f5230"/>
+        </linearGradient>
+        <linearGradient id="sc-leaf" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0" stop-color="#4ea363"/>
+          <stop offset="1" stop-color="#2c6e42"/>
+        </linearGradient>
+        <linearGradient id="sc-leafDark" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0" stop-color="#3c8a52"/>
+          <stop offset="1" stop-color="#215a34"/>
+        </linearGradient>
+        <radialGradient id="sc-catBody" cx="42%" cy="30%" r="80%">
+          <stop offset="0" stop-color="#6a7079"/>
+          <stop offset="1" stop-color="#41454c"/>
+        </radialGradient>
+        <filter id="sc-paint" x="0" y="0" width="100%" height="100%">
+          <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" seed="4" stitchTiles="stitch"/>
+          <feColorMatrix type="saturate" values="0"/>
+          <feComponentTransfer><feFuncA type="linear" slope="0.05"/></feComponentTransfer>
+        </filter>
+        <filter id="sc-wood" x="0" y="0" width="100%" height="100%">
+          <feTurbulence type="fractalNoise" baseFrequency="0.012 0.42" numOctaves="3" seed="11" stitchTiles="stitch"/>
+          <feColorMatrix type="saturate" values="0"/>
+          <feComponentTransfer><feFuncA type="linear" slope="0.14"/></feComponentTransfer>
+        </filter>
+        <filter id="sc-soft" x="-60%" y="-60%" width="220%" height="220%">
+          <feGaussianBlur stdDeviation="2.6"/>
+        </filter>
+        <filter id="sc-soft6" x="-80%" y="-80%" width="260%" height="260%">
+          <feGaussianBlur stdDeviation="5"/>
+        </filter>
+      </defs>`;
+  }
+
+  // Мягкая контактная тень (размытие через фильтр — как настоящая рассеянная).
+  function softShadow(cx, cy, rx, ry, alpha, big) {
+    const f = big ? "sc-soft6" : "sc-soft";
+    return `<ellipse cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}" fill="rgba(28,18,8,${alpha})" filter="url(#${f})"/>`;
   }
 
   function catSVG(cx, floorY) {
-    // Сидящий кот в профиль, тёмно-серый — контрастирует со светлой стеной.
-    const C = "#565b63";      // основной
-    const CL = "#61666f";     // светлее (голова)
-    const D = "#3f434a";      // темнее (тень/лапы)
+    // Сидящий кот в профиль. Объёмный мех — радиальный градиент (светлее
+    // на спине к свету, темнее к низу), плюс мягкая тень и блик.
     return `
       <g transform="translate(${cx},${floorY})">
-        ${floorShadow(2, 1, 26, 6)}
-        <path d="M 15 -3 q 20 3 17 -20 q -2 -12 -10 -12" fill="none" stroke="${C}" stroke-width="7" stroke-linecap="round"/>
-        <path d="M -15 0 Q -20 -36 -7 -47 Q 4 -55 14 -42 Q 18 -30 17 0 Z" fill="${C}"/>
-        <rect x="-11" y="-15" width="8" height="15" rx="4" fill="${D}"/>
-        <rect x="2" y="-15" width="8" height="15" rx="4" fill="${D}"/>
-        <circle cx="3" cy="-55" r="14" fill="${CL}"/>
-        <path d="M -8 -63 L -12 -77 L 0 -66 Z" fill="${CL}"/>
-        <path d="M 14 -63 L 18 -77 L 6 -66 Z" fill="${CL}"/>
-        <path d="M -7 -65 L -9 -73 L -2 -67 Z" fill="#d9aeb3"/>
-        <path d="M 13 -65 L 15 -73 L 8 -67 Z" fill="#d9aeb3"/>
-        <ellipse cx="-2" cy="-56" rx="1.7" ry="2.6" fill="#2b2e33"/>
-        <ellipse cx="8" cy="-56" rx="1.7" ry="2.6" fill="#2b2e33"/>
-        <path d="M 1 -51 L 5 -51 L 3 -48 Z" fill="#d98ba0"/>
-        <path d="M 3 -48 L 3 -45" stroke="#2b2e33" stroke-width="0.8"/>
-        <path d="M -3 -50 L -14 -52 M -3 -48 L -14 -47" stroke="#e7e2d6" stroke-width="0.6"/>
-        <path d="M 9 -50 L 20 -52 M 9 -48 L 20 -47" stroke="#e7e2d6" stroke-width="0.6"/>
+        ${softShadow(4, 1, 27, 6, 0.28)}
+        <path d="M 15 -3 q 21 3 18 -21 q -2 -13 -11 -12" fill="none" stroke="#4a4e56" stroke-width="7.5" stroke-linecap="round"/>
+        <path d="M 15 -3 q 21 3 18 -21" fill="none" stroke="#5b616b" stroke-width="2.6" stroke-linecap="round" opacity="0.7"/>
+        <path d="M -15 1 Q -21 -37 -7 -48 Q 5 -56 15 -42 Q 19 -29 18 1 Z" fill="url(#sc-catBody)"/>
+        <path d="M -12 1 Q -14 -18 -8 -30" fill="none" stroke="#31343a" stroke-width="2" opacity="0.35"/>
+        <rect x="-11" y="-16" width="8.5" height="16" rx="4" fill="#3d4148"/>
+        <rect x="2.5" y="-16" width="8.5" height="16" rx="4" fill="#454951"/>
+        <ellipse cx="-7" cy="-1" rx="6" ry="2.4" fill="#33363c"/>
+        <ellipse cx="7" cy="-1" rx="6" ry="2.4" fill="#33363c"/>
+        <circle cx="3" cy="-56" r="14.5" fill="url(#sc-catBody)"/>
+        <ellipse cx="-1" cy="-61" rx="10" ry="7" fill="#6b7179" opacity="0.55"/>
+        <path d="M -8 -64 L -12 -79 L 0.5 -67 Z" fill="#4a4e56"/>
+        <path d="M 14 -64 L 18 -79 L 6 -67 Z" fill="#565b63"/>
+        <path d="M -7 -66 L -9.5 -75 L -2 -68 Z" fill="#c99aa1"/>
+        <path d="M 13 -66 L 15.5 -75 L 8 -68 Z" fill="#d3a5ac"/>
+        <ellipse cx="-2" cy="-57" rx="2" ry="2.9" fill="#c9d24a"/>
+        <ellipse cx="8" cy="-57" rx="2" ry="2.9" fill="#c9d24a"/>
+        <ellipse cx="-2" cy="-56.5" rx="0.9" ry="2.4" fill="#20242a"/>
+        <ellipse cx="8" cy="-56.5" rx="0.9" ry="2.4" fill="#20242a"/>
+        <path d="M 1 -51 L 5.4 -51 L 3.2 -47.6 Z" fill="#d98ba0"/>
+        <path d="M 3.2 -47.6 L 3.2 -44.5" stroke="#2b2e33" stroke-width="0.8"/>
+        <path d="M -3 -50 L -15 -53 M -3 -48.5 L -15 -48 M -3 -47 L -15 -43" stroke="#e7e2d6" stroke-width="0.5" opacity="0.8"/>
+        <path d="M 9 -50 L 21 -53 M 9 -48.5 L 21 -48 M 9 -47 L 21 -43" stroke="#e7e2d6" stroke-width="0.5" opacity="0.8"/>
       </g>`;
   }
 
   function plantSVG(cx, floorY) {
-    // Растение в горшке (типа сансевиерии) — несколько вытянутых листьев.
-    const pot = "#c07a4e", potDark = "#a5623b", leaf = "#3f8f5a", leafDark = "#2f7a49";
+    // Комнатное растение (сансевиерия): вытянутые листья с центральной
+    // прожилкой и градиентом, терракотовый горшок с бликом и ободком.
     const leaves = [
-      { a: -22, len: 78 }, { a: -8, len: 92 }, { a: 6, len: 88 }, { a: 20, len: 72 }, { a: -34, len: 60 }, { a: 32, len: 58 }
-    ].map((L) => {
-      const col = L.a % 2 === 0 ? leaf : leafDark;
-      return `<g transform="rotate(${L.a})"><path d="M 0 0 Q -6 ${-L.len * 0.6} 0 ${-L.len} Q 6 ${-L.len * 0.6} 0 0 Z" fill="${col}"/></g>`;
+      { a: -30, len: 66 }, { a: -16, len: 86 }, { a: -4, len: 96 }, { a: 8, len: 90 }, { a: 22, len: 74 }, { a: 36, len: 58 }
+    ].map((L, i) => {
+      const grad = i % 2 ? "sc-leafDark" : "sc-leaf";
+      const w = L.len * 0.11;
+      return `<g transform="rotate(${L.a})">
+        <path d="M 0 0 Q ${-w} ${-L.len * 0.55} 0 ${-L.len} Q ${w} ${-L.len * 0.55} 0 0 Z" fill="url(#${grad})"/>
+        <path d="M 0 -4 L 0 ${-L.len + 6}" stroke="#1f5230" stroke-width="0.7" opacity="0.5"/>
+      </g>`;
     }).join("");
     return `
       <g transform="translate(${cx},${floorY})">
-        ${floorShadow(0, 2, 24, 6)}
+        ${softShadow(2, 2, 26, 6, 0.28)}
         <g transform="translate(0,-26)">${leaves}</g>
-        <path d="M -17 -26 L 17 -26 L 13 2 L -13 2 Z" fill="${pot}"/>
-        <path d="M -17 -26 L 17 -26 L 15 -19 L -15 -19 Z" fill="${potDark}"/>
-        <ellipse cx="0" cy="-26" rx="17" ry="4" fill="${potDark}"/>
+        <path d="M -17 -26 L 17 -26 L 13 2 L -13 2 Z" fill="url(#sc-pot)"/>
+        <path d="M -14 -22 L -9 -22 L -8 -2 L -12 -2 Z" fill="#e0a074" opacity="0.45"/>
+        <path d="M -18 -27 L 18 -27 L 15 -20 L -15 -20 Z" fill="#9c5c37"/>
+        <ellipse cx="0" cy="-26.5" rx="17" ry="4" fill="#7f4a2c"/>
+        <ellipse cx="-4" cy="-26.5" rx="7" ry="1.8" fill="#3a2418" opacity="0.6"/>
       </g>`;
   }
 
   function chairSVG(cx, floorY) {
-    // Мягкое кресло (вид спереди-сбоку), тёплый горчичный цвет.
-    const body = "#d2913a", bodyDark = "#b9792a", cushion = "#e0a750", leg = "#5b4632";
+    // Мягкое кресло (три четверти): корпус и подушки с градиентами, складки,
+    // блик на спинке, деревянные ножки, мягкая тень под всем креслом.
     return `
       <g transform="translate(${cx},${floorY})">
-        ${floorShadow(0, 2, 64, 8)}
-        <rect x="-46" y="-16" width="9" height="16" rx="2" fill="${leg}"/>
-        <rect x="37" y="-16" width="9" height="16" rx="2" fill="${leg}"/>
-        <rect x="-58" y="-84" width="17" height="70" rx="8" fill="${bodyDark}"/>
-        <rect x="41" y="-84" width="17" height="70" rx="8" fill="${bodyDark}"/>
-        <rect x="-46" y="-112" width="92" height="66" rx="16" fill="${body}"/>
-        <rect x="-38" y="-104" width="76" height="52" rx="12" fill="${cushion}"/>
-        <rect x="-50" y="-58" width="100" height="42" rx="12" fill="${body}"/>
-        <rect x="-44" y="-62" width="88" height="26" rx="10" fill="${cushion}"/>
+        ${softShadow(0, 3, 66, 9, 0.30, true)}
+        <rect x="-46" y="-17" width="9" height="17" rx="2.5" fill="#4f3c28"/>
+        <rect x="37" y="-17" width="9" height="17" rx="2.5" fill="#3f2f1e"/>
+        <rect x="-59" y="-86" width="18" height="74" rx="9" fill="#b6741f"/>
+        <rect x="42" y="-86" width="18" height="74" rx="9" fill="#9a6019"/>
+        <ellipse cx="-50" cy="-80" rx="7" ry="9" fill="#e6ab55" opacity="0.5"/>
+        <rect x="-47" y="-114" width="94" height="70" rx="18" fill="url(#sc-chairBody)"/>
+        <rect x="-39" y="-107" width="78" height="56" rx="14" fill="url(#sc-chairSeat)"/>
+        <path d="M -30 -102 Q 0 -96 30 -102" fill="none" stroke="#b57e2c" stroke-width="1.2" opacity="0.5"/>
+        <path d="M -20 -96 Q 0 -90 20 -96" fill="none" stroke="#b57e2c" stroke-width="1" opacity="0.4"/>
+        <rect x="-33" y="-110" width="30" height="10" rx="5" fill="#f2c877" opacity="0.45"/>
+        <rect x="-51" y="-60" width="102" height="46" rx="14" fill="url(#sc-chairBody)"/>
+        <rect x="-45" y="-64" width="90" height="30" rx="12" fill="url(#sc-chairSeat)"/>
+        <path d="M -40 -50 Q 0 -44 40 -50" fill="none" stroke="#a87427" stroke-width="1.2" opacity="0.45"/>
+        <ellipse cx="-30" cy="-58" rx="16" ry="5" fill="#f4cd7d" opacity="0.4"/>
       </g>`;
   }
 
-  function buildScene(layout, door) {
+  function buildScene(layout, door, baseHex) {
     const W = layout.vbW;
     const H = layout.vbH;
     const floorY = layout.floorY;
+    const floorH = H - floorY;
 
-    // Стена + пол.
-    let s = "";
-    s += `<rect x="0" y="0" width="${W}" height="${floorY}" fill="url(#sceneWallGradient)"/>`;
-    s += `<rect x="0" y="${floorY}" width="${W}" height="${H - floorY}" fill="url(#sceneFloorGradient)"/>`;
-    // Доски пола (лёгкие горизонтальные линии).
-    for (let i = 1; i <= 3; i++) {
-      const ly = floorY + (H - floorY) * (i / 4);
-      s += `<line x1="0" y1="${ly}" x2="${W}" y2="${ly}" stroke="rgba(90,65,40,0.18)" stroke-width="0.8"/>`;
+    let s = sceneDefs(baseHex);
+
+    // --- Стена: базовый градиент + световое пятно слева-сверху + матовая
+    //     фактура штукатурки + виньетка по краям.
+    s += `<rect x="0" y="0" width="${W}" height="${floorY}" fill="url(#sc-wall)"/>`;
+    s += `<rect x="0" y="0" width="${W}" height="${floorY}" fill="url(#sc-wallGlow)"/>`;
+    s += `<rect x="0" y="0" width="${W}" height="${floorY}" filter="url(#sc-paint)" opacity="0.55"/>`;
+    s += `<rect x="0" y="0" width="${W}" height="${floorY}" fill="url(#sc-vignette)"/>`;
+
+    // --- Пол: паркетная доска в перспективе. Ряды сгущаются к линии пола
+    //     (даль), швы между досками смещены. Поверх — волокна дерева и глянец.
+    s += `<rect x="0" y="${floorY}" width="${W}" height="${floorH}" fill="url(#sc-floor)"/>`;
+    const rows = 4;
+    let plankY = floorY;
+    for (let r = 0; r < rows; r++) {
+      // Ближние ряды выше (перспектива): высота растёт к низу.
+      const rowH = floorH * (0.12 + 0.16 * r);
+      const y0 = plankY;
+      const y1 = Math.min(H, plankY + rowH);
+      // Шов вдоль доски (горизонтальный).
+      s += `<line x1="0" y1="${y1}" x2="${W}" y2="${y1}" stroke="rgba(60,38,18,0.35)" stroke-width="0.8"/>`;
+      s += `<line x1="0" y1="${y1 + 0.9}" x2="${W}" y2="${y1 + 0.9}" stroke="rgba(255,232,190,0.18)" stroke-width="0.6"/>`;
+      // Поперечные швы между досками (в шахматном порядке).
+      const seamStep = 74 + r * 16;
+      const seamOff = (r % 2) * (seamStep / 2);
+      for (let sx = seamOff; sx < W; sx += seamStep) {
+        s += `<line x1="${sx}" y1="${y0}" x2="${sx}" y2="${y1}" stroke="rgba(60,38,18,0.28)" stroke-width="0.7"/>`;
+      }
+      plankY = y1;
     }
-    // Плинтус вдоль стыка стены и пола.
-    s += `<rect x="0" y="${floorY - 8}" width="${W}" height="8" fill="#f2eee5"/>`;
-    s += `<rect x="0" y="${floorY - 8}" width="${W}" height="2" fill="rgba(0,0,0,0.06)"/>`;
+    s += `<rect x="0" y="${floorY}" width="${W}" height="${floorH}" filter="url(#sc-wood)" opacity="0.6"/>`;
+    s += `<rect x="0" y="${floorY}" width="${W}" height="${floorH}" fill="url(#sc-gloss)"/>`;
+    // Мягкое затемнение в стыке стены и пола (ambient occlusion).
+    s += `<rect x="0" y="${floorY - 3}" width="${W}" height="6" fill="rgba(20,12,4,0.16)" filter="url(#sc-soft)"/>`;
 
-    // Наличник (рамка вокруг полотна) — рисуется до полотна, поэтому виден
-    // только выступающий по краям кант.
-    const casing = 9;
-    s += `<rect x="${door.x - casing}" y="${door.y - casing}" width="${door.w + casing * 2}" height="${door.h + casing}" rx="3" fill="#f2eee5" stroke="rgba(0,0,0,0.10)" stroke-width="1"/>`;
-    // Тень от полотна на пол.
-    s += floorShadow(door.x + door.w / 2, floorY + 3, door.w * 0.55, 7);
+    // --- Плинтус с лёгким профилем.
+    s += `<rect x="0" y="${floorY - 9}" width="${W}" height="9" fill="#f4f0e7"/>`;
+    s += `<rect x="0" y="${floorY - 9}" width="${W}" height="2" fill="#ffffff" opacity="0.6"/>`;
+    s += `<rect x="0" y="${floorY - 2}" width="${W}" height="2" fill="rgba(0,0,0,0.14)"/>`;
 
-    // Мебель и кот. Кот — слева у двери, кресло и растение — справа.
-    s += catSVG(30, floorY - 2);
-    s += chairSVG(258, floorY - 2);
-    s += plantSVG(335, floorY - 2);
+    // --- Отражение полотна на глянцевом полу (перед тенью).
+    const reflH = Math.min(floorH * 0.85, door.h * 0.5);
+    s += `<rect x="${door.x}" y="${floorY}" width="${door.w}" height="${reflH}" fill="url(#sc-doorRefl)"/>`;
+
+    // --- Контактная тень под полотном (смещена вправо — свет слева).
+    s += softShadow(door.x + door.w / 2 + 4, floorY + 4, door.w * 0.52, 7, 0.34, true);
+
+    // --- Наличник (дверная коробка) с объёмным профилем. Рисуется до
+    //     полотна, поэтому виден только выступающий кант.
+    const casing = 12;
+    const ox = door.x - casing, oy = door.y - casing;
+    const ow = door.w + casing * 2, oh = door.h + casing;
+    // Тень коробки на стену (падает вправо-вниз).
+    s += `<rect x="${ox + 3}" y="${oy + 3}" width="${ow}" height="${oh}" rx="2" fill="rgba(20,12,4,0.20)" filter="url(#sc-soft)"/>`;
+    // Лицевые доски коробки.
+    s += `<rect x="${ox}" y="${oy}" width="${casing}" height="${oh}" fill="url(#sc-casingFace)"/>`;
+    s += `<rect x="${door.x + door.w}" y="${oy}" width="${casing}" height="${oh}" fill="url(#sc-casingFace)"/>`;
+    s += `<rect x="${ox}" y="${oy}" width="${ow}" height="${casing}" fill="url(#sc-casingFace)"/>`;
+    // Блик на внешней грани (со стороны света) и тень на внутренней.
+    s += `<rect x="${ox}" y="${oy}" width="1.4" height="${oh}" fill="#ffffff" opacity="0.7"/>`;
+    s += `<rect x="${ox}" y="${oy}" width="${ow}" height="1.4" fill="#ffffff" opacity="0.7"/>`;
+    s += `<rect x="${ox + ow - 1.6}" y="${oy}" width="1.6" height="${oh}" fill="rgba(0,0,0,0.16)"/>`;
+    // Косой стык (ус) в верхних углах коробки.
+    s += `<line x1="${ox}" y1="${oy}" x2="${door.x}" y2="${door.y}" stroke="rgba(0,0,0,0.16)" stroke-width="0.8"/>`;
+    s += `<line x1="${ox + ow}" y1="${oy}" x2="${door.x + door.w}" y2="${door.y}" stroke="rgba(0,0,0,0.16)" stroke-width="0.8"/>`;
+    // Теневая четверть между коробкой и полотном (полотно чуть утоплено).
+    s += `<rect x="${door.x - 2}" y="${door.y - 2}" width="${door.w + 4}" height="${door.h + 2}" fill="none" stroke="rgba(0,0,0,0.22)" stroke-width="2"/>`;
+
+    // --- Мебель и кот. Кот — слева у двери, кресло и растение — справа.
+    s += catSVG(31, floorY - 1);
+    s += chairSVG(260, floorY - 1);
+    s += plantSVG(336, floorY - 1);
 
     return s;
   }
