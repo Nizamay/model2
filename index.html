@@ -189,7 +189,7 @@ select:focus, input:focus { outline: 2px solid var(--accent); outline-offset: -1
   border-radius: 10px;
 }
 
-#doorPreview {
+.door-preview-svg {
   width: 100%;
   max-width: 440px;
   aspect-ratio: 220 / 400;
@@ -199,7 +199,7 @@ select:focus, input:focus { outline: 2px solid var(--accent); outline-offset: -1
 
 /* Режим «на стене» — сцена с интерьером: полотно шире и без внешней тени
    (тени рисуются внутри самой сцены). */
-#doorPreview.scene {
+.door-preview-svg.scene {
   max-width: 440px;
   aspect-ratio: 360 / 400;
   filter: none;
@@ -256,6 +256,27 @@ select:focus, input:focus { outline: 2px solid var(--accent); outline-offset: -1
   cursor: pointer;
 }
 
+/* Выбор текстуры стены (кнопки-чипсы). */
+.wall-texture-row { display: flex; flex-direction: column; gap: 8px; }
+.wall-textures { display: flex; gap: 8px; flex-wrap: wrap; }
+
+.wall-texture {
+  font-size: 13px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.wall-texture.active { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+
+/* Раздел «2D картинка». */
+.scene-view-hint { font-size: 13px; color: var(--muted); margin: 0 0 4px; }
+.scene-controls { display: flex; flex-direction: column; gap: 14px; margin-top: 16px; }
+#viewScene .door-preview { padding: 0; border: none; background: transparent; }
+
 .color-preview {
   width: 100%;
   aspect-ratio: 3 / 2;
@@ -295,6 +316,7 @@ select:focus, input:focus { outline: 2px solid var(--accent); outline-offset: -1
       </button>
       <nav id="menu" class="menu" hidden>
         <button type="button" class="menu-item" data-view="calc">Калькулятор цены</button>
+        <button type="button" class="menu-item" data-view="scene">2D картинка</button>
         <button type="button" class="menu-item" data-view="prices">Изменение цен</button>
       </nav>
     </div>
@@ -355,7 +377,7 @@ select:focus, input:focus { outline: 2px solid var(--accent); outline-offset: -1
         </label>
       </div>
       <div class="door-preview">
-        <svg id="doorPreview" viewBox="0 0 220 400" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Превью двери">
+        <svg id="doorPreview" class="door-preview-svg" viewBox="0 0 220 400" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Превью двери">
           <defs>
             <clipPath id="doorClip">
               <rect id="doorClipRect"></rect>
@@ -404,6 +426,44 @@ select:focus, input:focus { outline: 2px solid var(--accent); outline-offset: -1
       </div>
     </div>
     </div><!-- /viewCalc -->
+
+    <div id="viewScene" hidden>
+      <p class="scene-view-hint">Дверь показана с текущими параметрами из калькулятора (модель, цвет, стекло, размеры). Наличник — в цвет двери. Ниже можно подобрать цвет и текстуру стены.</p>
+      <div class="door-preview">
+        <svg id="s_doorPreview" class="door-preview-svg scene" viewBox="0 0 360 400" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Дверь на стене">
+          <defs>
+            <clipPath id="s_doorClip"><rect id="s_doorClipRect"></rect></clipPath>
+            <linearGradient id="s_doorShadeGradient" x1="0%" y1="0%" x2="100%" y2="100%"></linearGradient>
+            <linearGradient id="s_glassFillGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#eef6fb" stop-opacity="1"/>
+              <stop offset="100%" stop-color="#c3d8e6" stop-opacity="1"/>
+            </linearGradient>
+            <pattern id="s_doorTexturePattern" patternUnits="userSpaceOnUse">
+              <image id="s_doorTextureImage" href="" preserveAspectRatio="none"></image>
+            </pattern>
+          </defs>
+          <g id="s_doorSceneGroup"></g>
+          <g clip-path="url(#s_doorClip)">
+            <rect id="s_doorLeafRect" fill="#c9cbcd"></rect>
+            <rect id="s_doorShadeRect" fill="url(#s_doorShadeGradient)"></rect>
+          </g>
+          <rect id="s_doorOutlineRect" fill="none" stroke="rgba(0,0,0,.25)" stroke-width="1.5"></rect>
+          <g id="s_doorGlassGroup"></g>
+          <g id="s_doorHandleGroup"></g>
+        </svg>
+      </div>
+      <div class="scene-controls">
+        <div class="wall-color-row">
+          <label for="s_wallColor">Цвет стены</label>
+          <div class="wall-swatches" id="s_wallSwatches"></div>
+          <input type="color" id="s_wallColor" aria-label="Свой цвет стены">
+        </div>
+        <div class="wall-texture-row">
+          <label>Текстура стены</label>
+          <div class="wall-textures" id="s_wallTextures"></div>
+        </div>
+      </div>
+    </div>
 
     <div id="viewPrices" hidden>
       <p class="prices-hint">Измените любую цену — расчёт в калькуляторе обновится автоматически. Значения сохраняются в этом браузере.</p>
@@ -581,7 +641,8 @@ const DB = {
     options: {},
     discount: 0,
     sceneMode: false,
-    wallColor: "#e8e2d5"
+    wallColor: "#e8e2d5",
+    wallTexture: "smooth"
   };
 
   // Пресеты цвета стены для быстрого выбора (можно задать и свой через
@@ -595,6 +656,17 @@ const DB = {
     { name: "Песочный", hex: "#d9c7ac" },
     { name: "Капучино", hex: "#c9b6a4" },
     { name: "Терракота", hex: "#d9b9a3" }
+  ];
+
+  // Текстуры стены.
+  const WALL_TEXTURES = [
+    { id: "smooth", name: "Гладкая" },
+    { id: "plaster", name: "Штукатурка" },
+    { id: "stripes", name: "Обои в полоску" },
+    { id: "concrete", name: "Бетон" },
+    { id: "brick", name: "Кирпич" },
+    { id: "wood", name: "Вагонка" },
+    { id: "logs", name: "Бревна круглые" }
   ];
 
   const el = {
@@ -617,24 +689,22 @@ const DB = {
     wallColorRow: document.getElementById("wallColorRow"),
     wallSwatches: document.getElementById("wallSwatches"),
     wallColor: document.getElementById("wallColor"),
-    doorPreview: document.getElementById("doorPreview"),
-    doorSceneGroup: document.getElementById("doorSceneGroup"),
-    doorClipRect: document.getElementById("doorClipRect"),
-    doorLeafRect: document.getElementById("doorLeafRect"),
-    doorTexturePattern: document.getElementById("doorTexturePattern"),
-    doorTextureImage: document.getElementById("doorTextureImage"),
-    doorShadeRect: document.getElementById("doorShadeRect"),
-    doorShadeGradient: document.getElementById("doorShadeGradient"),
-    doorOutlineRect: document.getElementById("doorOutlineRect"),
-    doorGlassGroup: document.getElementById("doorGlassGroup"),
-    doorHandleGroup: document.getElementById("doorHandleGroup"),
+    sceneWallSwatches: document.getElementById("s_wallSwatches"),
+    sceneWallColor: document.getElementById("s_wallColor"),
+    sceneWallTextures: document.getElementById("s_wallTextures"),
     menuBtn: document.getElementById("menuBtn"),
     menu: document.getElementById("menu"),
     viewTitle: document.getElementById("viewTitle"),
     viewCalc: document.getElementById("viewCalc"),
+    viewScene: document.getElementById("viewScene"),
     viewPrices: document.getElementById("viewPrices"),
     priceEditor: document.getElementById("priceEditor")
   };
+
+  // Контексты рисования для двух SVG: превью в калькуляторе и картинка в
+  // разделе «2D картинка».
+  const calcCtx = makeDoorCtx("");
+  const sceneCtx = makeDoorCtx("s_");
 
   function getModel(id) {
     return DB.models.find((m) => m.id === id);
@@ -822,10 +892,36 @@ const DB = {
     scene: { vbW: 360, vbH: 400, padTop: 28, floorY: 330, doorCenterX: 118, doorMaxW: 120 }
   };
 
-  function renderDoorPreview() {
-    const layout = state.sceneMode ? LAYOUTS.scene : LAYOUTS.plain;
-    el.doorPreview.setAttribute("viewBox", `0 0 ${layout.vbW} ${layout.vbH}`);
-    el.doorPreview.classList.toggle("scene", state.sceneMode);
+  // Контекст рисования — набор ссылок на элементы конкретного SVG и его
+  // id-строки (используются в url(#...)). Позволяет рисовать одну и ту же
+  // дверь в разных SVG: превью в калькуляторе (без префикса) и крупную
+  // картинку в разделе «2D картинка» (префикс "s_").
+  function makeDoorCtx(prefix) {
+    const q = (id) => document.getElementById(prefix + id);
+    return {
+      pfx: prefix,
+      svg: q("doorPreview"),
+      clipRect: q("doorClipRect"),
+      leafRect: q("doorLeafRect"),
+      outlineRect: q("doorOutlineRect"),
+      shadeRect: q("doorShadeRect"),
+      shadeGradient: q("doorShadeGradient"),
+      texturePattern: q("doorTexturePattern"),
+      textureImage: q("doorTextureImage"),
+      glassGroup: q("doorGlassGroup"),
+      handleGroup: q("doorHandleGroup"),
+      sceneGroup: q("doorSceneGroup"),
+      patternId: prefix + "doorTexturePattern",
+      shadeGradId: prefix + "doorShadeGradient",
+      glassGradId: prefix + "glassFillGradient"
+    };
+  }
+
+  function drawDoor(c, forceScene) {
+    const sceneMode = forceScene || state.sceneMode;
+    const layout = sceneMode ? LAYOUTS.scene : LAYOUTS.plain;
+    c.svg.setAttribute("viewBox", `0 0 ${layout.vbW} ${layout.vbH}`);
+    c.svg.classList.toggle("scene", sceneMode);
 
     const width = Math.max(Number(state.width) || 0, 1);
     const height = Math.max(Number(state.height) || 0, 1);
@@ -847,48 +943,45 @@ const DB = {
     const y = layout.floorY - h; // дверь стоит на полу — выравниваем по низу
     const rx = Math.min(w, h) * 0.015;
 
-    [el.doorClipRect, el.doorLeafRect, el.doorOutlineRect].forEach((rect) => {
+    [c.clipRect, c.leafRect, c.outlineRect].forEach((rect) => {
       rect.setAttribute("x", x);
       rect.setAttribute("y", y);
       rect.setAttribute("width", w);
       rect.setAttribute("height", h);
       rect.setAttribute("rx", rx);
     });
-    el.doorShadeRect.setAttribute("x", x);
-    el.doorShadeRect.setAttribute("y", y);
-    el.doorShadeRect.setAttribute("width", w);
-    el.doorShadeRect.setAttribute("height", h);
+    c.shadeRect.setAttribute("x", x);
+    c.shadeRect.setAttribute("y", y);
+    c.shadeRect.setAttribute("width", w);
+    c.shadeRect.setAttribute("height", h);
 
     // Заливка полотна — текстура образца, размноженная в РЕАЛЬНОМ масштабе:
-    // одна плитка = физический образец 15x20 см (150x200 мм), поэтому на двери
-    // 80x200 см помещается ~5 плиток по ширине и ~10 по высоте. Плитка заранее
-    // сделана бесшовной по вертикали (tileImage), поэтому переходы между
-    // СТРОКАМИ плавные; между КОЛОННАМИ границы резкие (по ТЗ). Для цветов без
-    // образца (пока это категории "эмаль") — просто ровный цвет.
+    // одна плитка = физический образец 15x20 см (150x200 мм). Для цветов без
+    // образца (эмаль) — ровный цвет.
     const swatch = DB.colorSwatches[state.color];
     const baseHex = (swatch && swatch.hex) || EMAL_COLOR_HEX[state.color] || "#c9cbcd";
     // Заливка полотна — используется и для наличника, чтобы коробка была той
     // же расцветки/текстуры, что и дверь.
-    const doorFill = swatch ? "url(#doorTexturePattern)" : baseHex;
+    const doorFill = swatch ? `url(#${c.patternId})` : baseHex;
     if (swatch) {
       const { widthMm: sampleW, heightMm: sampleH } = DB.colorSwatchSampleSize;
       const unitsPerMm = w / width;                 // масштаб: единицы SVG на мм двери
       const tileW = sampleW * unitsPerMm;
       const tileH = sampleH * unitsPerMm;
-      el.doorTexturePattern.setAttribute("x", x);
-      el.doorTexturePattern.setAttribute("y", y);
-      el.doorTexturePattern.setAttribute("width", tileW);
-      el.doorTexturePattern.setAttribute("height", tileH);
-      el.doorTextureImage.setAttribute("href", swatch.tileImage || swatch.image);
-      el.doorTextureImage.setAttribute("x", 0);
-      el.doorTextureImage.setAttribute("y", 0);
-      el.doorTextureImage.setAttribute("width", tileW);
-      el.doorTextureImage.setAttribute("height", tileH);
-      el.doorLeafRect.setAttribute("fill", "url(#doorTexturePattern)");
+      c.texturePattern.setAttribute("x", x);
+      c.texturePattern.setAttribute("y", y);
+      c.texturePattern.setAttribute("width", tileW);
+      c.texturePattern.setAttribute("height", tileH);
+      c.textureImage.setAttribute("href", swatch.tileImage || swatch.image);
+      c.textureImage.setAttribute("x", 0);
+      c.textureImage.setAttribute("y", 0);
+      c.textureImage.setAttribute("width", tileW);
+      c.textureImage.setAttribute("height", tileH);
+      c.leafRect.setAttribute("fill", `url(#${c.patternId})`);
     } else {
-      el.doorLeafRect.setAttribute("fill", baseHex);
+      c.leafRect.setAttribute("fill", baseHex);
     }
-    el.doorShadeGradient.innerHTML = `
+    c.shadeGradient.innerHTML = `
       <stop offset="0%" stop-color="${shade(baseHex, 25)}" stop-opacity="0.35"/>
       <stop offset="55%" stop-color="${baseHex}" stop-opacity="0"/>
       <stop offset="100%" stop-color="${shade(baseHex, -35)}" stop-opacity="0.35"/>
@@ -899,7 +992,7 @@ const DB = {
 
     if (state.glassId === "none") {
       // Глухая дверь — обычное полотно без остекления.
-      el.doorGlassGroup.innerHTML = "";
+      c.glassGroup.innerHTML = "";
     } else {
       // Остекление — пока 6 одинаковых квадратных стекол (2 колонки × 3 ряда).
       const zoneTop = y + topRail;
@@ -923,13 +1016,13 @@ const DB = {
 
       let panes = "";
       for (let r = 0; r < rows; r++) {
-        for (let c = 0; c < cols; c++) {
-          const px = offsetX + gap + c * (s + gap);
+        for (let cc = 0; cc < cols; cc++) {
+          const px = offsetX + gap + cc * (s + gap);
           const py = offsetY + gap + r * (s + gap);
-          panes += `<rect x="${px}" y="${py}" width="${s}" height="${s}" rx="${s * 0.06}" fill="url(#glassFillGradient)" stroke="rgba(255,255,255,.5)" stroke-width="1"/>`;
+          panes += `<rect x="${px}" y="${py}" width="${s}" height="${s}" rx="${s * 0.06}" fill="url(#${c.glassGradId})" stroke="rgba(255,255,255,.5)" stroke-width="1"/>`;
         }
       }
-      el.doorGlassGroup.innerHTML = panes;
+      c.glassGroup.innerHTML = panes;
     }
 
     // Ручка есть на любой двери, независимо от остекления.
@@ -939,16 +1032,16 @@ const DB = {
     const plateX = x + w - stileW * 0.62;
     const leverLen = w * 0.14;
 
-    el.doorHandleGroup.innerHTML = `
+    c.handleGroup.innerHTML = `
       <rect x="${plateX - handleThickness}" y="${handleY - plateH / 2}" width="${handleThickness * 2}" height="${plateH}" rx="${handleThickness}" fill="#cfd3d6" stroke="#8b8f93" stroke-width="0.6"/>
       <rect x="${plateX - leverLen}" y="${handleY - handleThickness / 2}" width="${leverLen}" height="${handleThickness}" rx="${handleThickness / 2}" fill="#cfd3d6" stroke="#8b8f93" stroke-width="0.6"/>
       <circle cx="${plateX}" cy="${handleY + plateH * 0.32}" r="${handleThickness * 0.55}" fill="#6f7377"/>
     `;
 
-    // Сцена «на стене» рисуется ПОЗАДИ полотна (группа #doorSceneGroup идёт
-    // раньше в DOM), поэтому мебель и наличник не перекрывают дверь.
-    el.doorSceneGroup.innerHTML = state.sceneMode
-      ? buildScene(layout, { x: x, y: y, w: w, h: h }, baseHex, doorFill, state.wallColor)
+    // Сцена «на стене» рисуется ПОЗАДИ полотна (группа сцены идёт раньше в
+    // DOM), поэтому стена и наличник не перекрывают дверь.
+    c.sceneGroup.innerHTML = sceneMode
+      ? buildScene(layout, { x: x, y: y, w: w, h: h }, baseHex, doorFill, state.wallColor, state.wallTexture, c.pfx)
       : "";
   }
 
@@ -964,81 +1057,221 @@ const DB = {
   // Все фильтры и градиенты сцены. Держим их прямо в группе сцены, чтобы
   // весь код визуализации был в одном месте; при перерисовке группа
   // заменяется целиком, поэтому дубликатов id не возникает.
-  function sceneDefs(baseHex, wallColor) {
+  function sceneDefs(baseHex, wallColor, pfx) {
+    const idf = (n) => pfx + "sc-" + n;
     // Градиент стены строим из выбранного цвета: сверху чуть светлее (свет),
     // снизу чуть темнее.
     const wallTop = shade(wallColor, 6);
     const wallBottom = shade(wallColor, -12);
     return `
       <defs>
-        <linearGradient id="sc-wall" x1="0" y1="0" x2="0" y2="1">
+        <linearGradient id="${idf("wall")}" x1="0" y1="0" x2="0" y2="1">
           <stop offset="0" stop-color="${wallTop}"/>
           <stop offset="1" stop-color="${wallBottom}"/>
         </linearGradient>
-        <radialGradient id="sc-wallGlow" cx="27%" cy="16%" r="85%">
+        <radialGradient id="${idf("wallGlow")}" cx="27%" cy="16%" r="85%">
           <stop offset="0" stop-color="#ffffff" stop-opacity="0.35"/>
           <stop offset="55%" stop-color="#ffffff" stop-opacity="0"/>
         </radialGradient>
-        <radialGradient id="sc-vignette" cx="50%" cy="40%" r="80%">
+        <radialGradient id="${idf("vignette")}" cx="50%" cy="40%" r="80%">
           <stop offset="52%" stop-color="#000000" stop-opacity="0"/>
           <stop offset="100%" stop-color="#241708" stop-opacity="0.22"/>
         </radialGradient>
-        <linearGradient id="sc-floor" x1="0" y1="0" x2="0" y2="1">
+        <linearGradient id="${idf("floor")}" x1="0" y1="0" x2="0" y2="1">
           <stop offset="0" stop-color="#d7b57d"/>
           <stop offset="1" stop-color="#a2703f"/>
         </linearGradient>
-        <linearGradient id="sc-gloss" x1="0" y1="0" x2="0" y2="1">
+        <linearGradient id="${idf("gloss")}" x1="0" y1="0" x2="0" y2="1">
           <stop offset="0" stop-color="#ffffff" stop-opacity="0.30"/>
           <stop offset="40%" stop-color="#ffffff" stop-opacity="0.03"/>
           <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
         </linearGradient>
-        <linearGradient id="sc-doorRefl" x1="0" y1="0" x2="0" y2="1">
+        <linearGradient id="${idf("doorRefl")}" x1="0" y1="0" x2="0" y2="1">
           <stop offset="0" stop-color="${baseHex}" stop-opacity="0.32"/>
           <stop offset="100%" stop-color="${baseHex}" stop-opacity="0"/>
         </linearGradient>
-        <filter id="sc-paint" x="0" y="0" width="100%" height="100%">
+        <filter id="${idf("paint")}" x="0" y="0" width="100%" height="100%">
           <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" seed="4" stitchTiles="stitch"/>
           <feColorMatrix type="saturate" values="0"/>
           <feComponentTransfer><feFuncA type="linear" slope="0.05"/></feComponentTransfer>
         </filter>
-        <filter id="sc-wood" x="0" y="0" width="100%" height="100%">
+        <filter id="${idf("plaster")}" x="0" y="0" width="100%" height="100%">
+          <feTurbulence type="fractalNoise" baseFrequency="0.16" numOctaves="4" seed="9" stitchTiles="stitch"/>
+          <feColorMatrix type="saturate" values="0"/>
+          <feComponentTransfer><feFuncA type="linear" slope="0.32"/></feComponentTransfer>
+        </filter>
+        <filter id="${idf("concrete")}" x="0" y="0" width="100%" height="100%">
+          <feTurbulence type="fractalNoise" baseFrequency="0.022" numOctaves="5" seed="21" stitchTiles="stitch"/>
+          <feColorMatrix type="saturate" values="0"/>
+          <feComponentTransfer><feFuncA type="linear" slope="0.30"/></feComponentTransfer>
+        </filter>
+        <filter id="${idf("wood")}" x="0" y="0" width="100%" height="100%">
           <feTurbulence type="fractalNoise" baseFrequency="0.012 0.42" numOctaves="3" seed="11" stitchTiles="stitch"/>
           <feColorMatrix type="saturate" values="0"/>
           <feComponentTransfer><feFuncA type="linear" slope="0.14"/></feComponentTransfer>
         </filter>
-        <filter id="sc-soft" x="-60%" y="-60%" width="220%" height="220%">
+        <filter id="${idf("soft")}" x="-60%" y="-60%" width="220%" height="220%">
           <feGaussianBlur stdDeviation="2.6"/>
         </filter>
-        <filter id="sc-soft6" x="-80%" y="-80%" width="260%" height="260%">
+        <filter id="${idf("soft6")}" x="-80%" y="-80%" width="260%" height="260%">
           <feGaussianBlur stdDeviation="5"/>
         </filter>
       </defs>`;
   }
 
   // Мягкая контактная тень (размытие через фильтр — как настоящая рассеянная).
-  function softShadow(cx, cy, rx, ry, alpha, big) {
-    const f = big ? "sc-soft6" : "sc-soft";
+  function softShadow(cx, cy, rx, ry, alpha, big, pfx) {
+    const f = pfx + "sc-" + (big ? "soft6" : "soft");
     return `<ellipse cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}" fill="rgba(28,18,8,${alpha})" filter="url(#${f})"/>`;
   }
 
-  function buildScene(layout, door, baseHex, doorFill, wallColor) {
+  // Наложение выбранной текстуры на стену (поверх базового цвета, до виньетки).
+  // Цвет стены остаётся выбранным — текстура лишь модулирует его.
+  function wallTextureSVG(W, floorY, wallColor, texture, idf) {
+    const noise = (filt, op) => `<rect x="0" y="0" width="${W}" height="${floorY}" filter="url(#${idf(filt)})" opacity="${op}"/>`;
+
+    if (texture === "plaster") {
+      // Штукатурка: выраженное мелко-среднее зерно + мягкие наплывы «кельмой».
+      let g = noise("plaster", 0.9);
+      for (let i = 0; i < 5; i++) {
+        const y = floorY * (0.12 + i * 0.19);
+        g += `<path d="M -10 ${y} Q ${W * 0.5} ${y - 26} ${W + 10} ${y}" fill="none" stroke="#ffffff" stroke-width="10" opacity="0.05" filter="url(#${idf("soft6")})"/>`;
+        g += `<path d="M -10 ${y + 12} Q ${W * 0.5} ${y - 8} ${W + 10} ${y + 12}" fill="none" stroke="#000000" stroke-width="9" opacity="0.05" filter="url(#${idf("soft6")})"/>`;
+      }
+      return g;
+    }
+
+    if (texture === "concrete") {
+      // Бетон: холодный серый подтон, крупные разводы, потёки, швы плит и
+      // отверстия от опалубки — явно «промышленный» вид.
+      let g = `<rect x="0" y="0" width="${W}" height="${floorY}" fill="#8b9298" opacity="0.16"/>`;
+      g += noise("concrete", 0.85);
+      // крупные пятна
+      const spots = [[W * 0.18, floorY * 0.28, 60, -12], [W * 0.6, floorY * 0.5, 80, 8], [W * 0.85, floorY * 0.2, 46, -8], [W * 0.4, floorY * 0.78, 66, 7], [W * 0.75, floorY * 0.8, 52, -6]];
+      spots.forEach((sp) => {
+        g += `<ellipse cx="${sp[0]}" cy="${sp[1]}" rx="${sp[2]}" ry="${sp[2] * 0.7}" fill="${shade(wallColor, sp[3])}" opacity="0.28" filter="url(#${idf("soft6")})"/>`;
+      });
+      // вертикальные потёки
+      [W * 0.3, W * 0.55, W * 0.9].forEach((dx, i) => {
+        g += `<rect x="${dx}" y="0" width="${3 + i}" height="${floorY * (0.5 + 0.15 * i)}" fill="#000000" opacity="0.07" filter="url(#${idf("soft")})"/>`;
+      });
+      // швы плит опалубки
+      const seamsX = [W / 3, (2 * W) / 3];
+      const seamsY = [floorY * 0.5];
+      seamsX.forEach((sx) => {
+        g += `<rect x="${sx}" y="0" width="1.5" height="${floorY}" fill="rgba(0,0,0,0.18)"/>`;
+        g += `<rect x="${sx + 1.5}" y="0" width="1" height="${floorY}" fill="rgba(255,255,255,0.08)"/>`;
+      });
+      seamsY.forEach((sy) => {
+        g += `<rect x="0" y="${sy}" width="${W}" height="1.5" fill="rgba(0,0,0,0.16)"/>`;
+      });
+      // отверстия от стяжек опалубки на пересечениях
+      seamsX.forEach((sx) => seamsY.concat([floorY * 0.16, floorY * 0.84]).forEach((sy) => {
+        g += `<circle cx="${sx}" cy="${sy}" r="2.4" fill="rgba(0,0,0,0.28)"/>`;
+        g += `<circle cx="${sx - 0.6}" cy="${sy - 0.6}" r="1" fill="rgba(255,255,255,0.15)"/>`;
+      }));
+      return g;
+    }
+
+    if (texture === "stripes") {
+      let g = "";
+      const stripeW = 16;
+      const dark = shade(wallColor, -7);
+      for (let sx = 0; sx < W; sx += stripeW * 2) {
+        g += `<rect x="${sx}" y="0" width="${stripeW}" height="${floorY}" fill="${dark}" opacity="0.5"/>`;
+      }
+      return g + noise("paint", 0.3);
+    }
+
+    if (texture === "brick") {
+      let g = "";
+      const bh = 24, bw = 52, mortar = "rgba(0,0,0,0.16)", hi = "rgba(255,255,255,0.10)";
+      let course = 0;
+      for (let by = 0; by < floorY; by += bh) {
+        g += `<rect x="0" y="${by}" width="${W}" height="2" fill="${mortar}"/>`;
+        g += `<rect x="0" y="${by + 2}" width="${W}" height="1" fill="${hi}"/>`;
+        const off = (course % 2) * (bw / 2);
+        for (let bx = off - bw; bx < W; bx += bw) {
+          g += `<rect x="${bx}" y="${by}" width="2" height="${bh}" fill="${mortar}"/>`;
+          const v = ((Math.abs(bx) + by) % 3) - 1;
+          if (v) g += `<rect x="${bx + 2}" y="${by + 2}" width="${bw - 2}" height="${bh - 2}" fill="${shade(wallColor, v * 4)}" opacity="0.22"/>`;
+        }
+        course++;
+      }
+      return g + noise("paint", 0.22);
+    }
+
+    if (texture === "wood") {
+      // Вагонка: вертикальные доски с V-образным пазом, объёмом и волокном.
+      let g = "";
+      const bw = 22;
+      let b = 0;
+      for (let bx = 0; bx < W; bx += bw, b++) {
+        // объём доски: блик слева, тень справа
+        g += `<rect x="${bx}" y="0" width="${bw * 0.5}" height="${floorY}" fill="#ffffff" opacity="0.05"/>`;
+        g += `<rect x="${bx + bw * 0.6}" y="0" width="${bw * 0.4}" height="${floorY}" fill="#000000" opacity="0.07"/>`;
+        // паз между досками (тень + блик)
+        g += `<rect x="${bx}" y="0" width="1.6" height="${floorY}" fill="rgba(0,0,0,0.3)"/>`;
+        g += `<rect x="${bx + 1.6}" y="0" width="1" height="${floorY}" fill="rgba(255,255,255,0.14)"/>`;
+        // волокна дерева (слегка волнистые вертикальные линии)
+        const gc = shade(wallColor, -12);
+        for (let k = 1; k <= 2; k++) {
+          const gx = bx + bw * (0.35 * k);
+          g += `<path d="M ${gx} 0 q 3 ${floorY * 0.33} 0 ${floorY * 0.66} q -3 ${floorY * 0.2} 0 ${floorY}" fill="none" stroke="${gc}" stroke-width="0.8" opacity="0.18"/>`;
+        }
+        // редкий сучок
+        if (b % 4 === 2) {
+          const ky = floorY * (0.2 + (b % 3) * 0.25);
+          g += `<ellipse cx="${bx + bw * 0.5}" cy="${ky}" rx="2.4" ry="3.4" fill="${shade(wallColor, -24)}" opacity="0.4"/>`;
+        }
+      }
+      return g + noise("paint", 0.2);
+    }
+
+    if (texture === "logs") {
+      // Бревна круглые (сруб): горизонтальные брёвна с цилиндрическим объёмом.
+      let g = "";
+      const lh = 34;
+      // тон по сечению цилиндра: доля высоты → сдвиг яркости
+      const bands = [[0.0, 0.08, -26], [0.08, 0.3, 14], [0.3, 0.55, 4], [0.55, 0.8, -8], [0.8, 1.0, -24]];
+      for (let ly = 0; ly < floorY; ly += lh) {
+        bands.forEach((bd) => {
+          const y0 = ly + lh * bd[0];
+          const hh = lh * (bd[1] - bd[0]);
+          g += `<rect x="0" y="${y0}" width="${W}" height="${hh}" fill="${shade(wallColor, bd[2])}"/>`;
+        });
+        // тонкий блик вдоль верхней трети
+        g += `<rect x="0" y="${ly + lh * 0.22}" width="${W}" height="1.4" fill="#ffffff" opacity="0.18"/>`;
+        // паз-стык между брёвнами
+        g += `<rect x="0" y="${ly + lh - 1.5}" width="${W}" height="1.5" fill="rgba(0,0,0,0.35)"/>`;
+        // продольные волокна
+        g += `<path d="M 0 ${ly + lh * 0.5} q ${W * 0.5} 3 ${W} 0" fill="none" stroke="${shade(wallColor, -18)}" stroke-width="0.7" opacity="0.2"/>`;
+      }
+      return g + noise("paint", 0.15);
+    }
+
+    return noise("paint", 0.15); // smooth (гладкая окраска) — почти без фактуры
+  }
+
+  function buildScene(layout, door, baseHex, doorFill, wallColor, wallTexture, pfx) {
     const W = layout.vbW;
     const H = layout.vbH;
     const floorY = layout.floorY;
     const floorH = H - floorY;
+    const idf = (n) => pfx + "sc-" + n;
 
-    let s = sceneDefs(baseHex, wallColor);
+    let s = sceneDefs(baseHex, wallColor, pfx);
 
-    // --- Стена: базовый градиент + световое пятно слева-сверху + матовая
-    //     фактура штукатурки + виньетка по краям.
-    s += `<rect x="0" y="0" width="${W}" height="${floorY}" fill="url(#sc-wall)"/>`;
-    s += `<rect x="0" y="0" width="${W}" height="${floorY}" fill="url(#sc-wallGlow)"/>`;
-    s += `<rect x="0" y="0" width="${W}" height="${floorY}" filter="url(#sc-paint)" opacity="0.55"/>`;
-    s += `<rect x="0" y="0" width="${W}" height="${floorY}" fill="url(#sc-vignette)"/>`;
+    // --- Стена: базовый градиент + световое пятно слева-сверху + выбранная
+    //     текстура + виньетка по краям.
+    s += `<rect x="0" y="0" width="${W}" height="${floorY}" fill="url(#${idf("wall")})"/>`;
+    s += `<rect x="0" y="0" width="${W}" height="${floorY}" fill="url(#${idf("wallGlow")})"/>`;
+    s += wallTextureSVG(W, floorY, wallColor, wallTexture, idf);
+    s += `<rect x="0" y="0" width="${W}" height="${floorY}" fill="url(#${idf("vignette")})"/>`;
 
     // --- Пол: паркетная доска в перспективе. Ряды сгущаются к линии пола
     //     (даль), швы между досками смещены. Поверх — волокна дерева и глянец.
-    s += `<rect x="0" y="${floorY}" width="${W}" height="${floorH}" fill="url(#sc-floor)"/>`;
+    s += `<rect x="0" y="${floorY}" width="${W}" height="${floorH}" fill="url(#${idf("floor")})"/>`;
     const rows = 4;
     let plankY = floorY;
     for (let r = 0; r < rows; r++) {
@@ -1057,10 +1290,10 @@ const DB = {
       }
       plankY = y1;
     }
-    s += `<rect x="0" y="${floorY}" width="${W}" height="${floorH}" filter="url(#sc-wood)" opacity="0.6"/>`;
-    s += `<rect x="0" y="${floorY}" width="${W}" height="${floorH}" fill="url(#sc-gloss)"/>`;
+    s += `<rect x="0" y="${floorY}" width="${W}" height="${floorH}" filter="url(#${idf("wood")})" opacity="0.6"/>`;
+    s += `<rect x="0" y="${floorY}" width="${W}" height="${floorH}" fill="url(#${idf("gloss")})"/>`;
     // Мягкое затемнение в стыке стены и пола (ambient occlusion).
-    s += `<rect x="0" y="${floorY - 3}" width="${W}" height="6" fill="rgba(20,12,4,0.16)" filter="url(#sc-soft)"/>`;
+    s += `<rect x="0" y="${floorY - 3}" width="${W}" height="6" fill="rgba(20,12,4,0.16)" filter="url(#${idf("soft")})"/>`;
 
     // --- Плинтус с лёгким профилем.
     s += `<rect x="0" y="${floorY - 9}" width="${W}" height="9" fill="#f4f0e7"/>`;
@@ -1069,10 +1302,10 @@ const DB = {
 
     // --- Отражение полотна на глянцевом полу (перед тенью).
     const reflH = Math.min(floorH * 0.85, door.h * 0.5);
-    s += `<rect x="${door.x}" y="${floorY}" width="${door.w}" height="${reflH}" fill="url(#sc-doorRefl)"/>`;
+    s += `<rect x="${door.x}" y="${floorY}" width="${door.w}" height="${reflH}" fill="url(#${idf("doorRefl")})"/>`;
 
     // --- Контактная тень под полотном (смещена вправо — свет слева).
-    s += softShadow(door.x + door.w / 2 + 4, floorY + 4, door.w * 0.52, 7, 0.34, true);
+    s += softShadow(door.x + door.w / 2 + 4, floorY + 4, door.w * 0.52, 7, 0.34, true, pfx);
 
     // --- Наличник (дверная коробка) с объёмным профилем. Рисуется до
     //     полотна, поэтому виден только выступающий кант.
@@ -1080,7 +1313,7 @@ const DB = {
     const ox = door.x - casing, oy = door.y - casing;
     const ow = door.w + casing * 2, oh = door.h + casing;
     // Тень коробки на стену (падает вправо-вниз).
-    s += `<rect x="${ox + 3}" y="${oy + 3}" width="${ow}" height="${oh}" rx="2" fill="rgba(20,12,4,0.20)" filter="url(#sc-soft)"/>`;
+    s += `<rect x="${ox + 3}" y="${oy + 3}" width="${ow}" height="${oh}" rx="2" fill="rgba(20,12,4,0.20)" filter="url(#${idf("soft")})"/>`;
     // Лицевые доски коробки — той же расцветки/текстуры, что и полотно
     // (текстура-паттерн задана в userSpaceOnUse и продолжается на коробке
     // без разрыва).
@@ -1127,7 +1360,9 @@ const DB = {
 
     updateSizeUI();
     updateColorPreview();
-    renderDoorPreview();
+    drawDoor(calcCtx, false);
+    // Картинку в разделе «2D картинка» перерисовываем, только когда он открыт.
+    if (el.viewScene && !el.viewScene.hidden) drawDoor(sceneCtx, true);
 
     const rows = [];
     rows.push(`Полотно (${model.name}): ${leafBeforeNonstandard} ₽`);
@@ -1190,26 +1425,51 @@ const DB = {
       el.wallColorRow.style.display = state.sceneMode ? "flex" : "none";
       render();
     });
-    el.wallSwatches.addEventListener("click", (e) => {
-      const btn = e.target.closest(".wall-swatch");
-      if (!btn) return;
-      state.wallColor = btn.dataset.hex;
-      el.wallColor.value = state.wallColor;
-      renderWallSwatches();
-      render();
+    el.wallSwatches.addEventListener("click", onWallSwatchClick);
+    el.sceneWallSwatches.addEventListener("click", onWallSwatchClick);
+    el.wallColor.addEventListener("input", () => setWallColor(el.wallColor.value));
+    el.sceneWallColor.addEventListener("input", () => setWallColor(el.sceneWallColor.value));
+    el.sceneWallTextures.addEventListener("click", (e) => {
+      const btn = e.target.closest(".wall-texture");
+      if (btn) setWallTexture(btn.dataset.tex);
     });
-    el.wallColor.addEventListener("input", () => {
-      state.wallColor = el.wallColor.value;
-      renderWallSwatches();
-      render();
-    });
+  }
+
+  function onWallSwatchClick(e) {
+    const btn = e.target.closest(".wall-swatch");
+    if (btn) setWallColor(btn.dataset.hex);
+  }
+
+  // Цвет и текстура стены — общие для превью в калькуляторе и раздела «2D
+  // картинка», поэтому меняем состояние и синхронизируем обе панели.
+  function setWallColor(hex) {
+    state.wallColor = hex;
+    el.wallColor.value = hex;
+    el.sceneWallColor.value = hex;
+    renderWallSwatches();
+    render();
+  }
+
+  function setWallTexture(id) {
+    state.wallTexture = id;
+    renderWallTextures();
+    render();
   }
 
   function renderWallSwatches() {
     const cur = state.wallColor.toLowerCase();
-    el.wallSwatches.innerHTML = WALL_PRESETS.map(
+    const html = WALL_PRESETS.map(
       (p) =>
         `<button type="button" class="wall-swatch${p.hex.toLowerCase() === cur ? " active" : ""}" data-hex="${p.hex}" style="background:${p.hex}" title="${p.name}" aria-label="${p.name}"></button>`
+    ).join("");
+    el.wallSwatches.innerHTML = html;
+    el.sceneWallSwatches.innerHTML = html;
+  }
+
+  function renderWallTextures() {
+    el.sceneWallTextures.innerHTML = WALL_TEXTURES.map(
+      (t) =>
+        `<button type="button" class="wall-texture${t.id === state.wallTexture ? " active" : ""}" data-tex="${t.id}">${t.name}</button>`
     ).join("");
   }
 
@@ -1222,14 +1482,16 @@ const DB = {
   }
 
   function setView(view) {
-    const isPrices = view === "prices";
-    el.viewCalc.hidden = isPrices;
-    el.viewPrices.hidden = !isPrices;
-    el.viewTitle.textContent = isPrices ? "Изменение цен" : "Расчет — межкомнатные двери";
+    el.viewCalc.hidden = view !== "calc";
+    el.viewScene.hidden = view !== "scene";
+    el.viewPrices.hidden = view !== "prices";
+    el.viewTitle.textContent =
+      view === "prices" ? "Изменение цен" : view === "scene" ? "2D картинка" : "Расчет — межкомнатные двери";
     el.menu.querySelectorAll(".menu-item").forEach((b) =>
       b.classList.toggle("active", b.dataset.view === view)
     );
-    if (isPrices) renderPriceEditor();
+    if (view === "prices") renderPriceEditor();
+    if (view === "scene") drawDoor(sceneCtx, true);
     toggleMenu(false);
   }
 
@@ -1522,7 +1784,9 @@ const DB = {
     el.thickness.value = state.thickness;
     el.discount.value = state.discount;
     el.wallColor.value = state.wallColor;
+    el.sceneWallColor.value = state.wallColor;
     renderWallSwatches();
+    renderWallTextures();
     bind();
 
     el.menuBtn.addEventListener("click", (e) => { e.stopPropagation(); toggleMenu(); });
