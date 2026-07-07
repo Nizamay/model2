@@ -113,6 +113,28 @@ h1 { font-size: 20px; margin: 0 0 4px; }
 .price-search { width: 100%; margin-bottom: 4px; }
 .price-subhead { font-size: 13px; font-weight: 700; color: var(--muted); margin-top: 6px; }
 
+.edit-row { gap: 8px; }
+.edit-row .edit-name {
+  flex: 1; min-width: 0; font-size: 14px; padding: 8px 10px;
+}
+.edit-row .price-input-wrap { flex: 0 0 auto; }
+.edit-row input[type="number"] { width: 96px; }
+.row-del {
+  flex: 0 0 auto; width: 32px; height: 36px; border-radius: 8px;
+  border: 1px solid var(--border); background: var(--bg); color: var(--warn);
+  font-size: 14px; cursor: pointer; line-height: 1;
+}
+.row-del:hover { background: var(--warn-bg); }
+.opt-choice { padding-left: 16px; }
+.opt-head { margin-top: 4px; }
+.row-add {
+  align-self: flex-start; margin-top: 2px;
+  padding: 7px 12px; font-size: 13px; font-weight: 600;
+  border: 1px dashed var(--border); border-radius: 8px;
+  background: none; color: var(--accent); cursor: pointer;
+}
+.row-add:hover { background: var(--bg); }
+
 .field { display: flex; flex-direction: column; gap: 6px; flex: 1; }
 .field-row { display: flex; gap: 12px; }
 
@@ -467,7 +489,10 @@ const DB = {
   },
 
   // Наценка за нестандартный размер, % (редактируется в разделе «Изменение цен»).
-  nonStandardPercent: 30
+  nonStandardPercent: 30,
+
+  // Отображаемые названия категорий цвета (для редактора). Ключ — номер категории.
+  categoryNames: {}
 };
 
 (function () {
@@ -546,7 +571,10 @@ const DB = {
     el.model.innerHTML = DB.models
       .map((m) => `<option value="${m.id}">${m.name}</option>`)
       .join("");
-    state.modelId = DB.models[0].id;
+    if (!DB.models.some((m) => m.id === state.modelId)) {
+      state.modelId = DB.models.length ? DB.models[0].id : null;
+    }
+    if (state.modelId) el.model.value = state.modelId;
   }
 
   function availableMaterials(model) {
@@ -580,7 +608,10 @@ const DB = {
     el.glass.innerHTML = DB.glass
       .map((g) => `<option value="${g.id}">${g.name}</option>`)
       .join("");
-    el.glass.value = state.glassId;
+    if (!DB.glass.some((g) => g.id === state.glassId)) {
+      state.glassId = DB.glass.length ? DB.glass[0].id : null;
+    }
+    if (state.glassId) el.glass.value = state.glassId;
   }
 
   function populateOptions() {
@@ -915,53 +946,32 @@ const DB = {
 
   // --- Сохранение изменённых цен --------------------------------------
 
-  const PRICE_STORE_KEY = "doorcalc_prices_v1";
+  const PRICE_STORE_KEY = "doorcalc_prices_v2";
 
+  // Сохраняем/восстанавливаем редактируемые части БД целиком (структура может
+  // меняться: добавление/удаление типов), поэтому снимок, а не пофайловый мердж.
   function collectPrices() {
-    const data = { models: {}, surcharge: {}, glass: {}, options: {}, nonStandardPercent: DB.nonStandardPercent };
-    DB.models.forEach((m) => { data.models[m.id] = m.basePrice; });
-    Object.keys(DB.categorySurcharge).forEach((mat) => {
-      data.surcharge[mat] = {};
-      Object.keys(DB.categorySurcharge[mat]).forEach((cat) => {
-        data.surcharge[mat][cat] = DB.categorySurcharge[mat][cat];
-      });
-    });
-    DB.glass.forEach((g) => { data.glass[g.id] = g.price; });
-    Object.keys(DB.options).forEach((mat) => {
-      data.options[mat] = {};
-      DB.options[mat].forEach((opt) => {
-        if (opt.kind === "checkbox") data.options[mat][opt.id] = opt.price;
-        else data.options[mat][opt.id] = opt.choices.map((c) => c.price);
-      });
-    });
-    return data;
+    return {
+      v: 2,
+      models: DB.models.map((m) => ({ id: m.id, name: m.name, type: m.type, basePrice: m.basePrice })),
+      colors: DB.colors,
+      categorySurcharge: DB.categorySurcharge,
+      categoryNames: DB.categoryNames,
+      glass: DB.glass.map((g) => ({ id: g.id, name: g.name, price: g.price })),
+      options: DB.options,
+      nonStandardPercent: DB.nonStandardPercent
+    };
   }
 
-  function applyPrices(saved) {
-    if (!saved || typeof saved !== "object") return;
-    if (saved.models) DB.models.forEach((m) => {
-      if (typeof saved.models[m.id] === "number") m.basePrice = saved.models[m.id];
-    });
-    if (saved.surcharge) Object.keys(DB.categorySurcharge).forEach((mat) => {
-      const s = saved.surcharge[mat]; if (!s) return;
-      Object.keys(DB.categorySurcharge[mat]).forEach((cat) => {
-        if (typeof s[cat] === "number") DB.categorySurcharge[mat][cat] = s[cat];
-      });
-    });
-    if (saved.glass) DB.glass.forEach((g) => {
-      if (typeof saved.glass[g.id] === "number") g.price = saved.glass[g.id];
-    });
-    if (saved.options) Object.keys(DB.options).forEach((mat) => {
-      const s = saved.options[mat]; if (!s) return;
-      DB.options[mat].forEach((opt) => {
-        if (opt.kind === "checkbox") {
-          if (typeof s[opt.id] === "number") opt.price = s[opt.id];
-        } else if (Array.isArray(s[opt.id])) {
-          opt.choices.forEach((c, i) => { if (typeof s[opt.id][i] === "number") c.price = s[opt.id][i]; });
-        }
-      });
-    });
-    if (typeof saved.nonStandardPercent === "number") DB.nonStandardPercent = saved.nonStandardPercent;
+  function applyPrices(s) {
+    if (!s || typeof s !== "object") return;
+    if (Array.isArray(s.models)) DB.models = s.models.map((m) => ({ ...m }));
+    if (s.colors) DB.colors = s.colors;
+    if (s.categorySurcharge) DB.categorySurcharge = s.categorySurcharge;
+    if (s.categoryNames) DB.categoryNames = s.categoryNames;
+    if (Array.isArray(s.glass)) DB.glass = s.glass.map((g) => ({ ...g }));
+    if (s.options) DB.options = s.options;
+    if (typeof s.nonStandardPercent === "number") DB.nonStandardPercent = s.nonStandardPercent;
   }
 
   function savePrices() {
@@ -977,26 +987,54 @@ const DB = {
 
   // --- Редактор цен ----------------------------------------------------
 
-  function priceRow(label, sub, value, attrs) {
-    const dataAttrs = Object.keys(attrs).map((k) => `data-${k}="${attrs[k]}"`).join(" ");
-    const subHtml = sub ? `<span class="price-sub">${sub}</span>` : "";
-    return `<div class="price-row" ${attrs.name ? `data-name="${attrs.name.toLowerCase()}"` : ""}>
-      <span class="price-label">${label}${subHtml ? " " + subHtml : ""}</span>
-      <span class="price-input-wrap"><input type="number" step="10" min="0" value="${value}" ${dataAttrs}></span>
-    </div>`;
-  }
-
   const MATERIAL_LABEL = { "пвх": "Пленка ПВХ", "эмаль": "Эмаль" };
 
+  function esc(s) {
+    return String(s).replace(/[&<>"]/g, (c) =>
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  }
+  function uid(prefix) {
+    return prefix + "_" + Math.random().toString(36).slice(2, 9);
+  }
+  function catName(mat, key) {
+    return (DB.categoryNames[mat] && DB.categoryNames[mat][key]) || ("Категория " + key);
+  }
+
+  // Строка "название + цена + удалить"
+  function editRow(kind, ids, nameVal, priceVal, opts) {
+    opts = opts || {};
+    const a = `data-kind="${kind}" ` +
+      Object.keys(ids).map((k) => `data-${k}="${esc(ids[k])}"`).join(" ");
+    const search = opts.search ? ` data-name="${esc(String(nameVal).toLowerCase())}"` : "";
+    return `<div class="price-row edit-row"${search}>
+      <input type="text" class="edit-name" value="${esc(nameVal)}" data-field="name" ${a}>
+      <span class="price-input-wrap"><input type="number" step="10" min="0" value="${priceVal}" data-field="price" ${a}></span>
+      <button type="button" class="row-del" aria-label="Удалить" data-field="del" ${a}>✕</button>
+    </div>`;
+  }
+  function addBtn(add, ids, label) {
+    const a = `data-add="${add}" ` +
+      Object.keys(ids).map((k) => `data-${k}="${esc(ids[k])}"`).join(" ");
+    return `<button type="button" class="row-add" ${a}>+ ${label}</button>`;
+  }
+
   function renderPriceEditor() {
+    // запомним, какие группы раскрыты, чтобы не схлопывать при перерисовке
+    const openKeys = {};
+    el.priceEditor.querySelectorAll("details.price-group").forEach((d) => {
+      openKeys[d.dataset.key] = d.open;
+    });
+    const isOpen = (k, def) => (k in openKeys ? openKeys[k] : def);
+
     const parts = [];
 
-    // Нестандарт
-    parts.push(`<details class="price-group" open><summary>Наценка за нестандартный размер</summary>
+    // Нестандарт (одно значение, без добавления типов)
+    parts.push(`<details class="price-group" data-key="ns"${isOpen("ns", true) ? " open" : ""}>
+      <summary>Наценка за нестандартный размер</summary>
       <div class="price-body">
         <div class="price-row">
-          <span class="price-label">Надбавка за нестандарт</span>
-          <span class="price-input-wrap" style="--u:'%'"><input type="number" step="1" min="0" value="${DB.nonStandardPercent}" data-kind="nonstandard"></span>
+          <span class="price-label">Надбавка за нестандарт, %</span>
+          <span class="price-input-wrap"><input type="number" step="1" min="0" value="${DB.nonStandardPercent}" data-kind="nonstandard" data-field="price"></span>
         </div>
       </div></details>`);
 
@@ -1004,18 +1042,21 @@ const DB = {
     let colorRows = "";
     Object.keys(DB.categorySurcharge).forEach((mat) => {
       colorRows += `<div class="price-subhead">${MATERIAL_LABEL[mat] || mat}</div>`;
-      Object.keys(DB.categorySurcharge[mat]).sort().forEach((cat) => {
-        colorRows += priceRow(`Категория ${cat}`, "", DB.categorySurcharge[mat][cat],
-          { kind: "surcharge", material: mat, cat: cat });
+      Object.keys(DB.categorySurcharge[mat]).sort((a, b) => a - b).forEach((cat) => {
+        colorRows += editRow("surcharge", { material: mat, cat: cat }, catName(mat, cat), DB.categorySurcharge[mat][cat]);
       });
+      colorRows += addBtn("category", { material: mat }, "Добавить категорию");
     });
-    parts.push(`<details class="price-group"><summary>Наценка за цвет (категории)</summary>
+    parts.push(`<details class="price-group" data-key="color"${isOpen("color", false) ? " open" : ""}>
+      <summary>Наценка за цвет (категории)</summary>
       <div class="price-body">${colorRows}</div></details>`);
 
     // Стекло
     let glassRows = DB.glass.map((g) =>
-      priceRow(g.name, "", g.price, { kind: "glass", id: g.id })).join("");
-    parts.push(`<details class="price-group"><summary>Стекло</summary>
+      editRow("glass", { id: g.id }, g.name, g.price)).join("");
+    glassRows += addBtn("glass", {}, "Добавить стекло");
+    parts.push(`<details class="price-group" data-key="glass"${isOpen("glass", false) ? " open" : ""}>
+      <summary>Стекло</summary>
       <div class="price-body">${glassRows}</div></details>`);
 
     // Опции
@@ -1024,52 +1065,151 @@ const DB = {
       optRows += `<div class="price-subhead">${MATERIAL_LABEL[mat] || mat}</div>`;
       DB.options[mat].forEach((opt) => {
         if (opt.kind === "checkbox") {
-          optRows += priceRow(opt.name, "", opt.price, { kind: "option", material: mat, opt: opt.id });
+          optRows += editRow("option", { material: mat, opt: opt.id }, opt.name, opt.price);
         } else {
+          // радио-опция: редактируемое название + удаление, ниже — варианты
+          const a = `data-kind="optionName" data-material="${esc(mat)}" data-opt="${esc(opt.id)}"`;
+          optRows += `<div class="price-row edit-row opt-head">
+            <input type="text" class="edit-name" value="${esc(opt.name)}" data-field="name" ${a}>
+            <button type="button" class="row-del" aria-label="Удалить" data-field="del" ${a}>✕</button>
+          </div>`;
           opt.choices.forEach((c, i) => {
-            optRows += priceRow(`${opt.name}`, c.label, c.price,
-              { kind: "optionChoice", material: mat, opt: opt.id, choice: i });
+            optRows += `<div class="opt-choice">` +
+              editRow("optionChoice", { material: mat, opt: opt.id, choice: i }, c.label, c.price) +
+              `</div>`;
           });
+          optRows += `<div class="opt-choice">` + addBtn("choice", { material: mat, opt: opt.id }, "Добавить вариант") + `</div>`;
         }
       });
+      optRows += addBtn("option", { material: mat }, "Добавить опцию");
     });
-    parts.push(`<details class="price-group"><summary>Опции</summary>
+    parts.push(`<details class="price-group" data-key="opt"${isOpen("opt", false) ? " open" : ""}>
+      <summary>Опции</summary>
       <div class="price-body">${optRows}</div></details>`);
 
-    // Модели (базовая цена полотна)
+    // Модели
     let modelRows = DB.models.map((m) =>
-      priceRow(m.name, "", m.basePrice, { kind: "model", id: m.id, name: m.name })).join("");
-    parts.push(`<details class="price-group"><summary>Модели (базовая цена полотна)</summary>
+      editRow("model", { id: m.id }, m.name, m.basePrice, { search: true })).join("");
+    parts.push(`<details class="price-group" data-key="model"${isOpen("model", false) ? " open" : ""}>
+      <summary>Модели (базовая цена полотна)</summary>
       <div class="price-body">
         <input type="search" class="price-search" placeholder="Поиск модели…" id="modelSearch">
         <div id="modelPriceRows">${modelRows}</div>
+        ${addBtn("model", {}, "Добавить модель")}
       </div></details>`);
 
     el.priceEditor.innerHTML = parts.join("");
   }
 
+  // Ввод названия/цены существующего элемента (не меняет структуру → не перерисовываем редактор)
   function onPriceInput(e) {
     const input = e.target;
     if (input.tagName !== "INPUT" || input.type === "search") return;
-    const v = Number(input.value);
-    if (Number.isNaN(v)) return;
     const d = input.dataset;
+    const field = d.field;
+    if (field !== "name" && field !== "price") return;
+    const isName = field === "name";
+    const val = isName ? input.value : Number(input.value);
+    if (!isName && Number.isNaN(val)) return;
+
+    let refresh = null;
     switch (d.kind) {
-      case "nonstandard": DB.nonStandardPercent = v; break;
-      case "surcharge": DB.categorySurcharge[d.material][d.cat] = v; break;
-      case "glass": { const g = DB.glass.find((x) => x.id === d.id); if (g) g.price = v; break; }
-      case "model": { const m = DB.models.find((x) => x.id === d.id); if (m) m.basePrice = v; break; }
+      case "nonstandard": DB.nonStandardPercent = val; break;
+      case "surcharge":
+        if (isName) { (DB.categoryNames[d.material] = DB.categoryNames[d.material] || {})[d.cat] = val; }
+        else DB.categorySurcharge[d.material][d.cat] = val;
+        break;
+      case "glass": {
+        const g = DB.glass.find((x) => x.id === d.id); if (!g) break;
+        if (isName) g.name = val; else g.price = val;
+        refresh = populateGlass; break;
+      }
+      case "model": {
+        const m = DB.models.find((x) => x.id === d.id); if (!m) break;
+        if (isName) m.name = val; else m.basePrice = val;
+        refresh = populateModels; break;
+      }
       case "option": {
+        const opt = DB.options[d.material].find((x) => x.id === d.opt); if (!opt) break;
+        if (isName) opt.name = val; else opt.price = val;
+        refresh = populateOptions; break;
+      }
+      case "optionName": {
         const opt = DB.options[d.material].find((x) => x.id === d.opt);
-        if (opt) opt.price = v; break;
+        if (opt && isName) opt.name = val;
+        refresh = populateOptions; break;
       }
       case "optionChoice": {
         const opt = DB.options[d.material].find((x) => x.id === d.opt);
-        if (opt && opt.choices[d.choice]) opt.choices[d.choice].price = v; break;
+        if (opt && opt.choices[d.choice]) {
+          if (isName) opt.choices[d.choice].label = val;
+          else opt.choices[d.choice].price = val;
+        }
+        refresh = populateOptions; break;
       }
       default: return;
     }
+    if (refresh) refresh();
     savePrices();
+    render();
+  }
+
+  // Клик по «удалить»/«добавить» — меняет структуру → перерисовываем редактор
+  function onPriceClick(e) {
+    const del = e.target.closest("[data-field='del']");
+    const add = e.target.closest("[data-add]");
+    if (!del && !add) return;
+
+    if (del) {
+      const d = del.dataset;
+      switch (d.kind) {
+        case "surcharge":
+          delete DB.categorySurcharge[d.material][d.cat];
+          if (DB.colors[d.material]) delete DB.colors[d.material][d.cat];
+          if (DB.categoryNames[d.material]) delete DB.categoryNames[d.material][d.cat];
+          populateColors(); break;
+        case "glass":
+          DB.glass = DB.glass.filter((g) => g.id !== d.id); populateGlass(); break;
+        case "model":
+          DB.models = DB.models.filter((m) => m.id !== d.id); populateModels(); break;
+        case "option": case "optionName":
+          DB.options[d.material] = DB.options[d.material].filter((o) => o.id !== d.opt);
+          populateOptions(); break;
+        case "optionChoice": {
+          const opt = DB.options[d.material].find((o) => o.id === d.opt);
+          if (opt && opt.choices.length > 1) opt.choices.splice(Number(d.choice), 1);
+          populateOptions(); break;
+        }
+        default: return;
+      }
+    } else {
+      const d = add.dataset;
+      switch (d.add) {
+        case "category": {
+          const keys = Object.keys(DB.categorySurcharge[d.material]).map(Number);
+          const nk = String(keys.length ? Math.max(...keys) + 1 : 0);
+          DB.categorySurcharge[d.material][nk] = 0;
+          (DB.colors[d.material] = DB.colors[d.material] || {})[nk] = [];
+          break;
+        }
+        case "glass":
+          DB.glass.push({ id: uid("g"), name: "Новое стекло", price: 0 }); populateGlass(); break;
+        case "model":
+          DB.models.push({ id: uid("m"), name: "Новая модель", type: "щитовое", basePrice: 0 });
+          populateModels(); break;
+        case "option":
+          DB.options[d.material].push({ id: uid("opt"), name: "Новая опция", kind: "checkbox", price: 0 });
+          populateOptions(); break;
+        case "choice": {
+          const opt = DB.options[d.material].find((o) => o.id === d.opt);
+          if (opt) opt.choices.push({ label: "Новый вариант", price: 0 });
+          populateOptions(); break;
+        }
+        default: return;
+      }
+    }
+    savePrices();
+    renderPriceEditor();
     render();
   }
 
@@ -1103,6 +1243,7 @@ const DB = {
       if (!el.menu.hidden && !el.menu.contains(e.target) && e.target !== el.menuBtn) toggleMenu(false);
     });
     el.priceEditor.addEventListener("input", (e) => { onPriceInput(e); onModelSearch(e); });
+    el.priceEditor.addEventListener("click", onPriceClick);
 
     render();
   }
