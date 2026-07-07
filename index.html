@@ -59,6 +59,60 @@ body {
 
 h1 { font-size: 20px; margin: 0 0 4px; }
 
+.topbar { position: relative; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.topbar h1 { margin: 0; }
+
+.menu-btn {
+  flex: 0 0 auto;
+  width: 40px; height: 40px;
+  display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 4px;
+  background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+  cursor: pointer; padding: 0;
+}
+.menu-btn span { display: block; width: 18px; height: 2px; background: var(--text); border-radius: 2px; }
+
+.menu {
+  position: absolute; top: 46px; right: 0; z-index: 10;
+  min-width: 200px; background: var(--card-bg);
+  border: 1px solid var(--border); border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0,0,0,.16); overflow: hidden;
+}
+.menu-item {
+  display: block; width: 100%; text-align: left;
+  padding: 12px 14px; font-size: 14px; font-weight: 600;
+  background: none; border: none; color: var(--text); cursor: pointer;
+}
+.menu-item:hover { background: var(--bg); }
+.menu-item.active { color: var(--accent); }
+
+.prices-hint { font-size: 13px; color: var(--muted); margin: 0 0 4px; }
+
+.price-group { border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+.price-group > summary {
+  list-style: none; cursor: pointer; padding: 12px 14px;
+  font-size: 14px; font-weight: 700; background: var(--bg);
+  display: flex; justify-content: space-between; align-items: center;
+}
+.price-group > summary::-webkit-details-marker { display: none; }
+.price-group > summary::after { content: "▸"; color: var(--muted); transition: transform .15s; }
+.price-group[open] > summary::after { transform: rotate(90deg); }
+.price-body { padding: 8px 14px 14px; display: flex; flex-direction: column; gap: 8px; }
+
+.price-row { display: flex; align-items: center; gap: 10px; }
+.price-row .price-label { flex: 1; font-size: 14px; color: var(--text); }
+.price-row .price-sub { font-size: 12px; color: var(--muted); }
+.price-input-wrap { position: relative; flex: 0 0 auto; }
+.price-row input[type="number"] {
+  width: 120px; padding: 8px 26px 8px 10px; text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.price-input-wrap::after {
+  content: "₽"; position: absolute; right: 9px; top: 50%; transform: translateY(-50%);
+  color: var(--muted); font-size: 13px; pointer-events: none;
+}
+.price-search { width: 100%; margin-bottom: 4px; }
+.price-subhead { font-size: 13px; font-weight: 700; color: var(--muted); margin-top: 6px; }
+
 .field { display: flex; flex-direction: column; gap: 6px; flex: 1; }
 .field-row { display: flex; gap: 12px; }
 
@@ -115,7 +169,7 @@ select:focus, input:focus { outline: 2px solid var(--accent); outline-offset: -1
 
 #doorPreview {
   width: 100%;
-  max-width: 320px;
+  max-width: 440px;
   aspect-ratio: 220 / 400;
   filter: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.18));
 }
@@ -152,7 +206,18 @@ select:focus, input:focus { outline: 2px solid var(--accent); outline-offset: -1
 </head>
 <body>
   <main class="calc-card">
-    <h1>Расчет — межкомнатные двери</h1>
+    <div class="topbar">
+      <h1 id="viewTitle">Расчет — межкомнатные двери</h1>
+      <button id="menuBtn" class="menu-btn" aria-label="Меню" aria-expanded="false">
+        <span></span><span></span><span></span>
+      </button>
+      <nav id="menu" class="menu" hidden>
+        <button type="button" class="menu-item" data-view="calc">Калькулятор цены</button>
+        <button type="button" class="menu-item" data-view="prices">Изменение цен</button>
+      </nav>
+    </div>
+
+    <div id="viewCalc">
 
     <div class="field">
       <label for="model">Модель</label>
@@ -209,8 +274,8 @@ select:focus, input:focus { outline: 2px solid var(--accent); outline-offset: -1
             </clipPath>
             <linearGradient id="doorShadeGradient" x1="0%" y1="0%" x2="100%" y2="100%"></linearGradient>
             <linearGradient id="glassFillGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stop-color="#eef6fb" stop-opacity="0.75"/>
-              <stop offset="100%" stop-color="#c3d8e6" stop-opacity="0.55"/>
+              <stop offset="0%" stop-color="#eef6fb" stop-opacity="1"/>
+              <stop offset="100%" stop-color="#c3d8e6" stop-opacity="1"/>
             </linearGradient>
             <pattern id="doorTexturePattern" patternUnits="userSpaceOnUse">
               <image id="doorTextureImage" href="" preserveAspectRatio="none"></image>
@@ -243,6 +308,12 @@ select:focus, input:focus { outline: 2px solid var(--accent); outline-offset: -1
         <span>Итоговая стоимость</span>
         <span id="total" class="total-value">0 ₽</span>
       </div>
+    </div>
+    </div><!-- /viewCalc -->
+
+    <div id="viewPrices" hidden>
+      <p class="prices-hint">Измените любую цену — расчёт в калькуляторе обновится автоматически. Значения сохраняются в этом браузере.</p>
+      <div id="priceEditor"></div>
     </div>
   </main>
 
@@ -393,7 +464,10 @@ const DB = {
     height: 2000,
     widths: [400, 600, 700, 800, 900],
     thickness: 36
-  }
+  },
+
+  // Наценка за нестандартный размер, % (редактируется в разделе «Изменение цен»).
+  nonStandardPercent: 30
 };
 
 (function () {
@@ -435,7 +509,13 @@ const DB = {
     doorShadeGradient: document.getElementById("doorShadeGradient"),
     doorOutlineRect: document.getElementById("doorOutlineRect"),
     doorGlassGroup: document.getElementById("doorGlassGroup"),
-    doorHandleGroup: document.getElementById("doorHandleGroup")
+    doorHandleGroup: document.getElementById("doorHandleGroup"),
+    menuBtn: document.getElementById("menuBtn"),
+    menu: document.getElementById("menu"),
+    viewTitle: document.getElementById("viewTitle"),
+    viewCalc: document.getElementById("viewCalc"),
+    viewPrices: document.getElementById("viewPrices"),
+    priceEditor: document.getElementById("priceEditor")
   };
 
   function getModel(id) {
@@ -740,7 +820,8 @@ const DB = {
     let leafPrice = model.basePrice + surcharge;
     const standard = isStandardSize(state.height, state.width, state.thickness);
     const leafBeforeNonstandard = leafPrice;
-    if (!standard) leafPrice = roundUp10(leafPrice * 1.3);
+    const nsMult = 1 + (Number(DB.nonStandardPercent) || 0) / 100;
+    if (!standard) leafPrice = roundUp10(leafPrice * nsMult);
 
     const { sum: optionsSum, lines: optionLines } = sumSelectedOptions();
     const glass = DB.glass.find((g) => g.id === state.glassId);
@@ -756,7 +837,7 @@ const DB = {
 
     const rows = [];
     rows.push(`Полотно (${model.name}): ${leafBeforeNonstandard} ₽`);
-    if (!standard) rows.push(`Наценка за нестандарт (×1.3, округление вверх до 10 ₽): ${leafPrice} ₽`);
+    if (!standard) rows.push(`Наценка за нестандарт (+${DB.nonStandardPercent}%, округление вверх до 10 ₽): ${leafPrice} ₽`);
     optionLines.forEach((l) => rows.push(l));
     if (glassPrice) rows.push(`Стекло (${glass.name}): +${glassPrice} ₽`);
     rows.push(`Подытог: ${subtotal} ₽`);
@@ -812,7 +893,196 @@ const DB = {
     });
   }
 
+  // --- Вкладки (меню) --------------------------------------------------
+
+  function toggleMenu(force) {
+    const open = force !== undefined ? force : el.menu.hidden;
+    el.menu.hidden = !open;
+    el.menuBtn.setAttribute("aria-expanded", String(open));
+  }
+
+  function setView(view) {
+    const isPrices = view === "prices";
+    el.viewCalc.hidden = isPrices;
+    el.viewPrices.hidden = !isPrices;
+    el.viewTitle.textContent = isPrices ? "Изменение цен" : "Расчет — межкомнатные двери";
+    el.menu.querySelectorAll(".menu-item").forEach((b) =>
+      b.classList.toggle("active", b.dataset.view === view)
+    );
+    if (isPrices) renderPriceEditor();
+    toggleMenu(false);
+  }
+
+  // --- Сохранение изменённых цен --------------------------------------
+
+  const PRICE_STORE_KEY = "doorcalc_prices_v1";
+
+  function collectPrices() {
+    const data = { models: {}, surcharge: {}, glass: {}, options: {}, nonStandardPercent: DB.nonStandardPercent };
+    DB.models.forEach((m) => { data.models[m.id] = m.basePrice; });
+    Object.keys(DB.categorySurcharge).forEach((mat) => {
+      data.surcharge[mat] = {};
+      Object.keys(DB.categorySurcharge[mat]).forEach((cat) => {
+        data.surcharge[mat][cat] = DB.categorySurcharge[mat][cat];
+      });
+    });
+    DB.glass.forEach((g) => { data.glass[g.id] = g.price; });
+    Object.keys(DB.options).forEach((mat) => {
+      data.options[mat] = {};
+      DB.options[mat].forEach((opt) => {
+        if (opt.kind === "checkbox") data.options[mat][opt.id] = opt.price;
+        else data.options[mat][opt.id] = opt.choices.map((c) => c.price);
+      });
+    });
+    return data;
+  }
+
+  function applyPrices(saved) {
+    if (!saved || typeof saved !== "object") return;
+    if (saved.models) DB.models.forEach((m) => {
+      if (typeof saved.models[m.id] === "number") m.basePrice = saved.models[m.id];
+    });
+    if (saved.surcharge) Object.keys(DB.categorySurcharge).forEach((mat) => {
+      const s = saved.surcharge[mat]; if (!s) return;
+      Object.keys(DB.categorySurcharge[mat]).forEach((cat) => {
+        if (typeof s[cat] === "number") DB.categorySurcharge[mat][cat] = s[cat];
+      });
+    });
+    if (saved.glass) DB.glass.forEach((g) => {
+      if (typeof saved.glass[g.id] === "number") g.price = saved.glass[g.id];
+    });
+    if (saved.options) Object.keys(DB.options).forEach((mat) => {
+      const s = saved.options[mat]; if (!s) return;
+      DB.options[mat].forEach((opt) => {
+        if (opt.kind === "checkbox") {
+          if (typeof s[opt.id] === "number") opt.price = s[opt.id];
+        } else if (Array.isArray(s[opt.id])) {
+          opt.choices.forEach((c, i) => { if (typeof s[opt.id][i] === "number") c.price = s[opt.id][i]; });
+        }
+      });
+    });
+    if (typeof saved.nonStandardPercent === "number") DB.nonStandardPercent = saved.nonStandardPercent;
+  }
+
+  function savePrices() {
+    try { localStorage.setItem(PRICE_STORE_KEY, JSON.stringify(collectPrices())); } catch (e) {}
+  }
+
+  function loadPrices() {
+    try {
+      const raw = localStorage.getItem(PRICE_STORE_KEY);
+      if (raw) applyPrices(JSON.parse(raw));
+    } catch (e) {}
+  }
+
+  // --- Редактор цен ----------------------------------------------------
+
+  function priceRow(label, sub, value, attrs) {
+    const dataAttrs = Object.keys(attrs).map((k) => `data-${k}="${attrs[k]}"`).join(" ");
+    const subHtml = sub ? `<span class="price-sub">${sub}</span>` : "";
+    return `<div class="price-row" ${attrs.name ? `data-name="${attrs.name.toLowerCase()}"` : ""}>
+      <span class="price-label">${label}${subHtml ? " " + subHtml : ""}</span>
+      <span class="price-input-wrap"><input type="number" step="10" min="0" value="${value}" ${dataAttrs}></span>
+    </div>`;
+  }
+
+  const MATERIAL_LABEL = { "пвх": "Пленка ПВХ", "эмаль": "Эмаль" };
+
+  function renderPriceEditor() {
+    const parts = [];
+
+    // Нестандарт
+    parts.push(`<details class="price-group" open><summary>Наценка за нестандартный размер</summary>
+      <div class="price-body">
+        <div class="price-row">
+          <span class="price-label">Надбавка за нестандарт</span>
+          <span class="price-input-wrap" style="--u:'%'"><input type="number" step="1" min="0" value="${DB.nonStandardPercent}" data-kind="nonstandard"></span>
+        </div>
+      </div></details>`);
+
+    // Наценка за цвет (категории)
+    let colorRows = "";
+    Object.keys(DB.categorySurcharge).forEach((mat) => {
+      colorRows += `<div class="price-subhead">${MATERIAL_LABEL[mat] || mat}</div>`;
+      Object.keys(DB.categorySurcharge[mat]).sort().forEach((cat) => {
+        colorRows += priceRow(`Категория ${cat}`, "", DB.categorySurcharge[mat][cat],
+          { kind: "surcharge", material: mat, cat: cat });
+      });
+    });
+    parts.push(`<details class="price-group"><summary>Наценка за цвет (категории)</summary>
+      <div class="price-body">${colorRows}</div></details>`);
+
+    // Стекло
+    let glassRows = DB.glass.map((g) =>
+      priceRow(g.name, "", g.price, { kind: "glass", id: g.id })).join("");
+    parts.push(`<details class="price-group"><summary>Стекло</summary>
+      <div class="price-body">${glassRows}</div></details>`);
+
+    // Опции
+    let optRows = "";
+    Object.keys(DB.options).forEach((mat) => {
+      optRows += `<div class="price-subhead">${MATERIAL_LABEL[mat] || mat}</div>`;
+      DB.options[mat].forEach((opt) => {
+        if (opt.kind === "checkbox") {
+          optRows += priceRow(opt.name, "", opt.price, { kind: "option", material: mat, opt: opt.id });
+        } else {
+          opt.choices.forEach((c, i) => {
+            optRows += priceRow(`${opt.name}`, c.label, c.price,
+              { kind: "optionChoice", material: mat, opt: opt.id, choice: i });
+          });
+        }
+      });
+    });
+    parts.push(`<details class="price-group"><summary>Опции</summary>
+      <div class="price-body">${optRows}</div></details>`);
+
+    // Модели (базовая цена полотна)
+    let modelRows = DB.models.map((m) =>
+      priceRow(m.name, "", m.basePrice, { kind: "model", id: m.id, name: m.name })).join("");
+    parts.push(`<details class="price-group"><summary>Модели (базовая цена полотна)</summary>
+      <div class="price-body">
+        <input type="search" class="price-search" placeholder="Поиск модели…" id="modelSearch">
+        <div id="modelPriceRows">${modelRows}</div>
+      </div></details>`);
+
+    el.priceEditor.innerHTML = parts.join("");
+  }
+
+  function onPriceInput(e) {
+    const input = e.target;
+    if (input.tagName !== "INPUT" || input.type === "search") return;
+    const v = Number(input.value);
+    if (Number.isNaN(v)) return;
+    const d = input.dataset;
+    switch (d.kind) {
+      case "nonstandard": DB.nonStandardPercent = v; break;
+      case "surcharge": DB.categorySurcharge[d.material][d.cat] = v; break;
+      case "glass": { const g = DB.glass.find((x) => x.id === d.id); if (g) g.price = v; break; }
+      case "model": { const m = DB.models.find((x) => x.id === d.id); if (m) m.basePrice = v; break; }
+      case "option": {
+        const opt = DB.options[d.material].find((x) => x.id === d.opt);
+        if (opt) opt.price = v; break;
+      }
+      case "optionChoice": {
+        const opt = DB.options[d.material].find((x) => x.id === d.opt);
+        if (opt && opt.choices[d.choice]) opt.choices[d.choice].price = v; break;
+      }
+      default: return;
+    }
+    savePrices();
+    render();
+  }
+
+  function onModelSearch(e) {
+    if (e.target.id !== "modelSearch") return;
+    const q = e.target.value.trim().toLowerCase();
+    el.priceEditor.querySelectorAll("#modelPriceRows .price-row").forEach((row) => {
+      row.style.display = !q || (row.dataset.name || "").includes(q) ? "" : "none";
+    });
+  }
+
   function init() {
+    loadPrices();
     populateModels();
     populateMaterial();
     populateColors();
@@ -823,6 +1093,17 @@ const DB = {
     el.thickness.value = state.thickness;
     el.discount.value = state.discount;
     bind();
+
+    el.menuBtn.addEventListener("click", (e) => { e.stopPropagation(); toggleMenu(); });
+    el.menu.addEventListener("click", (e) => {
+      const btn = e.target.closest(".menu-item");
+      if (btn) setView(btn.dataset.view);
+    });
+    document.addEventListener("click", (e) => {
+      if (!el.menu.hidden && !el.menu.contains(e.target) && e.target !== el.menuBtn) toggleMenu(false);
+    });
+    el.priceEditor.addEventListener("input", (e) => { onPriceInput(e); onModelSearch(e); });
+
     render();
   }
 
