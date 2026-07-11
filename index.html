@@ -113,6 +113,8 @@ h1 { font-size: 20px; margin: 0 0 4px; }
 .price-input-wrap.is-percent::after { content: "%"; }
 .price-search { width: 100%; margin-bottom: 4px; }
 .price-subhead { font-size: 13px; font-weight: 700; color: var(--muted); margin-top: 6px; }
+.price-subhead-sborno { color: var(--ok); }
+.price-subhead-shitovoe { color: var(--accent); }
 
 /* Пункт-аккордеон: имя в заголовке видно целиком, внутри — поля и удаление */
 .pitem { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
@@ -1709,9 +1711,21 @@ const DB = {
       <summary>Опции</summary>
       <div class="price-body">${optRows}</div></details>`);
 
-    // Модели
-    let modelRows = DB.models.map((m) =>
-      editItem("model", { id: m.id }, m.name, m.basePrice, { search: true })).join("");
+    // Модели — сгруппированы «Сборные»/«Щитовые» (см. MODEL_GROUPS), по алфавиту внутри группы
+    let modelRows = MODEL_GROUPS.map((g) => {
+      const items = DB.models
+        .filter((m) => m.type === g.type)
+        .sort((a, b) => RU_COLLATOR.compare(a.name, b.name));
+      if (!items.length) return "";
+      const rows = items
+        .map((m) => editItem("model", { id: m.id }, m.name, m.basePrice, { search: true }))
+        .join("");
+      const cls = g.type === "сборное" ? "price-subhead-sborno" : "price-subhead-shitovoe";
+      return `<div class="model-group" data-group="${g.type}">
+        <div class="price-subhead ${cls}">${g.label}</div>
+        ${rows}
+      </div>`;
+    }).join("");
     parts.push(`<details class="price-group" data-key="model"${isOpen("model", false) ? " open" : ""}>
       <summary>Модели (базовая цена полотна)</summary>
       <div class="price-body">
@@ -1857,8 +1871,14 @@ const DB = {
   function onModelSearch(e) {
     if (e.target.id !== "modelSearch") return;
     const q = e.target.value.trim().toLowerCase();
-    el.priceEditor.querySelectorAll("#modelPriceRows .pitem").forEach((row) => {
-      row.style.display = !q || (row.dataset.name || "").includes(q) ? "" : "none";
+    el.priceEditor.querySelectorAll("#modelPriceRows .model-group").forEach((group) => {
+      let anyVisible = false;
+      group.querySelectorAll(".pitem").forEach((row) => {
+        const visible = !q || (row.dataset.name || "").includes(q);
+        row.style.display = visible ? "" : "none";
+        if (visible) anyVisible = true;
+      });
+      group.style.display = anyVisible ? "" : "none";
     });
   }
 
