@@ -504,10 +504,9 @@ select:focus, input:focus { outline: 2px solid var(--accent); outline-offset: -1
  * условные значения-заглушки, чтобы калькулятор был полностью рабочим уже
  * сейчас. Перед реальным использованием замените значения на актуальные.
  *
- * Также не указан тип полотна (Сборное / Щитовое) для каждой конкретной
- * модели — по умолчанию всем моделям присвоен тип "щитовое" (более
- * универсальный: допускает и ПВХ, и эмаль). Поправьте поле `type` для тех
- * моделей, которые на самом деле являются сборными.
+ * Тип полотна (Сборное / Щитовое) определяется по зелёной заливке в
+ * исходном списке моделей: выделенные зелёным — «Сборные», остальные —
+ * «Щитовые» (см. PVH_ONLY_MODELS ниже).
  */
 
 // Модели, выделенные зелёным в исходном списке («Untitled spreadsheet.xlsx»,
@@ -540,7 +539,7 @@ const DB = {
   ].map((name, i) => ({
     id: "m" + i,
     name,
-    type: "щитовое",
+    type: PVH_ONLY_MODELS.has(name) ? "сборное" : "щитовое",
     basePrice: 5000,
     pvhOnly: PVH_ONLY_MODELS.has(name)
   })),
@@ -757,9 +756,25 @@ const DB = {
     return null;
   }
 
+  const RU_COLLATOR = new Intl.Collator("ru");
+
+  // Список моделей — двумя группами (см. PVH_ONLY_MODELS): «Сборные»
+  // (выделенные зелёным) и «Щитовые» (остальные), внутри группы — по алфавиту.
+  const MODEL_GROUPS = [
+    { type: "сборное", label: "Сборные" },
+    { type: "щитовое", label: "Щитовые" }
+  ];
+
   function populateModels() {
-    el.model.innerHTML = DB.models
-      .map((m) => `<option value="${m.id}">${m.name}</option>`)
+    el.model.innerHTML = MODEL_GROUPS
+      .map((g) => {
+        const items = DB.models
+          .filter((m) => m.type === g.type)
+          .sort((a, b) => RU_COLLATOR.compare(a.name, b.name));
+        if (!items.length) return "";
+        const opts = items.map((m) => `<option value="${m.id}">${m.name}</option>`).join("");
+        return `<optgroup label="${g.label}">${opts}</optgroup>`;
+      })
       .join("");
     if (!DB.models.some((m) => m.id === state.modelId)) {
       state.modelId = DB.models.length ? DB.models[0].id : null;
