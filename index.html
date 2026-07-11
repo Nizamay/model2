@@ -149,8 +149,10 @@ h1 { font-size: 20px; margin: 0 0 4px; }
 .pitem .row-del:hover:not(:disabled) { background: var(--warn-bg); }
 .pitem .row-del:disabled { opacity: .45; cursor: not-allowed; border-color: var(--border); color: var(--muted); }
 
-.choice-row { display: flex; align-items: center; gap: 8px; }
-.choice-row .edit-name { flex: 1; min-width: 0; font-size: 14px; padding: 7px 10px; }
+/* Название варианта — на всю ширину строки, чтобы длинные варианты
+   ("ПВХ 2мм, 4 стороны" и т.п.) не обрезались; цена и удаление — ниже. */
+.choice-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.choice-row .edit-name { flex: 1 1 100%; min-width: 0; font-size: 14px; padding: 7px 10px; }
 .choice-row input[type="number"] { width: 92px; }
 .choice-row .row-del { padding: 6px 10px; }
 .choice-head { font-size: 12px; font-weight: 700; color: var(--muted); margin-top: 2px; }
