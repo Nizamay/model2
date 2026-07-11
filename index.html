@@ -182,6 +182,8 @@ select, input[type="number"] {
 
 select:focus, input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 
+select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
+
 .size-info { margin-top: -8px; display: flex; flex-direction: column; gap: 6px; }
 
 .badge {
@@ -886,13 +888,24 @@ const DB = {
   }
 
   function updateSizeUI() {
+    // Сборные полотна выпускаются только в 36 мм — толщина фиксируется и
+    // поле блокируется, чтобы нельзя было выбрать несуществующий вариант.
+    const model = getModel(state.modelId);
+    const isSborno = !!model && model.type === "сборное";
+    if (isSborno && state.thickness !== DB.standard.thickness) {
+      state.thickness = DB.standard.thickness;
+      el.thickness.value = state.thickness;
+    }
+    el.thickness.disabled = isSborno;
+
     const standard = isStandardSize(state.height, state.width, state.thickness);
     el.sizeBadge.textContent = standard ? "Стандарт" : "Нестандарт (+30%)";
     el.sizeBadge.className = "badge " + (standard ? "badge-ok" : "badge-warn");
 
-    const model = getModel(state.modelId);
-    const thicknessInvalid = state.thickness === 42 && model.type !== "щитовое";
-    el.thicknessWarning.style.display = thicknessInvalid ? "block" : "none";
+    el.thicknessWarning.textContent = isSborno
+      ? "36 мм — единственная доступная толщина для сборных полотен"
+      : "42 мм доступна только для щитовых полотен";
+    el.thicknessWarning.style.display = isSborno || state.thickness === 42 ? "block" : "none";
   }
 
   // --- Механика закраски превью двери ----------------------------------
