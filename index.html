@@ -182,6 +182,8 @@ select, input[type="number"] {
 
 select:focus, input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 
+select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
+
 .size-info { margin-top: -8px; display: flex; flex-direction: column; gap: 6px; }
 
 .badge {
@@ -504,10 +506,9 @@ select:focus, input:focus { outline: 2px solid var(--accent); outline-offset: -1
  * условные значения-заглушки, чтобы калькулятор был полностью рабочим уже
  * сейчас. Перед реальным использованием замените значения на актуальные.
  *
- * Также не указан тип полотна (Сборное / Щитовое) для каждой конкретной
- * модели — по умолчанию всем моделям присвоен тип "щитовое" (более
- * универсальный: допускает и ПВХ, и эмаль). Поправьте поле `type` для тех
- * моделей, которые на самом деле являются сборными.
+ * Тип полотна (Сборное / Щитовое) определяется по зелёной заливке в
+ * исходном списке моделей: выделенные зелёным — «Сборные», остальные —
+ * «Щитовые» (см. PVH_ONLY_MODELS ниже).
  */
 
 // Модели, выделенные зелёным в исходном списке («Untitled spreadsheet.xlsx»,
@@ -540,7 +541,7 @@ const DB = {
   ].map((name, i) => ({
     id: "m" + i,
     name,
-    type: "щитовое",
+    type: PVH_ONLY_MODELS.has(name) ? "сборное" : "щитовое",
     basePrice: 5000,
     pvhOnly: PVH_ONLY_MODELS.has(name)
   })),
@@ -757,9 +758,25 @@ const DB = {
     return null;
   }
 
+  const RU_COLLATOR = new Intl.Collator("ru");
+
+  // Список моделей — двумя группами (см. PVH_ONLY_MODELS): «Сборные»
+  // (выделенные зелёным) и «Щитовые» (остальные), внутри группы — по алфавиту.
+  const MODEL_GROUPS = [
+    { type: "сборное", label: "Сборные" },
+    { type: "щитовое", label: "Щитовые" }
+  ];
+
   function populateModels() {
-    el.model.innerHTML = DB.models
-      .map((m) => `<option value="${m.id}">${m.name}</option>`)
+    el.model.innerHTML = MODEL_GROUPS
+      .map((g) => {
+        const items = DB.models
+          .filter((m) => m.type === g.type)
+          .sort((a, b) => RU_COLLATOR.compare(a.name, b.name));
+        if (!items.length) return "";
+        const opts = items.map((m) => `<option value="${m.id}">${m.name}</option>`).join("");
+        return `<optgroup label="${g.label}">${opts}</optgroup>`;
+      })
       .join("");
     if (!DB.models.some((m) => m.id === state.modelId)) {
       state.modelId = DB.models.length ? DB.models[0].id : null;
@@ -871,13 +888,21 @@ const DB = {
   }
 
   function updateSizeUI() {
+    // Сборные полотна выпускаются только в 36 мм — толщина фиксируется и
+    // поле блокируется, чтобы нельзя было выбрать несуществующий вариант.
+    const model = getModel(state.modelId);
+    const isSborno = !!model && model.type === "сборное";
+    if (isSborno && state.thickness !== DB.standard.thickness) {
+      state.thickness = DB.standard.thickness;
+      el.thickness.value = state.thickness;
+    }
+    el.thickness.disabled = isSborno;
+
     const standard = isStandardSize(state.height, state.width, state.thickness);
     el.sizeBadge.textContent = standard ? "Стандарт" : "Нестандарт (+30%)";
     el.sizeBadge.className = "badge " + (standard ? "badge-ok" : "badge-warn");
 
-    const model = getModel(state.modelId);
-    const thicknessInvalid = state.thickness === 42 && model.type !== "щитовое";
-    el.thicknessWarning.style.display = thicknessInvalid ? "block" : "none";
+    el.thicknessWarning.style.display = !isSborno && state.thickness === 42 ? "block" : "none";
   }
 
   // --- Механика закраски превью двери ----------------------------------
