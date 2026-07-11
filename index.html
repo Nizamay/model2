@@ -186,8 +186,8 @@ select:focus, input:focus { outline: 2px solid var(--accent); outline-offset: -1
 
 /* Заголовки групп модели — цвет как в редакторе цен (зелёный/синий);
    сами модели внутри группы остаются обычного цвета текста. */
-#model optgroup[label="Сборные"] { color: var(--ok); font-weight: 700; }
-#model optgroup[label="Щитовые"] { color: var(--accent); font-weight: 700; }
+#model optgroup[label^="🟢"] { color: var(--ok); font-weight: 700; }
+#model optgroup[label^="🔵"] { color: var(--accent); font-weight: 700; }
 #model optgroup option { color: var(--text); font-weight: 400; }
 
 select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
@@ -770,9 +770,11 @@ const DB = {
 
   // Список моделей — двумя группами (см. PVH_ONLY_MODELS): «Сборные»
   // (выделенные зелёным) и «Щитовые» (остальные), внутри группы — по алфавиту.
+  // emoji — большинство браузеров игнорируют CSS-цвет у <optgroup> в нативном
+  // выпадающем списке, поэтому цветовое различие групп даём через сам текст.
   const MODEL_GROUPS = [
-    { type: "сборное", label: "Сборные" },
-    { type: "щитовое", label: "Щитовые" }
+    { type: "сборное", label: "Сборные", emoji: "🟢" },
+    { type: "щитовое", label: "Щитовые", emoji: "🔵" }
   ];
 
   function populateModels() {
@@ -783,7 +785,7 @@ const DB = {
           .sort((a, b) => RU_COLLATOR.compare(a.name, b.name));
         if (!items.length) return "";
         const opts = items.map((m) => `<option value="${m.id}">${m.name}</option>`).join("");
-        return `<optgroup label="${g.label}">${opts}</optgroup>`;
+        return `<optgroup label="${g.emoji} ${g.label}">${opts}</optgroup>`;
       })
       .join("");
     if (!DB.models.some((m) => m.id === state.modelId)) {
