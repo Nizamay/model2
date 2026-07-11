@@ -480,6 +480,18 @@ select:focus, input:focus { outline: 2px solid var(--accent); outline-offset: -1
  * моделей, которые на самом деле являются сборными.
  */
 
+// Модели, выделенные зелёным в исходном списке («Untitled spreadsheet.xlsx»,
+// лист «Модель двери») — по правилам заказчика такие модели доступны только
+// в плёнке ПВХ и не могут быть с кромкой (ни AL, ни ПВХ 2мм).
+const PVH_ONLY_MODELS = new Set([
+  "LX2", "Модерн LX2", "L-1", "Модерн 13", "Соренто 2 ПГ", "Соренто 1", "Рим 3 ПГ",
+  "Модерн 1", "Модерн LX11", "Модерн LX3", "Модерн S", "Модерн S3", "Модерн S4",
+  "Модерн ПГ", "Рим 1 ПГ", "Рим 2 ПГ", "Рим Лайт 2 ПО", "Рим 2 Лайт ПГ", "Рим 2 ПО",
+  "Рим Лайт 3 ПГ", "Рим 3 ПО", "Рим ЛАЙТ 3 ПО", "Новелла", "Британия ПГ", "Британия ПО",
+  "Соренто 2 ПО", "Водопад", "Виктория", "Вертикаль 2", "Водопад 2", "Пламя 1 ПГ",
+  "Пламя 2 ПО", "Иван да Марья"
+]);
+
 const DB = {
   models: [
     "LX2", "Модерн LX2", "L-1", "Модерн 13", "Линия", "Соренто 2 ПГ", "Соренто 1",
@@ -499,7 +511,8 @@ const DB = {
     id: "m" + i,
     name,
     type: "щитовое",
-    basePrice: 5000
+    basePrice: 5000,
+    pvhOnly: PVH_ONLY_MODELS.has(name)
   })),
 
   colors: {
@@ -574,34 +587,31 @@ const DB = {
     { id: "sumgait", name: "Сумгаит", price: 0 }
   ],
 
+  // Кромка — одна группа радиокнопок на материал: можно выбрать только один
+  // вид кромки (AL либо ПВХ 2мм), и для него — только 2 или 4 стороны.
+  // Недоступна моделям из PVH_ONLY_MODELS (см. getOptionDefs).
   options: {
     "пвх": [
       { id: "reinforce", name: "Усиление конструкции", kind: "checkbox", price: 2400 },
       {
-        id: "al_edge", name: "AL кромка", kind: "radio",
+        id: "edge", name: "Кромка", kind: "radio",
         choices: [
           { label: "Нет", price: 0 },
-          { label: "2 стороны", price: 2000 },
-          { label: "4 стороны", price: 4000 }
-        ]
-      },
-      {
-        id: "pvc_edge", name: "ПВХ кромка 2 мм", kind: "radio",
-        choices: [
-          { label: "Нет", price: 0 },
-          { label: "2 стороны", price: 1300 },
-          { label: "4 стороны", price: 2700 }
+          { label: "AL, 2 стороны", price: 2000 },
+          { label: "AL, 4 стороны", price: 4000 },
+          { label: "ПВХ 2мм, 2 стороны", price: 1300 },
+          { label: "ПВХ 2мм, 4 стороны", price: 2700 }
         ]
       }
     ],
     "эмаль": [
       { id: "reinforce", name: "Усиление", kind: "checkbox", price: 4000 },
       {
-        id: "al_edge", name: "AL кромка", kind: "radio",
+        id: "edge", name: "Кромка", kind: "radio",
         choices: [
           { label: "Нет", price: 0 },
-          { label: "2 стороны", price: 3100 },
-          { label: "4 стороны", price: 6300 }
+          { label: "AL, 2 стороны", price: 3100 },
+          { label: "AL, 4 стороны", price: 6300 }
         ]
       }
     ]
@@ -728,8 +738,16 @@ const DB = {
   }
 
   function availableMaterials(model) {
-    if (model.type === "сборное") return ["пвх"];
+    if (model.type === "сборное" || model.pvhOnly) return ["пвх"];
     return ["пвх", "эмаль"];
+  }
+
+  // Опции, доступные модели: у моделей из PVH_ONLY_MODELS нет кромки —
+  // ни AL, ни ПВХ 2мм.
+  function getOptionDefs(model) {
+    const defs = DB.options[state.material] || [];
+    if (model && model.pvhOnly) return defs.filter((opt) => opt.id !== "edge");
+    return defs;
   }
 
   function populateMaterial() {
@@ -765,7 +783,7 @@ const DB = {
   }
 
   function populateOptions() {
-    const optionDefs = DB.options[state.material] || [];
+    const optionDefs = getOptionDefs(getModel(state.modelId));
     state.options = {};
     el.options.innerHTML = optionDefs
       .map((opt) => {
@@ -799,7 +817,7 @@ const DB = {
   }
 
   function sumSelectedOptions() {
-    const optionDefs = DB.options[state.material] || [];
+    const optionDefs = getOptionDefs(getModel(state.modelId));
     let sum = 0;
     const lines = [];
     optionDefs.forEach((opt) => {
@@ -1474,7 +1492,7 @@ const DB = {
   function collectPrices() {
     return {
       v: 2,
-      models: DB.models.map((m) => ({ id: m.id, name: m.name, type: m.type, basePrice: m.basePrice })),
+      models: DB.models.map((m) => ({ id: m.id, name: m.name, type: m.type, basePrice: m.basePrice, pvhOnly: !!m.pvhOnly })),
       colors: DB.colors,
       categorySurcharge: DB.categorySurcharge,
       categoryNames: DB.categoryNames,
