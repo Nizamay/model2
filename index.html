@@ -184,6 +184,12 @@ select, input[type="number"] {
 
 select:focus, input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 
+/* Заголовки групп модели — цвет как в редакторе цен (зелёный/синий);
+   сами модели внутри группы остаются обычного цвета текста. */
+#model optgroup[label="Сборные"] { color: var(--ok); font-weight: 700; }
+#model optgroup[label="Щитовые"] { color: var(--accent); font-weight: 700; }
+#model optgroup option { color: var(--text); font-weight: 400; }
+
 select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 
 .size-info { margin-top: -8px; display: flex; flex-direction: column; gap: 6px; }
@@ -1711,12 +1717,12 @@ const DB = {
       <summary>Опции</summary>
       <div class="price-body">${optRows}</div></details>`);
 
-    // Модели — сгруппированы «Сборные»/«Щитовые» (см. MODEL_GROUPS), по алфавиту внутри группы
+    // Модели — сгруппированы «Сборные»/«Щитовые» (см. MODEL_GROUPS), по алфавиту внутри
+    // группы; у каждой группы своя кнопка добавления (новая модель наследует тип группы).
     let modelRows = MODEL_GROUPS.map((g) => {
       const items = DB.models
         .filter((m) => m.type === g.type)
         .sort((a, b) => RU_COLLATOR.compare(a.name, b.name));
-      if (!items.length) return "";
       const rows = items
         .map((m) => editItem("model", { id: m.id }, m.name, m.basePrice, { search: true }))
         .join("");
@@ -1724,6 +1730,7 @@ const DB = {
       return `<div class="model-group" data-group="${g.type}">
         <div class="price-subhead ${cls}">${g.label}</div>
         ${rows}
+        ${addBtn("model", { type: g.type }, "Добавить модель")}
       </div>`;
     }).join("");
     parts.push(`<details class="price-group" data-key="model"${isOpen("model", false) ? " open" : ""}>
@@ -1731,7 +1738,6 @@ const DB = {
       <div class="price-body">
         <input type="search" class="price-search" placeholder="Поиск модели…" id="modelSearch">
         <div id="modelPriceRows">${modelRows}</div>
-        ${addBtn("model", {}, "Добавить модель")}
       </div></details>`);
 
     el.priceEditor.innerHTML = parts.join("");
@@ -1849,9 +1855,11 @@ const DB = {
         }
         case "glass":
           DB.glass.push({ id: uid("g"), name: "Новое стекло", price: 0 }); populateGlass(); break;
-        case "model":
-          DB.models.push({ id: uid("m"), name: "Новая модель", type: "щитовое", basePrice: 0 });
+        case "model": {
+          const type = d.type === "сборное" ? "сборное" : "щитовое";
+          DB.models.push({ id: uid("m"), name: "Новая модель", type, basePrice: 0, pvhOnly: type === "сборное" });
           populateModels(); break;
+        }
         case "option":
           DB.options[d.material].push({ id: uid("opt"), name: "Новая опция", kind: "checkbox", price: 0 });
           populateOptions(); break;
