@@ -742,11 +742,13 @@ const DB = {
     return ["пвх", "эмаль"];
   }
 
-  // Опции, доступные модели: у моделей из PVH_ONLY_MODELS нет кромки —
-  // ни AL, ни ПВХ 2мм.
+  // Опции, доступные модели: у моделей из PVH_ONLY_MODELS нет ни кромки
+  // (AL, ПВХ 2мм), ни усиления конструкции.
   function getOptionDefs(model) {
     const defs = DB.options[state.material] || [];
-    if (model && model.pvhOnly) return defs.filter((opt) => opt.id !== "edge");
+    if (model && model.pvhOnly) {
+      return defs.filter((opt) => opt.id !== "edge" && opt.id !== "reinforce");
+    }
     return defs;
   }
 
