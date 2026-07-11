@@ -902,10 +902,7 @@ const DB = {
     el.sizeBadge.textContent = standard ? "Стандарт" : "Нестандарт (+30%)";
     el.sizeBadge.className = "badge " + (standard ? "badge-ok" : "badge-warn");
 
-    el.thicknessWarning.textContent = isSborno
-      ? "36 мм — единственная доступная толщина для сборных полотен"
-      : "42 мм доступна только для щитовых полотен";
-    el.thicknessWarning.style.display = isSborno || state.thickness === 42 ? "block" : "none";
+    el.thicknessWarning.style.display = !isSborno && state.thickness === 42 ? "block" : "none";
   }
 
   // --- Механика закраски превью двери ----------------------------------
