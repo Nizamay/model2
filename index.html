@@ -353,12 +353,6 @@ select:focus, input:focus { outline: 2px solid var(--accent); outline-offset: -1
     </div>
 
     <div class="field">
-      <div id="colorPreview" class="color-preview">
-        <span id="colorPreviewLabel" class="color-preview-label"></span>
-      </div>
-    </div>
-
-    <div class="field">
       <label for="glass">Стекло</label>
       <select id="glass"></select>
     </div>
@@ -380,46 +374,6 @@ select:focus, input:focus { outline: 2px solid var(--accent); outline-offset: -1
     <div class="size-info">
       <span id="sizeBadge" class="badge"></span>
       <div id="thicknessWarning" class="warning">42 мм доступна только для щитовых полотен</div>
-    </div>
-
-    <div class="field">
-      <div class="preview-head">
-        <label>Внешний вид двери</label>
-        <label class="scene-toggle" for="sceneToggle">
-          <input type="checkbox" id="sceneToggle">
-          <span>На стене (интерьер)</span>
-        </label>
-      </div>
-      <div class="door-preview">
-        <svg id="doorPreview" class="door-preview-svg" viewBox="0 0 220 400" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Превью двери">
-          <defs>
-            <clipPath id="doorClip">
-              <rect id="doorClipRect"></rect>
-            </clipPath>
-            <linearGradient id="doorShadeGradient" x1="0%" y1="0%" x2="100%" y2="100%"></linearGradient>
-            <linearGradient id="glassFillGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stop-color="#eef6fb" stop-opacity="1"/>
-              <stop offset="100%" stop-color="#c3d8e6" stop-opacity="1"/>
-            </linearGradient>
-            <pattern id="doorTexturePattern" patternUnits="userSpaceOnUse">
-              <image id="doorTextureImage" href="" preserveAspectRatio="none"></image>
-            </pattern>
-          </defs>
-          <g id="doorSceneGroup"></g>
-          <g clip-path="url(#doorClip)">
-            <rect id="doorLeafRect" fill="#c9cbcd"></rect>
-            <rect id="doorShadeRect" fill="url(#doorShadeGradient)"></rect>
-          </g>
-          <rect id="doorOutlineRect" fill="none" stroke="rgba(0,0,0,.25)" stroke-width="1.5"></rect>
-          <g id="doorGlassGroup"></g>
-          <g id="doorHandleGroup"></g>
-        </svg>
-      </div>
-      <div class="wall-color-row" id="wallColorRow" style="display:none">
-        <label for="wallColor">Цвет стены</label>
-        <div class="wall-swatches" id="wallSwatches"></div>
-        <input type="color" id="wallColor" aria-label="Свой цвет стены">
-      </div>
     </div>
 
     <div class="field">
@@ -712,8 +666,6 @@ const DB = {
     model: document.getElementById("model"),
     material: document.getElementById("material"),
     color: document.getElementById("color"),
-    colorPreview: document.getElementById("colorPreview"),
-    colorPreviewLabel: document.getElementById("colorPreviewLabel"),
     glass: document.getElementById("glass"),
     height: document.getElementById("height"),
     width: document.getElementById("width"),
@@ -724,10 +676,6 @@ const DB = {
     discount: document.getElementById("discount"),
     breakdown: document.getElementById("breakdown"),
     total: document.getElementById("total"),
-    sceneToggle: document.getElementById("sceneToggle"),
-    wallColorRow: document.getElementById("wallColorRow"),
-    wallSwatches: document.getElementById("wallSwatches"),
-    wallColor: document.getElementById("wallColor"),
     sceneWallSwatches: document.getElementById("s_wallSwatches"),
     sceneWallColor: document.getElementById("s_wallColor"),
     sceneWallTextures: document.getElementById("s_wallTextures"),
@@ -743,7 +691,6 @@ const DB = {
 
   // Контексты рисования для двух SVG: превью в калькуляторе и картинка в
   // разделе «2D картинка».
-  const calcCtx = makeDoorCtx("");
   const sceneCtx = makeDoorCtx("s_");
 
   function getModel(id) {
@@ -881,16 +828,6 @@ const DB = {
     const model = getModel(state.modelId);
     const thicknessInvalid = state.thickness === 42 && model.type !== "щитовое";
     el.thicknessWarning.style.display = thicknessInvalid ? "block" : "none";
-  }
-
-  function updateColorPreview() {
-    const swatch = DB.colorSwatches[state.color];
-
-    // Один кадр образца (пропорции 15x20 см, задаются в CSS), заполняет рамку
-    // целиком — без полей сверху/снизу и без повтора.
-    el.colorPreview.style.backgroundImage = swatch ? `url("${swatch.image}")` : "none";
-    el.colorPreview.style.backgroundColor = swatch ? swatch.hex : "var(--border)";
-    el.colorPreviewLabel.textContent = state.color || "";
   }
 
   // --- Механика закраски превью двери ----------------------------------
@@ -1399,9 +1336,8 @@ const DB = {
     const total = Math.round(subtotal * (1 - discount / 100));
 
     updateSizeUI();
-    updateColorPreview();
-    drawDoor(calcCtx, false);
-    // Картинку в разделе «2D картинка» перерисовываем, только когда он открыт.
+    // Превью плёнки и двери в калькуляторе убраны; картинку в разделе
+    // «2D картинка» перерисовываем, только когда он открыт.
     if (el.viewScene && !el.viewScene.hidden) drawDoor(sceneCtx, true);
 
     const rows = [];
@@ -1460,14 +1396,7 @@ const DB = {
       state.discount = el.discount.value;
       render();
     });
-    el.sceneToggle.addEventListener("change", () => {
-      state.sceneMode = el.sceneToggle.checked;
-      el.wallColorRow.style.display = state.sceneMode ? "flex" : "none";
-      render();
-    });
-    el.wallSwatches.addEventListener("click", onWallSwatchClick);
     el.sceneWallSwatches.addEventListener("click", onWallSwatchClick);
-    el.wallColor.addEventListener("input", () => setWallColor(el.wallColor.value));
     el.sceneWallColor.addEventListener("input", () => setWallColor(el.sceneWallColor.value));
     el.sceneWallTextures.addEventListener("click", (e) => {
       const btn = e.target.closest(".wall-texture");
@@ -1484,7 +1413,6 @@ const DB = {
   // картинка», поэтому меняем состояние и синхронизируем обе панели.
   function setWallColor(hex) {
     state.wallColor = hex;
-    el.wallColor.value = hex;
     el.sceneWallColor.value = hex;
     renderWallSwatches();
     render();
@@ -1502,7 +1430,6 @@ const DB = {
       (p) =>
         `<button type="button" class="wall-swatch${p.hex.toLowerCase() === cur ? " active" : ""}" data-hex="${p.hex}" style="background:${p.hex}" title="${p.name}" aria-label="${p.name}"></button>`
     ).join("");
-    el.wallSwatches.innerHTML = html;
     el.sceneWallSwatches.innerHTML = html;
   }
 
@@ -1826,7 +1753,6 @@ const DB = {
     el.width.value = state.width;
     el.thickness.value = state.thickness;
     el.discount.value = state.discount;
-    el.wallColor.value = state.wallColor;
     el.sceneWallColor.value = state.wallColor;
     renderWallSwatches();
     renderWallTextures();
@@ -1847,7 +1773,6 @@ const DB = {
   }
 
   document.addEventListener("DOMContentLoaded", init);
-  window.addEventListener("resize", updateColorPreview);
 })();
 </script>
 <script>
