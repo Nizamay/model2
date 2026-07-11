@@ -110,23 +110,51 @@ h1 { font-size: 20px; margin: 0 0 4px; }
   content: "₽"; position: absolute; right: 9px; top: 50%; transform: translateY(-50%);
   color: var(--muted); font-size: 13px; pointer-events: none;
 }
+.price-input-wrap.is-percent::after { content: "%"; }
 .price-search { width: 100%; margin-bottom: 4px; }
 .price-subhead { font-size: 13px; font-weight: 700; color: var(--muted); margin-top: 6px; }
 
-.edit-row { gap: 8px; }
-.edit-row .edit-name {
-  flex: 1; min-width: 0; font-size: 14px; padding: 8px 10px;
+/* Пункт-аккордеон: имя в заголовке видно целиком, внутри — поля и удаление */
+.pitem { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.pitem + .pitem { margin-top: 6px; }
+.pitem > summary {
+  list-style: none; cursor: pointer; padding: 10px 12px; font-size: 14px;
+  color: var(--text); display: flex; align-items: center; gap: 8px;
 }
-.edit-row .price-input-wrap { flex: 0 0 auto; }
-.edit-row input[type="number"] { width: 96px; }
-.row-del {
-  flex: 0 0 auto; width: 32px; height: 36px; border-radius: 8px;
-  border: 1px solid var(--border); background: var(--bg); color: var(--warn);
-  font-size: 14px; cursor: pointer; line-height: 1;
+.pitem > summary::-webkit-details-marker { display: none; }
+.pitem > summary::before { content: "▸"; color: var(--muted); flex: 0 0 auto; }
+.pitem[open] > summary::before { content: "▾"; }
+.pitem-body { padding: 4px 12px 12px; display: flex; flex-direction: column; gap: 10px; }
+.pitem-field { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--muted); }
+.pitem-field > span { flex: 0 0 62px; }
+.pitem-field input[type="text"] { flex: 1; min-width: 0; font-size: 14px; padding: 8px 10px; }
+.pitem-field input[type="number"] { width: 120px; }
+
+.pitem-del { display: flex; align-items: center; gap: 10px; padding-top: 2px; }
+.switch { position: relative; display: inline-block; width: 40px; height: 22px; flex: 0 0 auto; }
+.switch input { opacity: 0; width: 0; height: 0; }
+.switch-track { position: absolute; inset: 0; background: var(--border); border-radius: 999px; transition: .15s; }
+.switch-track::before {
+  content: ""; position: absolute; width: 16px; height: 16px; left: 3px; top: 3px;
+  background: #fff; border-radius: 50%; transition: .15s;
 }
-.row-del:hover { background: var(--warn-bg); }
-.opt-choice { padding-left: 16px; }
-.opt-head { margin-top: 4px; }
+.switch input:checked + .switch-track { background: var(--warn); }
+.switch input:checked + .switch-track::before { transform: translateX(18px); }
+.switch-label { font-size: 13px; color: var(--muted); flex: 1; }
+.pitem .row-del {
+  flex: 0 0 auto; padding: 7px 14px; border-radius: 8px;
+  border: 1px solid var(--warn); background: none; color: var(--warn);
+  font-size: 13px; font-weight: 600; cursor: pointer;
+}
+.pitem .row-del:hover:not(:disabled) { background: var(--warn-bg); }
+.pitem .row-del:disabled { opacity: .45; cursor: not-allowed; border-color: var(--border); color: var(--muted); }
+
+.choice-row { display: flex; align-items: center; gap: 8px; }
+.choice-row .edit-name { flex: 1; min-width: 0; font-size: 14px; padding: 7px 10px; }
+.choice-row input[type="number"] { width: 92px; }
+.choice-row .row-del { padding: 6px 10px; }
+.choice-head { font-size: 12px; font-weight: 700; color: var(--muted); margin-top: 2px; }
+
 .row-add {
   align-self: flex-start; margin-top: 2px;
   padding: 7px 12px; font-size: 13px; font-weight: 600;
@@ -1542,17 +1570,49 @@ const DB = {
   }
 
   // Строка "название + цена + удалить"
-  function editRow(kind, ids, nameVal, priceVal, opts) {
-    opts = opts || {};
-    const a = `data-kind="${kind}" ` +
+  function dataAttrs(kind, ids) {
+    return `data-kind="${kind}" ` +
       Object.keys(ids).map((k) => `data-${k}="${esc(ids[k])}"`).join(" ");
+  }
+
+  // Пункт-аккордеон: заголовок — полное имя (читается целиком), внутри —
+  // поля названия/цены и удаление, защищённое тумблером.
+  function editItem(kind, ids, nameVal, priceVal, opts) {
+    opts = opts || {};
+    const a = dataAttrs(kind, ids);
     const search = opts.search ? ` data-name="${esc(String(nameVal).toLowerCase())}"` : "";
-    return `<div class="price-row edit-row"${search}>
-      <input type="text" class="edit-name" value="${esc(nameVal)}" data-field="name" ${a}>
-      <span class="price-input-wrap"><input type="number" step="10" min="0" value="${priceVal}" data-field="price" ${a}></span>
-      <button type="button" class="row-del" aria-label="Удалить" data-field="del" ${a}>✕</button>
+    const priceBlock = opts.noPrice ? "" : `
+        <label class="pitem-field">
+          <span>Цена</span>
+          <span class="price-input-wrap"><input type="number" step="10" min="0" value="${priceVal}" data-field="price" ${a}></span>
+        </label>`;
+    return `<details class="pitem"${search}>
+      <summary class="pitem-summary">${esc(nameVal)}</summary>
+      <div class="pitem-body">
+        <label class="pitem-field">
+          <span>Название</span>
+          <input type="text" class="edit-name" value="${esc(nameVal)}" data-field="name" ${a}>
+        </label>${priceBlock}${opts.extraBody || ""}
+        <div class="pitem-del">
+          <label class="switch"><input type="checkbox" class="arm-del"><span class="switch-track"></span></label>
+          <span class="switch-label">Разрешить удаление</span>
+          <button type="button" class="row-del" data-field="del" ${a} disabled>Удалить</button>
+        </div>
+      </div>
+    </details>`;
+  }
+
+  // Компактная строка варианта (для радио-опций). Удаление под общим
+  // тумблером опции (кнопка ✕ включается вместе с «Удалить» опции).
+  function choiceRow(mat, optId, i, label, price) {
+    const a = dataAttrs("optionChoice", { material: mat, opt: optId, choice: i });
+    return `<div class="choice-row">
+      <input type="text" class="edit-name" value="${esc(label)}" data-field="name" ${a}>
+      <span class="price-input-wrap"><input type="number" step="10" min="0" value="${price}" data-field="price" ${a}></span>
+      <button type="button" class="row-del" data-field="del" ${a} disabled>✕</button>
     </div>`;
   }
+
   function addBtn(add, ids, label) {
     const a = `data-add="${add}" ` +
       Object.keys(ids).map((k) => `data-${k}="${esc(ids[k])}"`).join(" ");
@@ -1569,13 +1629,13 @@ const DB = {
 
     const parts = [];
 
-    // Нестандарт (одно значение, без добавления типов)
+    // Нестандарт (одно значение, без добавления типов) — проценты, без ₽
     parts.push(`<details class="price-group" data-key="ns"${isOpen("ns", true) ? " open" : ""}>
       <summary>Наценка за нестандартный размер</summary>
       <div class="price-body">
         <div class="price-row">
-          <span class="price-label">Надбавка за нестандарт, %</span>
-          <span class="price-input-wrap"><input type="number" step="1" min="0" value="${DB.nonStandardPercent}" data-kind="nonstandard" data-field="price"></span>
+          <span class="price-label">Надбавка за нестандарт</span>
+          <span class="price-input-wrap is-percent"><input type="number" step="1" min="0" value="${DB.nonStandardPercent}" data-kind="nonstandard" data-field="price"></span>
         </div>
       </div></details>`);
 
@@ -1584,7 +1644,7 @@ const DB = {
     Object.keys(DB.categorySurcharge).forEach((mat) => {
       colorRows += `<div class="price-subhead">${MATERIAL_LABEL[mat] || mat}</div>`;
       Object.keys(DB.categorySurcharge[mat]).sort((a, b) => a - b).forEach((cat) => {
-        colorRows += editRow("surcharge", { material: mat, cat: cat }, catName(mat, cat), DB.categorySurcharge[mat][cat]);
+        colorRows += editItem("surcharge", { material: mat, cat: cat }, catName(mat, cat), DB.categorySurcharge[mat][cat]);
       });
       colorRows += addBtn("category", { material: mat }, "Добавить категорию");
     });
@@ -1594,7 +1654,7 @@ const DB = {
 
     // Стекло
     let glassRows = DB.glass.map((g) =>
-      editRow("glass", { id: g.id }, g.name, g.price)).join("");
+      editItem("glass", { id: g.id }, g.name, g.price)).join("");
     glassRows += addBtn("glass", {}, "Добавить стекло");
     parts.push(`<details class="price-group" data-key="glass"${isOpen("glass", false) ? " open" : ""}>
       <summary>Стекло</summary>
@@ -1606,20 +1666,14 @@ const DB = {
       optRows += `<div class="price-subhead">${MATERIAL_LABEL[mat] || mat}</div>`;
       DB.options[mat].forEach((opt) => {
         if (opt.kind === "checkbox") {
-          optRows += editRow("option", { material: mat, opt: opt.id }, opt.name, opt.price);
+          optRows += editItem("option", { material: mat, opt: opt.id }, opt.name, opt.price);
         } else {
-          // радио-опция: редактируемое название + удаление, ниже — варианты
-          const a = `data-kind="optionName" data-material="${esc(mat)}" data-opt="${esc(opt.id)}"`;
-          optRows += `<div class="price-row edit-row opt-head">
-            <input type="text" class="edit-name" value="${esc(opt.name)}" data-field="name" ${a}>
-            <button type="button" class="row-del" aria-label="Удалить" data-field="del" ${a}>✕</button>
-          </div>`;
-          opt.choices.forEach((c, i) => {
-            optRows += `<div class="opt-choice">` +
-              editRow("optionChoice", { material: mat, opt: opt.id, choice: i }, c.label, c.price) +
-              `</div>`;
-          });
-          optRows += `<div class="opt-choice">` + addBtn("choice", { material: mat, opt: opt.id }, "Добавить вариант") + `</div>`;
+          // радио-опция: аккордеон с названием, внутри — варианты (тумблер
+          // удаления в опции включает и удаление опции, и удаление вариантов)
+          let choices = `<div class="choice-head">Варианты</div>`;
+          opt.choices.forEach((c, i) => { choices += choiceRow(mat, opt.id, i, c.label, c.price); });
+          choices += addBtn("choice", { material: mat, opt: opt.id }, "Добавить вариант");
+          optRows += editItem("optionName", { material: mat, opt: opt.id }, opt.name, 0, { noPrice: true, extraBody: choices });
         }
       });
       optRows += addBtn("option", { material: mat }, "Добавить опцию");
@@ -1630,7 +1684,7 @@ const DB = {
 
     // Модели
     let modelRows = DB.models.map((m) =>
-      editRow("model", { id: m.id }, m.name, m.basePrice, { search: true })).join("");
+      editItem("model", { id: m.id }, m.name, m.basePrice, { search: true })).join("");
     parts.push(`<details class="price-group" data-key="model"${isOpen("model", false) ? " open" : ""}>
       <summary>Модели (базовая цена полотна)</summary>
       <div class="price-body">
@@ -1645,13 +1699,32 @@ const DB = {
   // Ввод названия/цены существующего элемента (не меняет структуру → не перерисовываем редактор)
   function onPriceInput(e) {
     const input = e.target;
-    if (input.tagName !== "INPUT" || input.type === "search") return;
+    if (input.tagName !== "INPUT") return;
+
+    // Тумблер-«движок»: включает/выключает кнопки удаления внутри пункта,
+    // чтобы удалить нельзя было случайно.
+    if (input.classList.contains("arm-del")) {
+      const item = input.closest(".pitem");
+      if (item) item.querySelectorAll(".row-del").forEach((b) => { b.disabled = !input.checked; });
+      return;
+    }
+    if (input.type === "search") return;
+
     const d = input.dataset;
     const field = d.field;
     if (field !== "name" && field !== "price") return;
     const isName = field === "name";
     const val = isName ? input.value : Number(input.value);
     if (!isName && Number.isNaN(val)) return;
+
+    // Держим заголовок аккордеона в синхроне с названием самого пункта
+    // (но не с названием варианта — оно живёт в .choice-row).
+    if (isName && !input.closest(".choice-row")) {
+      const item = input.closest(".pitem");
+      const summary = item && item.querySelector(":scope > summary");
+      if (summary) summary.textContent = val;
+      if (item && item.hasAttribute("data-name")) item.setAttribute("data-name", String(val).toLowerCase());
+    }
 
     let refresh = null;
     switch (d.kind) {
@@ -1757,7 +1830,7 @@ const DB = {
   function onModelSearch(e) {
     if (e.target.id !== "modelSearch") return;
     const q = e.target.value.trim().toLowerCase();
-    el.priceEditor.querySelectorAll("#modelPriceRows .price-row").forEach((row) => {
+    el.priceEditor.querySelectorAll("#modelPriceRows .pitem").forEach((row) => {
       row.style.display = !q || (row.dataset.name || "").includes(q) ? "" : "none";
     });
   }
