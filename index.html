@@ -1896,16 +1896,24 @@ const DB = {
 
   // Пункт-аккордеон: заголовок — полное имя (читается целиком), внутри —
   // поля названия/цены и удаление, защищённое тумблером.
+  // Стабильный ключ пункта (для сохранения раскрытого состояния между
+  // перерисовками редактора — см. renderPriceEditor).
+  function itemKey(kind, ids) {
+    return kind + ":" + Object.values(ids).join(":");
+  }
+
   function editItem(kind, ids, nameVal, priceVal, opts) {
     opts = opts || {};
     const a = dataAttrs(kind, ids);
+    const key = itemKey(kind, ids);
+    const openAttr = opts.isOpen && opts.isOpen(key, false) ? " open" : "";
     const search = opts.search ? ` data-name="${esc(String(nameVal).toLowerCase())}"` : "";
     const priceBlock = opts.noPrice ? "" : `
         <label class="pitem-field">
           <span>Цена</span>
           <span class="price-input-wrap"><input type="number" step="10" min="0" value="${priceVal}" data-field="price" ${a}></span>
         </label>`;
-    return `<details class="pitem"${search}>
+    return `<details class="pitem" data-key="${esc(key)}"${openAttr}${search}>
       <summary class="pitem-summary">${esc(nameVal)}</summary>
       <div class="pitem-body">
         <label class="pitem-field">
@@ -1933,8 +1941,8 @@ const DB = {
   }
 
   // Строка одного цвета/плёнки внутри категории — только название (у цвета
-  // нет своей цены, наценка общая на категорию), удаление под общим тумблером
-  // категории, как и у вариантов кромки.
+  // нет своей цены, наценка общая на категорию). Своя защита от случайного
+  // удаления, как у моделей — тумблер именно этого цвета, а не всей категории.
   // Примечание: переименование здесь не переименовывает ключ в
   // DB.colorSwatches — образец текстуры для ПВХ подвязан к точному прежнему
   // названию и после переименования просто перестанет находиться.
@@ -1942,7 +1950,11 @@ const DB = {
     const a = dataAttrs("color", { material: mat, cat: cat, idx: i });
     return `<div class="choice-row">
       <input type="text" class="edit-name" value="${esc(name)}" data-field="name" ${a}>
-      <button type="button" class="row-del" data-field="del" ${a} disabled>✕</button>
+      <div class="pitem-del">
+        <label class="switch"><input type="checkbox" class="arm-del"><span class="switch-track"></span></label>
+        <span class="switch-label">Разрешить удаление</span>
+        <button type="button" class="row-del" data-field="del" ${a} disabled>Удалить</button>
+      </div>
     </div>`;
   }
 
@@ -1953,9 +1965,11 @@ const DB = {
   }
 
   function renderPriceEditor() {
-    // запомним, какие группы раскрыты, чтобы не схлопывать при перерисовке
+    // запомним, какие пункты раскрыты (и верхнеуровневые группы, и вложенные
+    // категории/опции/модели), чтобы не схлопывать их при перерисовке —
+    // иначе, например, «Добавить цвет» выглядело бы как закрытие категории.
     const openKeys = {};
-    el.priceEditor.querySelectorAll("details.price-group").forEach((d) => {
+    el.priceEditor.querySelectorAll("details[data-key]").forEach((d) => {
       openKeys[d.dataset.key] = d.open;
     });
     const isOpen = (k, def) => (k in openKeys ? openKeys[k] : def);
@@ -1984,7 +1998,7 @@ const DB = {
         colorsHtml += addBtn("color", { material: mat, cat: cat }, "Добавить цвет");
         colorRows += editItem(
           "surcharge", { material: mat, cat: cat }, catName(mat, cat), DB.categorySurcharge[mat][cat],
-          { extraBody: colorsHtml }
+          { extraBody: colorsHtml, isOpen }
         );
       });
       colorRows += addBtn("category", { material: mat }, "Добавить категорию");
@@ -1995,7 +2009,7 @@ const DB = {
 
     // Стекло
     let glassRows = DB.glass.map((g) =>
-      editItem("glass", { id: g.id }, g.name, g.price)).join("");
+      editItem("glass", { id: g.id }, g.name, g.price, { isOpen })).join("");
     glassRows += addBtn("glass", {}, "Добавить стекло");
     parts.push(`<details class="price-group" data-key="glass"${isOpen("glass", false) ? " open" : ""}>
       <summary>Стекло</summary>
@@ -2007,14 +2021,14 @@ const DB = {
       optRows += `<div class="price-subhead">${MATERIAL_LABEL[mat] || mat}</div>`;
       DB.options[mat].forEach((opt) => {
         if (opt.kind === "checkbox") {
-          optRows += editItem("option", { material: mat, opt: opt.id }, opt.name, opt.price);
+          optRows += editItem("option", { material: mat, opt: opt.id }, opt.name, opt.price, { isOpen });
         } else {
           // радио-опция: аккордеон с названием, внутри — варианты (тумблер
           // удаления в опции включает и удаление опции, и удаление вариантов)
           let choices = `<div class="choice-head">Варианты</div>`;
           opt.choices.forEach((c, i) => { choices += choiceRow(mat, opt.id, i, c.label, c.price); });
           choices += addBtn("choice", { material: mat, opt: opt.id }, "Добавить вариант");
-          optRows += editItem("optionName", { material: mat, opt: opt.id }, opt.name, 0, { noPrice: true, extraBody: choices });
+          optRows += editItem("optionName", { material: mat, opt: opt.id }, opt.name, 0, { noPrice: true, extraBody: choices, isOpen });
         }
       });
       optRows += addBtn("option", { material: mat }, "Добавить опцию");
@@ -2030,7 +2044,7 @@ const DB = {
         .filter((m) => m.type === g.type)
         .sort((a, b) => RU_COLLATOR.compare(a.name, b.name));
       const rows = items
-        .map((m) => editItem("model", { id: m.id }, m.name, m.basePrice, { search: true }))
+        .map((m) => editItem("model", { id: m.id }, m.name, m.basePrice, { search: true, isOpen }))
         .join("");
       const cls = g.type === "сборное" ? "price-subhead-sborno" : "price-subhead-shitovoe";
       return `<div class="model-group" data-group="${g.type}">
@@ -2055,10 +2069,11 @@ const DB = {
     if (input.tagName !== "INPUT") return;
 
     // Тумблер-«движок»: включает/выключает кнопки удаления внутри пункта,
-    // чтобы удалить нельзя было случайно.
+    // чтобы удалить нельзя было случайно. Цвет внутри категории — сам себе
+    // область защиты (.choice-row), остальное — общий тумблер .pitem.
     if (input.classList.contains("arm-del")) {
-      const item = input.closest(".pitem");
-      if (item) item.querySelectorAll(".row-del").forEach((b) => { b.disabled = !input.checked; });
+      const scope = input.closest(".choice-row") || input.closest(".pitem");
+      if (scope) scope.querySelectorAll(".row-del").forEach((b) => { b.disabled = !input.checked; });
       return;
     }
     if (input.type === "search") return;
