@@ -1913,18 +1913,19 @@ const DB = {
           <span>Цена</span>
           <span class="price-input-wrap"><input type="number" step="10" min="0" value="${priceVal}" data-field="price" ${a}></span>
         </label>`;
+    const delBlock = opts.noDelete ? "" : `
+        <div class="pitem-del">
+          <label class="switch"><input type="checkbox" class="arm-del"><span class="switch-track"></span></label>
+          <span class="switch-label">Разрешить удаление</span>
+          <button type="button" class="row-del" data-field="del" ${a} disabled>Удалить</button>
+        </div>`;
     return `<details class="pitem" data-key="${esc(key)}"${openAttr}${search}>
       <summary class="pitem-summary">${esc(nameVal)}</summary>
       <div class="pitem-body">
         <label class="pitem-field">
           <span>Название</span>
           <input type="text" class="edit-name" value="${esc(nameVal)}" data-field="name" ${a}>
-        </label>${priceBlock}${opts.extraBody || ""}
-        <div class="pitem-del">
-          <label class="switch"><input type="checkbox" class="arm-del"><span class="switch-track"></span></label>
-          <span class="switch-label">Разрешить удаление</span>
-          <button type="button" class="row-del" data-field="del" ${a} disabled>Удалить</button>
-        </div>
+        </label>${priceBlock}${opts.extraBody || ""}${delBlock}
       </div>
     </details>`;
   }
@@ -1996,9 +1997,12 @@ const DB = {
         let colorsHtml = `<div class="choice-head">Цвета в категории</div>`;
         colors.forEach((name, i) => { colorsHtml += colorRow(mat, cat, i, name); });
         colorsHtml += addBtn("color", { material: mat, cat: cat }, "Добавить цвет");
+        // noDelete: удаление категории целиком стирало бы разом все цвета
+        // внутри — слишком опасно одной случайной кнопкой. Отдельные цвета
+        // по-прежнему удаляются каждый своим тумблером (см. colorRow).
         colorRows += editItem(
           "surcharge", { material: mat, cat: cat }, catName(mat, cat), DB.categorySurcharge[mat][cat],
-          { extraBody: colorsHtml, isOpen }
+          { extraBody: colorsHtml, isOpen, noDelete: true }
         );
       });
       colorRows += addBtn("category", { material: mat }, "Добавить категорию");
@@ -2150,11 +2154,9 @@ const DB = {
     if (del) {
       const d = del.dataset;
       switch (d.kind) {
-        case "surcharge":
-          delete DB.categorySurcharge[d.material][d.cat];
-          if (DB.colors[d.material]) delete DB.colors[d.material][d.cat];
-          if (DB.categoryNames[d.material]) delete DB.categoryNames[d.material][d.cat];
-          populateColors(); break;
+        // "surcharge" (удаление категории целиком) намеренно нет — см.
+        // editItem(..., { noDelete: true }) в renderPriceEditor: одна кнопка
+        // стирала бы разом все цвета/плёнки внутри категории.
         case "glass":
           DB.glass = DB.glass.filter((g) => g.id !== d.id); populateGlass(); break;
         case "model":
