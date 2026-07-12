@@ -1932,6 +1932,20 @@ const DB = {
     </div>`;
   }
 
+  // Строка одного цвета/плёнки внутри категории — только название (у цвета
+  // нет своей цены, наценка общая на категорию), удаление под общим тумблером
+  // категории, как и у вариантов кромки.
+  // Примечание: переименование здесь не переименовывает ключ в
+  // DB.colorSwatches — образец текстуры для ПВХ подвязан к точному прежнему
+  // названию и после переименования просто перестанет находиться.
+  function colorRow(mat, cat, i, name) {
+    const a = dataAttrs("color", { material: mat, cat: cat, idx: i });
+    return `<div class="choice-row">
+      <input type="text" class="edit-name" value="${esc(name)}" data-field="name" ${a}>
+      <button type="button" class="row-del" data-field="del" ${a} disabled>✕</button>
+    </div>`;
+  }
+
   function addBtn(add, ids, label) {
     const a = `data-add="${add}" ` +
       Object.keys(ids).map((k) => `data-${k}="${esc(ids[k])}"`).join(" ");
@@ -1958,17 +1972,25 @@ const DB = {
         </div>
       </div></details>`);
 
-    // Наценка за цвет (категории)
+    // Плёнка ПВХ и эмаль (цвета и категории) — наценка за категорию + сам
+    // список цветов/плёнок, которые в неё входят.
     let colorRows = "";
     Object.keys(DB.categorySurcharge).forEach((mat) => {
       colorRows += `<div class="price-subhead">${MATERIAL_LABEL[mat] || mat}</div>`;
       Object.keys(DB.categorySurcharge[mat]).sort((a, b) => a - b).forEach((cat) => {
-        colorRows += editItem("surcharge", { material: mat, cat: cat }, catName(mat, cat), DB.categorySurcharge[mat][cat]);
+        const colors = (DB.colors[mat] && DB.colors[mat][cat]) || [];
+        let colorsHtml = `<div class="choice-head">Цвета в категории</div>`;
+        colors.forEach((name, i) => { colorsHtml += colorRow(mat, cat, i, name); });
+        colorsHtml += addBtn("color", { material: mat, cat: cat }, "Добавить цвет");
+        colorRows += editItem(
+          "surcharge", { material: mat, cat: cat }, catName(mat, cat), DB.categorySurcharge[mat][cat],
+          { extraBody: colorsHtml }
+        );
       });
       colorRows += addBtn("category", { material: mat }, "Добавить категорию");
     });
     parts.push(`<details class="price-group" data-key="color"${isOpen("color", false) ? " open" : ""}>
-      <summary>Наценка за цвет (категории)</summary>
+      <summary>Пленка ПВХ и эмаль (цвета и категории)</summary>
       <div class="price-body">${colorRows}</div></details>`);
 
     // Стекло
@@ -2092,6 +2114,11 @@ const DB = {
         }
         refresh = populateOptions; break;
       }
+      case "color": {
+        const arr = DB.colors[d.material] && DB.colors[d.material][d.cat];
+        if (arr && isName) arr[Number(d.idx)] = val;
+        refresh = populateColors; break;
+      }
       default: return;
     }
     if (refresh) refresh();
@@ -2125,6 +2152,11 @@ const DB = {
           if (opt && opt.choices.length > 1) opt.choices.splice(Number(d.choice), 1);
           populateOptions(); break;
         }
+        case "color": {
+          const arr = DB.colors[d.material] && DB.colors[d.material][d.cat];
+          if (arr) arr.splice(Number(d.idx), 1);
+          populateColors(); break;
+        }
         default: return;
       }
     } else {
@@ -2137,6 +2169,9 @@ const DB = {
           (DB.colors[d.material] = DB.colors[d.material] || {})[nk] = [];
           break;
         }
+        case "color":
+          (DB.colors[d.material][d.cat] = DB.colors[d.material][d.cat] || []).push("Новый цвет");
+          populateColors(); break;
         case "glass":
           DB.glass.push({ id: uid("g"), name: "Новое стекло", price: 0 }); populateGlass(); break;
         case "model": {
