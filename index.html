@@ -346,6 +346,59 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 .total-row { display: flex; justify-content: space-between; align-items: baseline; font-size: 18px; font-weight: 700; margin-top: 4px; }
 .total-value { color: var(--accent); font-size: 24px; }
 
+.btn-primary {
+  margin-top: 4px; padding: 12px 16px; border-radius: 10px; border: none;
+  background: var(--accent); color: #fff; font-size: 15px; font-weight: 600;
+  cursor: pointer; width: 100%;
+}
+.btn-primary:hover { filter: brightness(1.06); }
+.btn-primary:active { filter: brightness(0.94); }
+
+.qty-stepper { display: flex; align-items: center; gap: 8px; }
+.qty-stepper input[type="number"] { flex: 1 1 auto; text-align: center; }
+.qty-stepper button {
+  flex: 0 0 auto; width: 40px; height: 40px; border-radius: 8px;
+  border: 1px solid var(--border); background: var(--bg); color: var(--text);
+  font-size: 18px; line-height: 1; cursor: pointer;
+}
+.qty-stepper button:hover { background: var(--border); }
+
+/* --- Спецификация (сохранённые полотна) ------------------------------ */
+.order-item { border: 1px solid var(--border); border-radius: 10px; padding: 12px; margin-bottom: 10px; }
+.order-item-title { font-weight: 700; font-size: 15px; margin-bottom: 4px; }
+.order-item-sub { font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+.order-item .breakdown { margin-bottom: 8px; }
+.order-item-total {
+  display: flex; justify-content: space-between; font-weight: 700; font-size: 15px;
+  border-top: 1px solid var(--border); padding-top: 8px;
+}
+.order-item-del { margin-top: 8px; }
+
+.order-empty { color: var(--muted); font-size: 14px; padding: 24px 0; text-align: center; }
+
+.order-grand-total {
+  display: flex; justify-content: space-between; align-items: baseline;
+  font-size: 20px; font-weight: 800; border-top: 2px solid var(--border);
+  padding-top: 14px; margin-top: 6px;
+}
+
+.order-toolbar { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.order-toolbar button {
+  flex: 1 1 calc(50% - 8px); padding: 10px 8px; border-radius: 8px;
+  border: 1px solid var(--border); background: var(--bg); color: var(--text);
+  font-size: 13px; font-weight: 600; cursor: pointer;
+}
+.order-toolbar button:hover { background: var(--border); }
+
+.order-note { font-size: 12px; color: var(--muted); margin-top: 10px; }
+
+@media print {
+  body * { visibility: hidden; }
+  #viewOrder, #viewOrder * { visibility: visible; }
+  #viewOrder { position: absolute; left: 0; top: 0; width: 100%; padding: 0; }
+  .order-toolbar, .order-note, .topbar { display: none !important; }
+}
+
 /* --- 3D комната с дверью --- */
 .r3-stage { position: relative; width: 100%; height: min(58vh, 480px); border-radius: 12px; overflow: hidden; background: #dfe6ee; margin-bottom: 12px; }
 #r3_c { width: 100%; height: 100%; display: block; touch-action: none; }
@@ -371,6 +424,7 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
         <button type="button" class="menu-item" data-view="calc">Калькулятор цены</button>
         <button type="button" class="menu-item" data-view="scene">2D картинка</button>
         <button type="button" class="menu-item" data-view="room3d">3D комната</button>
+        <button type="button" class="menu-item" data-view="order">Спецификация</button>
         <button type="button" class="menu-item" data-view="prices">Изменение цен</button>
       </nav>
     </div>
@@ -417,6 +471,15 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
     </div>
 
     <div class="field">
+      <label for="quantity">Количество, шт</label>
+      <div class="qty-stepper">
+        <button type="button" id="qtyMinus" aria-label="Уменьшить количество">−</button>
+        <input type="number" id="quantity" min="1" step="1" value="1">
+        <button type="button" id="qtyPlus" aria-label="Увеличить количество">+</button>
+      </div>
+    </div>
+
+    <div class="field">
       <label>Опции</label>
       <div id="options" class="options"></div>
     </div>
@@ -432,6 +495,7 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
         <span>Итоговая стоимость</span>
         <span id="total" class="total-value">0 ₽</span>
       </div>
+      <button type="button" id="saveToOrderBtn" class="btn-primary">Сохранить в спецификацию</button>
     </div>
     </div><!-- /viewCalc -->
 
@@ -501,6 +565,21 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
           <div class="field"><label>Цвет</label><input type="color" id="r3_colorB"><div class="r3-swatches" id="r3_swB"></div></div>
         </div>
       </div>
+    </div>
+
+    <div id="viewOrder" hidden>
+      <p class="scene-view-hint">Каждое сохранённое из калькулятора полотно — отдельная позиция ниже, с размерами и расчётом. Список сохраняется в этом браузере.</p>
+      <div id="orderList"></div>
+      <div class="order-grand-total"><span>Итого по заказу</span><span id="orderGrandTotal">0 ₽</span></div>
+      <div class="order-toolbar">
+        <button type="button" id="orderShareBtn">📤 Поделиться</button>
+        <button type="button" id="orderWhatsappBtn">💬 WhatsApp</button>
+        <button type="button" id="orderTelegramBtn">✈️ Telegram</button>
+        <button type="button" id="orderEmailBtn">✉️ Email</button>
+        <button type="button" id="orderPrintBtn">🖨️ Печать</button>
+        <button type="button" id="orderDownloadBtn">💾 Скачать файл</button>
+      </div>
+      <p class="order-note">«Поделиться» на телефоне открывает системное меню — там же будут Max, imo, WhatsApp, Telegram, Email и другие установленные приложения. «Скачать файл» подходит и для телефона, и для компьютера.</p>
     </div>
   </main>
 
@@ -682,6 +761,7 @@ const DB = {
     thickness: DB.standard.thickness,
     options: {},
     discount: 0,
+    quantity: 1,
     sceneMode: false,
     wallColor: "#e8e2d5",
     wallTexture: "smooth"
@@ -723,6 +803,10 @@ const DB = {
     thicknessWarning: document.getElementById("thicknessWarning"),
     options: document.getElementById("options"),
     discount: document.getElementById("discount"),
+    quantity: document.getElementById("quantity"),
+    qtyMinus: document.getElementById("qtyMinus"),
+    qtyPlus: document.getElementById("qtyPlus"),
+    saveToOrderBtn: document.getElementById("saveToOrderBtn"),
     breakdown: document.getElementById("breakdown"),
     total: document.getElementById("total"),
     sceneWallSwatches: document.getElementById("s_wallSwatches"),
@@ -735,7 +819,16 @@ const DB = {
     viewScene: document.getElementById("viewScene"),
     viewPrices: document.getElementById("viewPrices"),
     viewRoom3d: document.getElementById("viewRoom3d"),
-    priceEditor: document.getElementById("priceEditor")
+    viewOrder: document.getElementById("viewOrder"),
+    priceEditor: document.getElementById("priceEditor"),
+    orderList: document.getElementById("orderList"),
+    orderGrandTotal: document.getElementById("orderGrandTotal"),
+    orderShareBtn: document.getElementById("orderShareBtn"),
+    orderWhatsappBtn: document.getElementById("orderWhatsappBtn"),
+    orderTelegramBtn: document.getElementById("orderTelegramBtn"),
+    orderEmailBtn: document.getElementById("orderEmailBtn"),
+    orderPrintBtn: document.getElementById("orderPrintBtn"),
+    orderDownloadBtn: document.getElementById("orderDownloadBtn")
   };
 
   // Контексты рисования для двух SVG: превью в калькуляторе и картинка в
@@ -1401,7 +1494,10 @@ const DB = {
     return s;
   }
 
-  function render() {
+  // Вся математика цены — в одном месте: используется и калькулятором
+  // (render), и сохранением позиции в спецификацию (addCurrentToOrder),
+  // чтобы расчёт нигде не расходился.
+  function computeOrder() {
     const model = getModel(state.modelId);
     const category = findCategory(state.material, state.color);
     const surcharge = category != null ? (DB.categorySurcharge[state.material][category] || 0) : 0;
@@ -1416,25 +1512,183 @@ const DB = {
     const glass = DB.glass.find((g) => g.id === state.glassId);
     const glassPrice = glass ? glass.price : 0;
 
-    const subtotal = leafPrice + optionsSum + glassPrice;
+    const perUnit = leafPrice + optionsSum + glassPrice;
+    const quantity = Math.max(1, Math.round(Number(state.quantity)) || 1);
+    const lineSubtotal = perUnit * quantity;
     const discount = Number(state.discount) || 0;
-    const total = Math.round(subtotal * (1 - discount / 100));
-
-    updateSizeUI();
-    // Превью плёнки и двери в калькуляторе убраны; картинку в разделе
-    // «2D картинка» перерисовываем, только когда он открыт.
-    if (el.viewScene && !el.viewScene.hidden) drawDoor(sceneCtx, true);
+    const total = Math.round(lineSubtotal * (1 - discount / 100));
 
     const rows = [];
     rows.push(`Полотно (${model.name}): ${leafBeforeNonstandard} ₽`);
     if (!standard) rows.push(`Наценка за нестандарт (+${DB.nonStandardPercent}%, округление вверх до 10 ₽): ${leafPrice} ₽`);
     optionLines.forEach((l) => rows.push(l));
     if (glassPrice) rows.push(`Стекло (${glass.name}): +${glassPrice} ₽`);
-    rows.push(`Подытог: ${subtotal} ₽`);
-    if (discount) rows.push(`Скидка ${discount}%: -${Math.round(subtotal * discount / 100)} ₽`);
+    rows.push(`Подытог за 1 полотно: ${perUnit} ₽`);
+    if (quantity > 1) rows.push(`Количество: ${quantity} шт. × ${perUnit} ₽ = ${lineSubtotal} ₽`);
+    if (discount) rows.push(`Скидка ${discount}%: -${Math.round(lineSubtotal * discount / 100)} ₽`);
 
-    el.breakdown.innerHTML = rows.map((r) => `<div class="breakdown-row">${r}</div>`).join("");
-    el.total.textContent = total.toLocaleString("ru-RU") + " ₽";
+    return {
+      model, standard, quantity, perUnit, lineSubtotal, discount, total, rows,
+      materialLabel: state.material === "пвх" ? "Пленка ПВХ" : "Эмаль",
+      color: state.color,
+      glassName: glass ? glass.name : "",
+      height: state.height, width: state.width, thickness: state.thickness
+    };
+  }
+
+  function render() {
+    const o = computeOrder();
+
+    updateSizeUI();
+    // Превью плёнки и двери в калькуляторе убраны; картинку в разделе
+    // «2D картинка» перерисовываем, только когда он открыт.
+    if (el.viewScene && !el.viewScene.hidden) drawDoor(sceneCtx, true);
+
+    el.breakdown.innerHTML = o.rows.map((r) => `<div class="breakdown-row">${r}</div>`).join("");
+    el.total.textContent = o.total.toLocaleString("ru-RU") + " ₽";
+  }
+
+  // --- Спецификация: сохранённые полотна --------------------------------
+
+  const ORDER_STORE_KEY = "doorcalc_order_v1";
+  let orderItems = [];
+
+  function loadOrderItems() {
+    try {
+      const raw = localStorage.getItem(ORDER_STORE_KEY);
+      const parsed = raw ? JSON.parse(raw) : [];
+      orderItems = Array.isArray(parsed) ? parsed : [];
+    } catch (e) {
+      orderItems = [];
+    }
+  }
+
+  function saveOrderItems() {
+    try { localStorage.setItem(ORDER_STORE_KEY, JSON.stringify(orderItems)); } catch (e) {}
+  }
+
+  function addCurrentToOrder() {
+    const o = computeOrder();
+    orderItems.push({
+      id: uid("item"),
+      modelName: o.model.name,
+      material: o.materialLabel,
+      color: o.color,
+      glassName: o.glassName,
+      height: o.height,
+      width: o.width,
+      thickness: o.thickness,
+      standard: o.standard,
+      quantity: o.quantity,
+      perUnit: o.perUnit,
+      discount: o.discount,
+      total: o.total,
+      rows: o.rows
+    });
+    saveOrderItems();
+    setView("order");
+  }
+
+  function removeOrderItem(id) {
+    orderItems = orderItems.filter((it) => it.id !== id);
+    saveOrderItems();
+    renderOrderPage();
+  }
+
+  function orderGrandTotal() {
+    return orderItems.reduce((sum, it) => sum + it.total, 0);
+  }
+
+  function renderOrderPage() {
+    if (!orderItems.length) {
+      el.orderList.innerHTML = `<div class="order-empty">Пока пусто — откройте «Калькулятор цены» и нажмите «Сохранить в спецификацию».</div>`;
+      el.orderGrandTotal.textContent = "0 ₽";
+      return;
+    }
+    el.orderList.innerHTML = orderItems
+      .map((it, idx) => `
+        <div class="order-item">
+          <div class="order-item-title">${idx + 1}. ${esc(it.modelName)}</div>
+          <div class="order-item-sub">${esc(it.material)} · ${esc(it.color || "")} · ${esc(it.glassName || "Глухая")}</div>
+          <div class="order-item-sub">${it.height} × ${it.width} × ${it.thickness} мм — ${it.standard ? "Стандарт" : "Нестандарт"} · ${it.quantity} шт.</div>
+          <div class="breakdown">${it.rows.map((r) => `<div class="breakdown-row">${esc(r)}</div>`).join("")}</div>
+          <div class="order-item-total"><span>Итого</span><span>${it.total.toLocaleString("ru-RU")} ₽</span></div>
+          <button type="button" class="row-add order-item-del" data-order-del="${it.id}">✕ Удалить</button>
+        </div>`)
+      .join("");
+    el.orderGrandTotal.textContent = orderGrandTotal().toLocaleString("ru-RU") + " ₽";
+  }
+
+  function buildOrderShareText() {
+    if (!orderItems.length) return "Спецификация дверей пуста.";
+    const lines = orderItems.map((it, idx) =>
+      `${idx + 1}. ${it.modelName} (${it.material}, ${it.color || "-"}, ${it.glassName || "Глухая"}) — ` +
+      `${it.height}×${it.width}×${it.thickness} мм, ${it.quantity} шт. — ${it.total.toLocaleString("ru-RU")} ₽`
+    );
+    lines.push("", `Итого по заказу: ${orderGrandTotal().toLocaleString("ru-RU")} ₽`);
+    return "Спецификация дверей\n\n" + lines.join("\n");
+  }
+
+  function shareOrder() {
+    const text = buildOrderShareText();
+    if (navigator.share) {
+      navigator.share({ title: "Спецификация дверей", text }).catch(() => {});
+    } else {
+      shareOrderViaWhatsApp();
+    }
+  }
+
+  function shareOrderViaWhatsApp() {
+    window.open("https://wa.me/?text=" + encodeURIComponent(buildOrderShareText()), "_blank");
+  }
+
+  function shareOrderViaTelegram() {
+    window.open("https://t.me/share/url?url=&text=" + encodeURIComponent(buildOrderShareText()), "_blank");
+  }
+
+  function shareOrderViaEmail() {
+    const body = encodeURIComponent(buildOrderShareText());
+    location.href = "mailto:?subject=" + encodeURIComponent("Спецификация дверей") + "&body=" + body;
+  }
+
+  function printOrder() {
+    window.print();
+  }
+
+  function downloadOrderFile() {
+    const itemsHtml = orderItems
+      .map((it, idx) => `
+        <div style="border:1px solid #ddd;border-radius:10px;padding:14px;margin-bottom:12px;">
+          <div style="font-weight:700;font-size:15px;margin-bottom:4px;">${idx + 1}. ${esc(it.modelName)}</div>
+          <div style="font-size:13px;color:#666;margin-bottom:8px;">
+            ${esc(it.material)} · ${esc(it.color || "")} · ${esc(it.glassName || "Глухая")}<br>
+            ${it.height} × ${it.width} × ${it.thickness} мм — ${it.standard ? "Стандарт" : "Нестандарт"} · ${it.quantity} шт.
+          </div>
+          <div style="font-size:13px;color:#444;">${it.rows.map((r) => `<div>${esc(r)}</div>`).join("")}</div>
+          <div style="display:flex;justify-content:space-between;font-weight:700;font-size:15px;border-top:1px solid #ddd;padding-top:8px;margin-top:8px;">
+            <span>Итого</span><span>${it.total.toLocaleString("ru-RU")} ₽</span>
+          </div>
+        </div>`)
+      .join("");
+    const html = `<!doctype html><html lang="ru"><head><meta charset="UTF-8"><title>Спецификация дверей</title></head>
+<body style="font-family:-apple-system,'Segoe UI',Roboto,Arial,sans-serif;max-width:640px;margin:24px auto;padding:0 16px;color:#1c1f26;">
+  <h1 style="font-size:20px;">Спецификация дверей</h1>
+  ${itemsHtml || "<p>Пусто.</p>"}
+  <div style="display:flex;justify-content:space-between;font-size:20px;font-weight:800;border-top:2px solid #1c1f26;padding-top:14px;margin-top:6px;">
+    <span>Итого по заказу</span><span>${orderGrandTotal().toLocaleString("ru-RU")} ₽</span>
+  </div>
+</body></html>`;
+    const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    // Кириллица в атрибуте download молча обнуляется частью браузеров
+    // (файл сохраняется как безымянный "download") — используем латиницу.
+    a.download = "spetsifikatsiya-dverey.html";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
   function bind() {
@@ -1481,6 +1735,31 @@ const DB = {
       state.discount = el.discount.value;
       render();
     });
+    el.quantity.addEventListener("input", () => {
+      state.quantity = Math.max(1, Math.round(Number(el.quantity.value)) || 1);
+      render();
+    });
+    el.qtyMinus.addEventListener("click", () => {
+      state.quantity = Math.max(1, state.quantity - 1);
+      el.quantity.value = state.quantity;
+      render();
+    });
+    el.qtyPlus.addEventListener("click", () => {
+      state.quantity = state.quantity + 1;
+      el.quantity.value = state.quantity;
+      render();
+    });
+    el.saveToOrderBtn.addEventListener("click", addCurrentToOrder);
+    el.orderList.addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-order-del]");
+      if (btn) removeOrderItem(btn.dataset.orderDel);
+    });
+    el.orderShareBtn.addEventListener("click", shareOrder);
+    el.orderWhatsappBtn.addEventListener("click", shareOrderViaWhatsApp);
+    el.orderTelegramBtn.addEventListener("click", shareOrderViaTelegram);
+    el.orderEmailBtn.addEventListener("click", shareOrderViaEmail);
+    el.orderPrintBtn.addEventListener("click", printOrder);
+    el.orderDownloadBtn.addEventListener("click", downloadOrderFile);
     el.sceneWallSwatches.addEventListener("click", onWallSwatchClick);
     el.sceneWallColor.addEventListener("input", () => setWallColor(el.sceneWallColor.value));
     el.sceneWallTextures.addEventListener("click", (e) => {
@@ -1538,15 +1817,18 @@ const DB = {
     el.viewScene.hidden = view !== "scene";
     el.viewPrices.hidden = view !== "prices";
     el.viewRoom3d.hidden = view !== "room3d";
+    el.viewOrder.hidden = view !== "order";
     el.viewTitle.textContent =
       view === "prices" ? "Изменение цен" : view === "scene" ? "2D картинка" :
-      view === "room3d" ? "3D комната" : "Расчет — межкомнатные двери";
+      view === "room3d" ? "3D комната" : view === "order" ? "Спецификация" :
+      "Расчет — межкомнатные двери";
     el.menu.querySelectorAll(".menu-item").forEach((b) =>
       b.classList.toggle("active", b.dataset.view === view)
     );
     if (view === "prices") renderPriceEditor();
     if (view === "scene") drawDoor(sceneCtx, true);
     if (view === "room3d" && window.initRoom3D) window.initRoom3D();
+    if (view === "order") renderOrderPage();
     toggleMenu(false);
   }
 
@@ -1894,6 +2176,7 @@ const DB = {
 
   function init() {
     loadPrices();
+    loadOrderItems();
     populateModels();
     populateMaterial();
     populateColors();
@@ -1903,6 +2186,7 @@ const DB = {
     el.width.value = state.width;
     el.thickness.value = state.thickness;
     el.discount.value = state.discount;
+    el.quantity.value = state.quantity;
     el.sceneWallColor.value = state.wallColor;
     renderWallSwatches();
     renderWallTextures();
