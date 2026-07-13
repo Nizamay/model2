@@ -1930,14 +1930,19 @@ const DB = {
     </details>`;
   }
 
-  // Компактная строка варианта (для радио-опций). Удаление под общим
-  // тумблером опции (кнопка ✕ включается вместе с «Удалить» опции).
+  // Строка варианта радио-опции (например, вида кромки). Своя защита от
+  // случайного удаления — тумблер именно этого варианта (сама опция теперь
+  // без общего удаления, см. noDelete у editItem("optionName", ...) ниже).
   function choiceRow(mat, optId, i, label, price) {
     const a = dataAttrs("optionChoice", { material: mat, opt: optId, choice: i });
     return `<div class="choice-row">
       <input type="text" class="edit-name" value="${esc(label)}" data-field="name" ${a}>
       <span class="price-input-wrap"><input type="number" step="10" min="0" value="${price}" data-field="price" ${a}></span>
-      <button type="button" class="row-del" data-field="del" ${a} disabled>✕</button>
+      <div class="pitem-del">
+        <label class="switch"><input type="checkbox" class="arm-del"><span class="switch-track"></span></label>
+        <span class="switch-label">Разрешить удаление</span>
+        <button type="button" class="row-del" data-field="del" ${a} disabled>Удалить</button>
+      </div>
     </div>`;
   }
 
@@ -2027,12 +2032,14 @@ const DB = {
         if (opt.kind === "checkbox") {
           optRows += editItem("option", { material: mat, opt: opt.id }, opt.name, opt.price, { isOpen });
         } else {
-          // радио-опция: аккордеон с названием, внутри — варианты (тумблер
-          // удаления в опции включает и удаление опции, и удаление вариантов)
+          // радио-опция (например, «Кромка»): аккордеон с названием, внутри —
+          // варианты, каждый со своим удалением. Удаление самой опции убрано
+          // (noDelete) — оно стирало бы разом все варианты одной кнопкой,
+          // как раньше было с категориями цвета.
           let choices = `<div class="choice-head">Варианты</div>`;
           opt.choices.forEach((c, i) => { choices += choiceRow(mat, opt.id, i, c.label, c.price); });
           choices += addBtn("choice", { material: mat, opt: opt.id }, "Добавить вариант");
-          optRows += editItem("optionName", { material: mat, opt: opt.id }, opt.name, 0, { noPrice: true, extraBody: choices, isOpen });
+          optRows += editItem("optionName", { material: mat, opt: opt.id }, opt.name, 0, { noPrice: true, extraBody: choices, isOpen, noDelete: true });
         }
       });
       optRows += addBtn("option", { material: mat }, "Добавить опцию");
@@ -2161,7 +2168,10 @@ const DB = {
           DB.glass = DB.glass.filter((g) => g.id !== d.id); populateGlass(); break;
         case "model":
           DB.models = DB.models.filter((m) => m.id !== d.id); populateModels(); break;
-        case "option": case "optionName":
+        // "optionName" (удаление радио-опции целиком, например «Кромка») нет
+        // намеренно — см. editItem(..., { noDelete: true }) выше: одна
+        // кнопка стирала бы разом все варианты этой опции.
+        case "option":
           DB.options[d.material] = DB.options[d.material].filter((o) => o.id !== d.opt);
           populateOptions(); break;
         case "optionChoice": {
