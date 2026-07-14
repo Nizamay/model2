@@ -1637,6 +1637,19 @@ const DB = {
     const model = getModel(state.modelId);
     const rows = [];
 
+    // Список моделей раздела пуст (например, все удалены в редакторе цен) —
+    // считать нечего, но и падать со скриптовой ошибкой на всей странице
+    // не должны.
+    if (!model) {
+      rows.push("Нет доступных моделей в этом разделе");
+      return {
+        model: null, quantity: 1, perUnit: 0, lineSubtotal: 0, discount: 0, total: 0, rows,
+        standard: true, materialLabel: "", color: "", glassName: "",
+        height: state.height, width: state.width, thickness: state.thickness,
+        section: state.section
+      };
+    }
+
     if (state.section === "матрица") {
       // Готовая комплектация: категория цвета, стекло и опции не влияют —
       // всё уже заложено в basePrice самой позиции.
@@ -1717,6 +1730,7 @@ const DB = {
 
   function addCurrentToOrder() {
     const o = computeOrder();
+    if (!o.model) return;
     orderItems.push({
       id: uid("item"),
       section: o.section,
@@ -2027,7 +2041,16 @@ const DB = {
 
   function applyPrices(s) {
     if (!s || typeof s !== "object") return;
-    if (Array.isArray(s.models)) DB.models = s.models.map((m) => ({ ...m }));
+    if (Array.isArray(s.models)) {
+      DB.models = s.models.map((m) => ({ ...m }));
+      // Снимок мог быть сохранён до появления раздела «Матрица» — тогда в
+      // нём нет ни одной модели этого типа. Без этой подстраховки список
+      // «Модель» для раздела «Матрица» останется пустым, а калькулятор
+      // сломается на undefined-модели (см. computeOrder/updateSizeUI).
+      if (!DB.models.some((m) => m.type === "матрица")) {
+        DB.models = DB.models.concat(MATRIX_MODELS.map((m) => ({ ...m })));
+      }
+    }
     if (s.colors) DB.colors = s.colors;
     if (s.categorySurcharge) DB.categorySurcharge = s.categorySurcharge;
     if (s.categoryNames) DB.categoryNames = s.categoryNames;
