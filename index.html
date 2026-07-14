@@ -35,6 +35,11 @@
 
 * { box-sizing: border-box; }
 
+/* [hidden] и .field { display:flex } имеют одинаковую специфичность —
+   без этого правила скрытие через el.hidden=true молча не работает
+   для элементов с классом .field (и других display:flex/grid блоков). */
+[hidden] { display: none !important; }
+
 body {
   margin: 0;
   padding: 32px 16px;
@@ -115,6 +120,7 @@ h1 { font-size: 20px; margin: 0 0 4px; }
 .price-subhead { font-size: 13px; font-weight: 700; color: var(--muted); margin-top: 6px; }
 .price-subhead-sborno { color: var(--ok); }
 .price-subhead-shitovoe { color: var(--accent); }
+.price-subhead-matrix { color: #8b5cf6; }
 
 /* Пункт-аккордеон: имя в заголовке видно целиком, внутри — поля и удаление */
 .pitem { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
@@ -184,13 +190,12 @@ select, input[type="number"] {
 
 select:focus, input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 
-/* Заголовки групп модели — цвет как в редакторе цен (зелёный/синий);
-   сами модели внутри группы остаются обычного цвета текста. */
-#model optgroup[label^="🟢"] { color: var(--ok); font-weight: 700; }
-#model optgroup[label^="🔵"] { color: var(--accent); font-weight: 700; }
-#model optgroup option { color: var(--text); font-weight: 400; }
-
 select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
+
+.static-value {
+  font-size: 15px; padding: 10px 12px; border-radius: 8px;
+  border: 1px solid var(--border); background: var(--border); color: var(--muted);
+}
 
 .size-info { margin-top: -8px; display: flex; flex-direction: column; gap: 6px; }
 
@@ -432,42 +437,73 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
     <div id="viewCalc">
 
     <div class="field">
+      <label for="section">Раздел</label>
+      <select id="section">
+        <option value="матрица">Матрица</option>
+        <option value="сборное">Сборные</option>
+        <option value="щитовое">Щитовые</option>
+      </select>
+    </div>
+
+    <div class="field">
       <label for="model">Модель</label>
       <select id="model"></select>
     </div>
 
     <div class="field">
+      <label for="promo">Акция, %</label>
+      <input type="number" id="promo" step="0.1" min="0" max="100" value="0">
+    </div>
+
+    <div class="field" id="materialField">
       <label for="material">Материал</label>
       <select id="material"></select>
     </div>
 
-    <div class="field">
+    <div class="field" id="colorField">
       <label for="color">Цвет</label>
       <select id="color"></select>
     </div>
 
-    <div class="field">
+    <div class="field" id="glassField">
       <label for="glass">Стекло</label>
       <select id="glass"></select>
     </div>
 
-    <div class="field-row">
-      <div class="field">
-        <label for="height">Высота, мм</label>
-        <input type="number" id="height" step="1">
+    <div id="sizeFreeGroup">
+      <div class="field-row">
+        <div class="field">
+          <label for="height">Высота, мм</label>
+          <input type="number" id="height" step="1">
+        </div>
+        <div class="field">
+          <label for="width">Ширина, мм</label>
+          <input type="number" id="width" step="1">
+        </div>
+        <div class="field">
+          <label for="thickness">Толщина, мм</label>
+          <input type="number" id="thickness" step="1">
+        </div>
       </div>
-      <div class="field">
-        <label for="width">Ширина, мм</label>
-        <input type="number" id="width" step="1">
-      </div>
-      <div class="field">
-        <label for="thickness">Толщина, мм</label>
-        <input type="number" id="thickness" step="1">
+      <div class="size-info">
+        <span id="sizeBadge" class="badge"></span>
+        <div id="thicknessWarning" class="warning">42 мм доступна только для щитовых полотен</div>
       </div>
     </div>
-    <div class="size-info">
-      <span id="sizeBadge" class="badge"></span>
-      <div id="thicknessWarning" class="warning">42 мм доступна только для щитовых полотен</div>
+
+    <div class="field-row" id="sizeMatrixRow">
+      <div class="field">
+        <label>Высота, мм</label>
+        <div class="static-value">2000</div>
+      </div>
+      <div class="field">
+        <label for="widthMatrix">Ширина, мм</label>
+        <select id="widthMatrix"></select>
+      </div>
+      <div class="field">
+        <label>Толщина, мм</label>
+        <div class="static-value">36</div>
+      </div>
     </div>
 
     <div class="field">
@@ -479,7 +515,7 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
       </div>
     </div>
 
-    <div class="field">
+    <div class="field" id="optionsField">
       <label>Опции</label>
       <div id="options" class="options"></div>
     </div>
@@ -610,6 +646,47 @@ const PVH_ONLY_MODELS = new Set([
   "Пламя 2 ПО", "Иван да Марья"
 ]);
 
+// «Матрица» — готовые фиксированные комплектации (модель + цвет плёнки ПВХ +
+// стекло/кромка уже заданы в самом названии). Цена — за готовое полотно
+// целиком; категория цвета, стекло и опции калькулятора на неё не влияют
+// (см. computeOrder). Все позиции — плёнка ПВХ, эмали в «Матрице» нет.
+const MATRIX_MODELS = [
+  "LX2 Эшвайт черн стекло",
+  "LX2 Беленный Дуб черн стекло",
+  "LX2 Ривьера айс черн стекло",
+  "Модерн LX2 Дуб белый зеркало",
+  "Модерн LX2 Бетон антрацит черн стекло",
+  "Модерн Бетон светлый черн стекло",
+  "L-1 Эшвайт черн стекло",
+  "Модерн 13 черн стекло",
+  "Линия Белоснежная эмаль, черн кромка (ПВХ) с 2х сторон",
+  "Соренто 2 Ваниль",
+  "Соренто 1 Ваниль",
+  "Урбан Шагрень серая черн стекло, черн кромка (ПВХ) с 2х сторон",
+  "Галант 1 Белоснежная эмаль черн стекло, черн кромка (ПВХ) с 2х сторон",
+  "Соренто 2 Белоснежная эмаль",
+  "Лувр Белоснежная эмаль",
+  "Лувр Эмалит серый",
+  "Рим 3 ПГ Дуб белый",
+  "Неоклассика 4 Шагрень белая",
+  "Сидней 2 Шагрень серая",
+  "Галант 2 Белоснежная эмаль черн стекло, черн кромка (ПВХ) с 2х сторон",
+  "Галант 2 Графит черный черн стекло, черн кромка (ПВХ) с 2х сторон",
+  "Техно V2 Кварцит Черн молдинг, черн кромка с 2х сторон",
+  "Техно G Белоснежная эмаль Черн молдинг, черн кромка (ПВХ) с 2х сторон",
+  "Техно G Ваниль Черн молдинг, черн кромка (ПВХ) с 2х сторон",
+  "Техно G Кварцит Черн молдинг, черн кромка (ПВХ) с 2х сторон",
+  "Техно V Белоснежная эмаль Черн молдинг, черн кромка (ПВХ) с 2х сторон",
+  "Техно V Ваниль Черн молдинг, черн кромка (ПВХ) с 2х сторон",
+  "Техно V Кварцит Черн молдинг, черн кромка (ПВХ) с 2х сторон"
+].map((name, i) => ({
+  id: "mx" + i,
+  name,
+  type: "матрица",
+  basePrice: 5000,
+  pvhOnly: true
+}));
+
 const DB = {
   models: [
     "LX2", "Модерн LX2", "L-1", "Модерн 13", "Линия", "Соренто 2 ПГ", "Соренто 1",
@@ -631,7 +708,7 @@ const DB = {
     type: PVH_ONLY_MODELS.has(name) ? "сборное" : "щитовое",
     basePrice: 5000,
     pvhOnly: PVH_ONLY_MODELS.has(name)
-  })),
+  })).concat(MATRIX_MODELS),
 
   colors: {
     "пвх": {
@@ -752,6 +829,7 @@ const DB = {
   "use strict";
 
   const state = {
+    section: "матрица",
     modelId: null,
     material: "пвх",
     color: null,
@@ -761,6 +839,7 @@ const DB = {
     thickness: DB.standard.thickness,
     options: {},
     discount: 0,
+    promo: 0,
     quantity: 1,
     sceneMode: false,
     wallColor: "#e8e2d5",
@@ -792,7 +871,16 @@ const DB = {
   ];
 
   const el = {
+    section: document.getElementById("section"),
     model: document.getElementById("model"),
+    promo: document.getElementById("promo"),
+    materialField: document.getElementById("materialField"),
+    colorField: document.getElementById("colorField"),
+    glassField: document.getElementById("glassField"),
+    optionsField: document.getElementById("optionsField"),
+    sizeFreeGroup: document.getElementById("sizeFreeGroup"),
+    sizeMatrixRow: document.getElementById("sizeMatrixRow"),
+    widthMatrix: document.getElementById("widthMatrix"),
     material: document.getElementById("material"),
     color: document.getElementById("color"),
     glass: document.getElementById("glass"),
@@ -861,30 +949,52 @@ const DB = {
 
   const RU_COLLATOR = new Intl.Collator("ru");
 
-  // Список моделей — двумя группами (см. PVH_ONLY_MODELS): «Сборные»
-  // (выделенные зелёным) и «Щитовые» (остальные), внутри группы — по алфавиту.
-  // emoji — большинство браузеров игнорируют CSS-цвет у <optgroup> в нативном
-  // выпадающем списке, поэтому цветовое различие групп даём через сам текст.
+  // Три группы моделей (используется редактором цен для группировки и
+  // подписей; в самом калькуляторе раздел выбирается через el.section —
+  // список «Модель» показывает только модели текущего раздела, см. ниже).
   const MODEL_GROUPS = [
-    { type: "сборное", label: "Сборные", emoji: "🟢" },
-    { type: "щитовое", label: "Щитовые", emoji: "🔵" }
+    { type: "матрица", label: "Матрица" },
+    { type: "сборное", label: "Сборные" },
+    { type: "щитовое", label: "Щитовые" }
   ];
 
+  // Список моделей — только текущего раздела калькулятора (state.section),
+  // по алфавиту.
   function populateModels() {
-    el.model.innerHTML = MODEL_GROUPS
-      .map((g) => {
-        const items = DB.models
-          .filter((m) => m.type === g.type)
-          .sort((a, b) => RU_COLLATOR.compare(a.name, b.name));
-        if (!items.length) return "";
-        const opts = items.map((m) => `<option value="${m.id}">${m.name}</option>`).join("");
-        return `<optgroup label="${g.emoji} ${g.label}">${opts}</optgroup>`;
-      })
-      .join("");
-    if (!DB.models.some((m) => m.id === state.modelId)) {
-      state.modelId = DB.models.length ? DB.models[0].id : null;
+    const items = DB.models
+      .filter((m) => m.type === state.section)
+      .sort((a, b) => RU_COLLATOR.compare(a.name, b.name));
+    el.model.innerHTML = items.map((m) => `<option value="${m.id}">${m.name}</option>`).join("");
+    if (!items.some((m) => m.id === state.modelId)) {
+      state.modelId = items.length ? items[0].id : null;
     }
     if (state.modelId) el.model.value = state.modelId;
+  }
+
+  function populateWidthMatrix() {
+    el.widthMatrix.innerHTML = DB.standard.widths
+      .map((w) => `<option value="${w}">${w}</option>`)
+      .join("");
+    el.widthMatrix.value = DB.standard.widths.includes(state.width) ? state.width : DB.standard.widths[3];
+  }
+
+  // «Матрица» — фиксированная комплектация: материал/цвет/стекло/опции не
+  // выбираются (уже заданы в названии), размер только стандартный. Скрываем
+  // соответствующие поля и подставляем стандартные высоту/толщину/ширину.
+  function applySectionUI() {
+    const isMatrix = state.section === "матрица";
+    el.materialField.hidden = isMatrix;
+    el.colorField.hidden = isMatrix;
+    el.glassField.hidden = isMatrix;
+    el.optionsField.hidden = isMatrix;
+    el.sizeFreeGroup.hidden = isMatrix;
+    el.sizeMatrixRow.hidden = !isMatrix;
+    if (isMatrix) {
+      state.height = DB.standard.height;
+      state.thickness = DB.standard.thickness;
+      if (!DB.standard.widths.includes(state.width)) state.width = DB.standard.widths[3];
+      el.widthMatrix.value = state.width;
+    }
   }
 
   function availableMaterials(model) {
@@ -1497,42 +1607,80 @@ const DB = {
   // Вся математика цены — в одном месте: используется и калькулятором
   // (render), и сохранением позиции в спецификацию (addCurrentToOrder),
   // чтобы расчёт нигде не расходился.
-  function computeOrder() {
-    const model = getModel(state.modelId);
-    const category = findCategory(state.material, state.color);
-    const surcharge = category != null ? (DB.categorySurcharge[state.material][category] || 0) : 0;
-
-    let leafPrice = model.basePrice + surcharge;
-    const standard = isStandardSize(state.height, state.width, state.thickness);
-    const leafBeforeNonstandard = leafPrice;
-    const nsMult = 1 + (Number(DB.nonStandardPercent) || 0) / 100;
-    if (!standard) leafPrice = roundUp10(leafPrice * nsMult);
-
-    const { sum: optionsSum, lines: optionLines } = sumSelectedOptions();
-    const glass = DB.glass.find((g) => g.id === state.glassId);
-    const glassPrice = glass ? glass.price : 0;
-
-    const perUnit = leafPrice + optionsSum + glassPrice;
+  // Общий хвост расчёта: количество/скидка/итог — одинаков для «Матрицы» и
+  // обычных разделов, различается только то, что складывается в perUnit.
+  function finishOrder(model, perUnitBeforeQty, rows) {
+    const perUnit = perUnitBeforeQty;
     const quantity = Math.max(1, Math.round(Number(state.quantity)) || 1);
     const lineSubtotal = perUnit * quantity;
     const discount = Number(state.discount) || 0;
     const total = Math.round(lineSubtotal * (1 - discount / 100));
 
-    const rows = [];
-    rows.push(`Полотно (${model.name}): ${leafBeforeNonstandard} ₽`);
-    if (!standard) rows.push(`Наценка за нестандарт (+${DB.nonStandardPercent}%, округление вверх до 10 ₽): ${leafPrice} ₽`);
-    optionLines.forEach((l) => rows.push(l));
-    if (glassPrice) rows.push(`Стекло (${glass.name}): +${glassPrice} ₽`);
     rows.push(`Подытог за 1 полотно: ${perUnit} ₽`);
     if (quantity > 1) rows.push(`Количество: ${quantity} шт. × ${perUnit} ₽ = ${lineSubtotal} ₽`);
     if (discount) rows.push(`Скидка ${discount}%: -${Math.round(lineSubtotal * discount / 100)} ₽`);
 
+    return { model, quantity, perUnit, lineSubtotal, discount, total, rows };
+  }
+
+  // Акция — скидка в %, действует только на цену самой модели полотна
+  // (до нестандарта/опций/стекла), учитывается в подытоге.
+  function applyPromo(leafBase, rows) {
+    const promo = Math.max(0, Math.min(100, Number(state.promo) || 0));
+    if (!promo) return leafBase;
+    const promoAmt = Math.round((leafBase * promo) / 100);
+    rows.push(`Акция ${promo}%: -${promoAmt} ₽`);
+    return leafBase - promoAmt;
+  }
+
+  function computeOrder() {
+    const model = getModel(state.modelId);
+    const rows = [];
+
+    if (state.section === "матрица") {
+      // Готовая комплектация: категория цвета, стекло и опции не влияют —
+      // всё уже заложено в basePrice самой позиции.
+      rows.push(`Полотно (${model.name}): ${model.basePrice} ₽`);
+      const perUnit = applyPromo(model.basePrice, rows);
+      const result = finishOrder(model, perUnit, rows);
+      return {
+        ...result,
+        standard: true,
+        materialLabel: "", color: "", glassName: "",
+        height: DB.standard.height, width: state.width, thickness: DB.standard.thickness,
+        section: state.section
+      };
+    }
+
+    const category = findCategory(state.material, state.color);
+    const surcharge = category != null ? (DB.categorySurcharge[state.material][category] || 0) : 0;
+    const leafBase = model.basePrice + surcharge;
+    rows.push(`Полотно (${model.name}): ${leafBase} ₽`);
+
+    let leafPrice = applyPromo(leafBase, rows);
+    const standard = isStandardSize(state.height, state.width, state.thickness);
+    const nsMult = 1 + (Number(DB.nonStandardPercent) || 0) / 100;
+    if (!standard) {
+      leafPrice = roundUp10(leafPrice * nsMult);
+      rows.push(`Наценка за нестандарт (+${DB.nonStandardPercent}%, округление вверх до 10 ₽): ${leafPrice} ₽`);
+    }
+
+    const { sum: optionsSum, lines: optionLines } = sumSelectedOptions();
+    const glass = DB.glass.find((g) => g.id === state.glassId);
+    const glassPrice = glass ? glass.price : 0;
+    optionLines.forEach((l) => rows.push(l));
+    if (glassPrice) rows.push(`Стекло (${glass.name}): +${glassPrice} ₽`);
+
+    const perUnit = leafPrice + optionsSum + glassPrice;
+    const result = finishOrder(model, perUnit, rows);
     return {
-      model, standard, quantity, perUnit, lineSubtotal, discount, total, rows,
+      ...result,
+      standard,
       materialLabel: state.material === "пвх" ? "Пленка ПВХ" : "Эмаль",
       color: state.color,
       glassName: glass ? glass.name : "",
-      height: state.height, width: state.width, thickness: state.thickness
+      height: state.height, width: state.width, thickness: state.thickness,
+      section: state.section
     };
   }
 
@@ -1571,6 +1719,7 @@ const DB = {
     const o = computeOrder();
     orderItems.push({
       id: uid("item"),
+      section: o.section,
       modelName: o.model.name,
       material: o.materialLabel,
       color: o.color,
@@ -1587,6 +1736,14 @@ const DB = {
     });
     saveOrderItems();
     setView("order");
+  }
+
+  // «Матрица» — готовая комплектация без выбора материала/цвета/стекла,
+  // поэтому вместо этой строки показываем просто пометку раздела.
+  function orderItemMeta(it) {
+    return it.section === "матрица"
+      ? "Матрица"
+      : `${it.material} · ${it.color || ""} · ${it.glassName || "Глухая"}`;
   }
 
   function removeOrderItem(id) {
@@ -1609,7 +1766,7 @@ const DB = {
       .map((it, idx) => `
         <div class="order-item">
           <div class="order-item-title">${idx + 1}. ${esc(it.modelName)}</div>
-          <div class="order-item-sub">${esc(it.material)} · ${esc(it.color || "")} · ${esc(it.glassName || "Глухая")}</div>
+          <div class="order-item-sub">${esc(orderItemMeta(it))}</div>
           <div class="order-item-sub">${it.height} × ${it.width} × ${it.thickness} мм — ${it.standard ? "Стандарт" : "Нестандарт"} · ${it.quantity} шт.</div>
           <div class="breakdown">${it.rows.map((r) => `<div class="breakdown-row">${esc(r)}</div>`).join("")}</div>
           <div class="order-item-total"><span>Итого</span><span>${it.total.toLocaleString("ru-RU")} ₽</span></div>
@@ -1622,7 +1779,7 @@ const DB = {
   function buildOrderShareText() {
     if (!orderItems.length) return "Спецификация дверей пуста.";
     const lines = orderItems.map((it, idx) =>
-      `${idx + 1}. ${it.modelName} (${it.material}, ${it.color || "-"}, ${it.glassName || "Глухая"}) — ` +
+      `${idx + 1}. ${it.modelName} (${orderItemMeta(it)}) — ` +
       `${it.height}×${it.width}×${it.thickness} мм, ${it.quantity} шт. — ${it.total.toLocaleString("ru-RU")} ₽`
     );
     lines.push("", `Итого по заказу: ${orderGrandTotal().toLocaleString("ru-RU")} ₽`);
@@ -1661,7 +1818,7 @@ const DB = {
         <div style="border:1px solid #ddd;border-radius:10px;padding:14px;margin-bottom:12px;">
           <div style="font-weight:700;font-size:15px;margin-bottom:4px;">${idx + 1}. ${esc(it.modelName)}</div>
           <div style="font-size:13px;color:#666;margin-bottom:8px;">
-            ${esc(it.material)} · ${esc(it.color || "")} · ${esc(it.glassName || "Глухая")}<br>
+            ${esc(orderItemMeta(it))}<br>
             ${it.height} × ${it.width} × ${it.thickness} мм — ${it.standard ? "Стандарт" : "Нестандарт"} · ${it.quantity} шт.
           </div>
           <div style="font-size:13px;color:#444;">${it.rows.map((r) => `<div>${esc(r)}</div>`).join("")}</div>
@@ -1692,11 +1849,28 @@ const DB = {
   }
 
   function bind() {
+    el.section.addEventListener("change", () => {
+      state.section = el.section.value;
+      applySectionUI();
+      populateModels();
+      populateMaterial();
+      populateColors();
+      populateOptions();
+      render();
+    });
     el.model.addEventListener("change", () => {
       state.modelId = el.model.value;
       populateMaterial();
       populateColors();
       populateOptions();
+      render();
+    });
+    el.promo.addEventListener("input", () => {
+      state.promo = el.promo.value;
+      render();
+    });
+    el.widthMatrix.addEventListener("change", () => {
+      state.width = Number(el.widthMatrix.value) || DB.standard.widths[3];
       render();
     });
     el.material.addEventListener("change", () => {
@@ -2048,8 +2222,9 @@ const DB = {
       <summary>Опции</summary>
       <div class="price-body">${optRows}</div></details>`);
 
-    // Модели — сгруппированы «Сборные»/«Щитовые» (см. MODEL_GROUPS), по алфавиту внутри
-    // группы; у каждой группы своя кнопка добавления (новая модель наследует тип группы).
+    // Модели — сгруппированы «Матрица»/«Сборные»/«Щитовые» (см. MODEL_GROUPS),
+    // по алфавиту внутри группы; у каждой группы своя кнопка добавления
+    // (новая модель наследует тип группы).
     let modelRows = MODEL_GROUPS.map((g) => {
       const items = DB.models
         .filter((m) => m.type === g.type)
@@ -2057,7 +2232,7 @@ const DB = {
       const rows = items
         .map((m) => editItem("model", { id: m.id }, m.name, m.basePrice, { search: true, isOpen }))
         .join("");
-      const cls = g.type === "сборное" ? "price-subhead-sborno" : "price-subhead-shitovoe";
+      const cls = g.type === "матрица" ? "price-subhead-matrix" : g.type === "сборное" ? "price-subhead-sborno" : "price-subhead-shitovoe";
       return `<div class="model-group" data-group="${g.type}">
         <div class="price-subhead ${cls}">${g.label}</div>
         ${rows}
@@ -2202,8 +2377,8 @@ const DB = {
         case "glass":
           DB.glass.push({ id: uid("g"), name: "Новое стекло", price: 0 }); populateGlass(); break;
         case "model": {
-          const type = d.type === "сборное" ? "сборное" : "щитовое";
-          DB.models.push({ id: uid("m"), name: "Новая модель", type, basePrice: 0, pvhOnly: type === "сборное" });
+          const type = d.type === "матрица" ? "матрица" : d.type === "сборное" ? "сборное" : "щитовое";
+          DB.models.push({ id: uid("m"), name: "Новая модель", type, basePrice: 0, pvhOnly: type !== "щитовое" });
           populateModels(); break;
         }
         case "option":
@@ -2239,6 +2414,9 @@ const DB = {
   function init() {
     loadPrices();
     loadOrderItems();
+    el.section.value = state.section;
+    applySectionUI();
+    populateWidthMatrix();
     populateModels();
     populateMaterial();
     populateColors();
@@ -2248,6 +2426,7 @@ const DB = {
     el.width.value = state.width;
     el.thickness.value = state.thickness;
     el.discount.value = state.discount;
+    el.promo.value = state.promo;
     el.quantity.value = state.quantity;
     el.sceneWallColor.value = state.wallColor;
     renderWallSwatches();
