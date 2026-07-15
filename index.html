@@ -470,6 +470,14 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
       <select id="glass"></select>
     </div>
 
+    <div class="field" id="sizeModeField">
+      <label for="sizeMode">Размер</label>
+      <select id="sizeMode">
+        <option value="стандарт">Стандарт</option>
+        <option value="нестандарт">Нестандарт</option>
+      </select>
+    </div>
+
     <div id="sizeFreeGroup">
       <div class="field-row">
         <div class="field">
@@ -482,12 +490,14 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
         </div>
         <div class="field">
           <label for="thickness">Толщина, мм</label>
-          <input type="number" id="thickness" step="1">
+          <select id="thickness">
+            <option value="36">36</option>
+            <option value="42">42</option>
+          </select>
         </div>
       </div>
       <div class="size-info">
         <span id="sizeBadge" class="badge"></span>
-        <div id="thicknessWarning" class="warning">42 мм доступна только для щитовых полотен</div>
       </div>
     </div>
 
@@ -830,6 +840,7 @@ const DB = {
 
   const state = {
     section: "матрица",
+    sizeMode: "стандарт",
     modelId: null,
     material: "пвх",
     color: null,
@@ -878,6 +889,8 @@ const DB = {
     colorField: document.getElementById("colorField"),
     glassField: document.getElementById("glassField"),
     optionsField: document.getElementById("optionsField"),
+    sizeModeField: document.getElementById("sizeModeField"),
+    sizeMode: document.getElementById("sizeMode"),
     sizeFreeGroup: document.getElementById("sizeFreeGroup"),
     sizeMatrixRow: document.getElementById("sizeMatrixRow"),
     widthMatrix: document.getElementById("widthMatrix"),
@@ -888,7 +901,6 @@ const DB = {
     width: document.getElementById("width"),
     thickness: document.getElementById("thickness"),
     sizeBadge: document.getElementById("sizeBadge"),
-    thicknessWarning: document.getElementById("thicknessWarning"),
     options: document.getElementById("options"),
     discount: document.getElementById("discount"),
     quantity: document.getElementById("quantity"),
@@ -981,20 +993,32 @@ const DB = {
   // «Матрица» — фиксированная комплектация: материал/цвет/стекло/опции не
   // выбираются (уже заданы в названии), размер только стандартный. Скрываем
   // соответствующие поля и подставляем стандартные высоту/толщину/ширину.
+  // «Матрица» всегда только стандартный размер (свой пикер ширины, без
+  // выбора вовсе). «Сборные»/«Щитовые» выбирают сами: «Стандарт» — тот же
+  // пикер ширины 400/600/700/800/900, «Нестандарт» — высота/ширина
+  // произвольные, толщина — 36 (Сборные, поле заблокировано) либо выбор
+  // 36/42 (Щитовые).
   function applySectionUI() {
     const isMatrix = state.section === "матрица";
+    const isStdSize = isMatrix || state.sizeMode === "стандарт";
+
     el.materialField.hidden = isMatrix;
     el.colorField.hidden = isMatrix;
     el.glassField.hidden = isMatrix;
     el.optionsField.hidden = isMatrix;
-    el.sizeFreeGroup.hidden = isMatrix;
-    el.sizeMatrixRow.hidden = !isMatrix;
-    if (isMatrix) {
+    el.sizeModeField.hidden = isMatrix;
+    el.sizeFreeGroup.hidden = isStdSize;
+    el.sizeMatrixRow.hidden = !isStdSize;
+
+    if (isStdSize) {
       state.height = DB.standard.height;
       state.thickness = DB.standard.thickness;
       if (!DB.standard.widths.includes(state.width)) state.width = DB.standard.widths[3];
       el.widthMatrix.value = state.width;
+    } else if (!["36", "42"].includes(String(state.thickness))) {
+      state.thickness = DB.standard.thickness;
     }
+    el.thickness.value = state.thickness;
   }
 
   function availableMaterials(model) {
@@ -1114,8 +1138,6 @@ const DB = {
     const standard = isStandardSize(state.height, state.width, state.thickness);
     el.sizeBadge.textContent = standard ? "Стандарт" : "Нестандарт (+30%)";
     el.sizeBadge.className = "badge " + (standard ? "badge-ok" : "badge-warn");
-
-    el.thicknessWarning.style.display = !isSborno && state.thickness === 42 ? "block" : "none";
   }
 
   // --- Механика закраски превью двери ----------------------------------
@@ -1901,13 +1923,21 @@ const DB = {
       state.glassId = el.glass.value;
       render();
     });
-    [el.height, el.width, el.thickness].forEach((input) => {
+    [el.height, el.width].forEach((input) => {
       input.addEventListener("input", () => {
         state.height = Number(el.height.value) || 0;
         state.width = Number(el.width.value) || 0;
-        state.thickness = Number(el.thickness.value) || 0;
         render();
       });
+    });
+    el.thickness.addEventListener("change", () => {
+      state.thickness = Number(el.thickness.value) || DB.standard.thickness;
+      render();
+    });
+    el.sizeMode.addEventListener("change", () => {
+      state.sizeMode = el.sizeMode.value;
+      applySectionUI();
+      render();
     });
     el.options.addEventListener("change", (e) => {
       const target = e.target;
@@ -2438,6 +2468,7 @@ const DB = {
     loadPrices();
     loadOrderItems();
     el.section.value = state.section;
+    el.sizeMode.value = state.sizeMode;
     applySectionUI();
     populateWidthMatrix();
     populateModels();
