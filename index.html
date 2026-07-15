@@ -429,6 +429,8 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
         <button type="button" class="menu-item" data-view="calc">Калькулятор цены</button>
         <button type="button" class="menu-item" data-view="scene">2D картинка</button>
         <button type="button" class="menu-item" data-view="room3d">3D комната</button>
+        <button type="button" class="menu-item" data-view="pogonazh">Погонаж</button>
+        <button type="button" class="menu-item" data-view="furnitura">Фурнитура</button>
         <button type="button" class="menu-item" data-view="order">Спецификация</button>
         <button type="button" class="menu-item" data-view="prices">Изменение цен</button>
       </nav>
@@ -610,6 +612,58 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
           <div class="field" id="r3_fixRowB"><label>Сантехника</label><select id="r3_fixB"></select></div>
           <div class="field"><label>Цвет</label><input type="color" id="r3_colorB"><div class="r3-swatches" id="r3_swB"></div></div>
         </div>
+      </div>
+    </div>
+
+    <div id="viewPogonazh" hidden>
+      <p class="scene-view-hint">Наличники, доборы и прочий погонаж — отдельно от полотна двери. Цена за погонный метр, укажите нужную длину.</p>
+      <div class="field">
+        <label for="pogonazhItem">Позиция</label>
+        <select id="pogonazhItem"></select>
+      </div>
+      <div class="field">
+        <label for="pogonazhLength">Длина, м</label>
+        <input type="number" id="pogonazhLength" step="0.1" min="0.1" value="1">
+      </div>
+      <div class="field">
+        <label for="pogonazhDiscount">Скидка, %</label>
+        <input type="number" id="pogonazhDiscount" step="0.1" min="0" max="100" value="0">
+      </div>
+      <div class="result">
+        <div id="pogonazhBreakdown" class="breakdown"></div>
+        <div class="total-row">
+          <span>Итоговая стоимость</span>
+          <span id="pogonazhTotal" class="total-value">0 ₽</span>
+        </div>
+        <button type="button" id="pogonazhSaveBtn" class="btn-primary">Сохранить в спецификацию</button>
+      </div>
+    </div>
+
+    <div id="viewFurnitura" hidden>
+      <p class="scene-view-hint">Ручки, петли, замки и другая фурнитура — отдельно от полотна двери. Цена за комплект/штуку.</p>
+      <div class="field">
+        <label for="furnituraItem">Позиция</label>
+        <select id="furnituraItem"></select>
+      </div>
+      <div class="field">
+        <label for="furnituraQuantity">Количество, шт</label>
+        <div class="qty-stepper">
+          <button type="button" id="furnituraQtyMinus" aria-label="Уменьшить количество">−</button>
+          <input type="number" id="furnituraQuantity" min="1" step="1" value="1">
+          <button type="button" id="furnituraQtyPlus" aria-label="Увеличить количество">+</button>
+        </div>
+      </div>
+      <div class="field">
+        <label for="furnituraDiscount">Скидка, %</label>
+        <input type="number" id="furnituraDiscount" step="0.1" min="0" max="100" value="0">
+      </div>
+      <div class="result">
+        <div id="furnituraBreakdown" class="breakdown"></div>
+        <div class="total-row">
+          <span>Итоговая стоимость</span>
+          <span id="furnituraTotal" class="total-value">0 ₽</span>
+        </div>
+        <button type="button" id="furnituraSaveBtn" class="btn-primary">Сохранить в спецификацию</button>
       </div>
     </div>
 
@@ -832,7 +886,26 @@ const DB = {
   nonStandardPercent: 30,
 
   // Отображаемые названия категорий цвета (для редактора). Ключ — номер категории.
-  categoryNames: {}
+  categoryNames: {},
+
+  // Погонаж (наличники, доборы и т.п.) — отдельно от полотна двери, цена за
+  // погонный метр. Значения-заглушки, отредактируйте в «Изменение цен».
+  pogonazh: [
+    { id: "pg0", name: "Наличник телескопический", price: 350 },
+    { id: "pg1", name: "Добор телескопический", price: 300 },
+    { id: "pg2", name: "Доборная планка", price: 280 },
+    { id: "pg3", name: "Уголок / нащельник", price: 150 }
+  ],
+
+  // Фурнитура (ручки, петли, замки и т.п.) — отдельно от полотна двери, цена
+  // за комплект/штуку. Значения-заглушки, отредактируйте в «Изменение цен».
+  furnitura: [
+    { id: "fr0", name: "Ручка-защёлка", price: 1200 },
+    { id: "fr1", name: "Петли (комплект)", price: 600 },
+    { id: "fr2", name: "Замок", price: 900 },
+    { id: "fr3", name: "Доводчик", price: 1800 },
+    { id: "fr4", name: "Глазок", price: 400 }
+  ]
 };
 
 (function () {
@@ -854,7 +927,13 @@ const DB = {
     quantity: 1,
     sceneMode: false,
     wallColor: "#e8e2d5",
-    wallTexture: "smooth"
+    wallTexture: "smooth",
+    pogonazhId: null,
+    pogonazhLength: 1,
+    pogonazhDiscount: 0,
+    furnituraId: null,
+    furnituraQuantity: 1,
+    furnituraDiscount: 0
   };
 
   // Пресеты цвета стены для быстрого выбора (можно задать и свой через
@@ -920,6 +999,8 @@ const DB = {
     viewPrices: document.getElementById("viewPrices"),
     viewRoom3d: document.getElementById("viewRoom3d"),
     viewOrder: document.getElementById("viewOrder"),
+    viewPogonazh: document.getElementById("viewPogonazh"),
+    viewFurnitura: document.getElementById("viewFurnitura"),
     priceEditor: document.getElementById("priceEditor"),
     orderList: document.getElementById("orderList"),
     orderGrandTotal: document.getElementById("orderGrandTotal"),
@@ -928,7 +1009,21 @@ const DB = {
     orderTelegramBtn: document.getElementById("orderTelegramBtn"),
     orderEmailBtn: document.getElementById("orderEmailBtn"),
     orderPrintBtn: document.getElementById("orderPrintBtn"),
-    orderDownloadBtn: document.getElementById("orderDownloadBtn")
+    orderDownloadBtn: document.getElementById("orderDownloadBtn"),
+    pogonazhItem: document.getElementById("pogonazhItem"),
+    pogonazhLength: document.getElementById("pogonazhLength"),
+    pogonazhDiscount: document.getElementById("pogonazhDiscount"),
+    pogonazhBreakdown: document.getElementById("pogonazhBreakdown"),
+    pogonazhTotal: document.getElementById("pogonazhTotal"),
+    pogonazhSaveBtn: document.getElementById("pogonazhSaveBtn"),
+    furnituraItem: document.getElementById("furnituraItem"),
+    furnituraQuantity: document.getElementById("furnituraQuantity"),
+    furnituraQtyMinus: document.getElementById("furnituraQtyMinus"),
+    furnituraQtyPlus: document.getElementById("furnituraQtyPlus"),
+    furnituraDiscount: document.getElementById("furnituraDiscount"),
+    furnituraBreakdown: document.getElementById("furnituraBreakdown"),
+    furnituraTotal: document.getElementById("furnituraTotal"),
+    furnituraSaveBtn: document.getElementById("furnituraSaveBtn")
   };
 
   // Контексты рисования для двух SVG: превью в калькуляторе и картинка в
@@ -1066,6 +1161,24 @@ const DB = {
       state.glassId = DB.glass.length ? DB.glass[0].id : null;
     }
     if (state.glassId) el.glass.value = state.glassId;
+  }
+
+  function populatePogonazh() {
+    const items = DB.pogonazh.slice().sort((a, b) => RU_COLLATOR.compare(a.name, b.name));
+    el.pogonazhItem.innerHTML = items.map((p) => `<option value="${p.id}">${p.name}</option>`).join("");
+    if (!items.some((p) => p.id === state.pogonazhId)) {
+      state.pogonazhId = items.length ? items[0].id : null;
+    }
+    if (state.pogonazhId) el.pogonazhItem.value = state.pogonazhId;
+  }
+
+  function populateFurnitura() {
+    const items = DB.furnitura.slice().sort((a, b) => RU_COLLATOR.compare(a.name, b.name));
+    el.furnituraItem.innerHTML = items.map((f) => `<option value="${f.id}">${f.name}</option>`).join("");
+    if (!items.some((f) => f.id === state.furnituraId)) {
+      state.furnituraId = items.length ? items[0].id : null;
+    }
+    if (state.furnituraId) el.furnituraItem.value = state.furnituraId;
   }
 
   function populateOptions() {
@@ -1731,6 +1844,54 @@ const DB = {
     el.total.textContent = o.total.toLocaleString("ru-RU") + " ₽";
   }
 
+  // --- Погонаж (наличники, доборы) — цена за погонный метр ---------------
+
+  function computePogonazh() {
+    const item = DB.pogonazh.find((p) => p.id === state.pogonazhId);
+    const rows = [];
+    if (!item) {
+      rows.push("Нет доступных позиций");
+      return { item: null, length: 0, perUnit: 0, discount: 0, total: 0, rows };
+    }
+    const length = Math.max(0, Number(state.pogonazhLength) || 0);
+    const lineSubtotal = item.price * length;
+    const discount = Math.max(0, Math.min(100, Number(state.pogonazhDiscount) || 0));
+    const total = Math.round(lineSubtotal * (1 - discount / 100));
+    rows.push(`${item.name}: ${item.price} ₽/м × ${length} м = ${Math.round(lineSubtotal)} ₽`);
+    if (discount) rows.push(`Скидка ${discount}%: -${Math.round(lineSubtotal * discount / 100)} ₽`);
+    return { item, length, perUnit: item.price, discount, total, rows };
+  }
+
+  function renderPogonazh() {
+    const o = computePogonazh();
+    el.pogonazhBreakdown.innerHTML = o.rows.map((r) => `<div class="breakdown-row">${r}</div>`).join("");
+    el.pogonazhTotal.textContent = o.total.toLocaleString("ru-RU") + " ₽";
+  }
+
+  // --- Фурнитура (ручки, петли, замки) — цена за комплект/штуку ----------
+
+  function computeFurnitura() {
+    const item = DB.furnitura.find((f) => f.id === state.furnituraId);
+    const rows = [];
+    if (!item) {
+      rows.push("Нет доступных позиций");
+      return { item: null, quantity: 0, perUnit: 0, discount: 0, total: 0, rows };
+    }
+    const quantity = Math.max(1, Math.round(Number(state.furnituraQuantity)) || 1);
+    const lineSubtotal = item.price * quantity;
+    const discount = Math.max(0, Math.min(100, Number(state.furnituraDiscount) || 0));
+    const total = Math.round(lineSubtotal * (1 - discount / 100));
+    rows.push(`${item.name}: ${quantity} шт. × ${item.price} ₽ = ${lineSubtotal} ₽`);
+    if (discount) rows.push(`Скидка ${discount}%: -${Math.round(lineSubtotal * discount / 100)} ₽`);
+    return { item, quantity, perUnit: item.price, discount, total, rows };
+  }
+
+  function renderFurnitura() {
+    const o = computeFurnitura();
+    el.furnituraBreakdown.innerHTML = o.rows.map((r) => `<div class="breakdown-row">${r}</div>`).join("");
+    el.furnituraTotal.textContent = o.total.toLocaleString("ru-RU") + " ₽";
+  }
+
   // --- Спецификация: сохранённые полотна --------------------------------
 
   const ORDER_STORE_KEY = "doorcalc_order_v1";
@@ -1755,6 +1916,7 @@ const DB = {
     if (!o.model) return;
     orderItems.push({
       id: uid("item"),
+      kind: "door",
       section: o.section,
       modelName: o.model.name,
       material: o.materialLabel,
@@ -1774,12 +1936,57 @@ const DB = {
     setView("order");
   }
 
+  function addPogonazhToOrder() {
+    const o = computePogonazh();
+    if (!o.item) return;
+    orderItems.push({
+      id: uid("item"),
+      kind: "pogonazh",
+      modelName: o.item.name,
+      quantity: o.length,
+      perUnit: o.perUnit,
+      discount: o.discount,
+      total: o.total,
+      rows: o.rows
+    });
+    saveOrderItems();
+    setView("order");
+  }
+
+  function addFurnituraToOrder() {
+    const o = computeFurnitura();
+    if (!o.item) return;
+    orderItems.push({
+      id: uid("item"),
+      kind: "furnitura",
+      modelName: o.item.name,
+      quantity: o.quantity,
+      perUnit: o.perUnit,
+      discount: o.discount,
+      total: o.total,
+      rows: o.rows
+    });
+    saveOrderItems();
+    setView("order");
+  }
+
   // «Матрица» — готовая комплектация без выбора материала/цвета/стекла,
-  // поэтому вместо этой строки показываем просто пометку раздела.
+  // поэтому вместо этой строки показываем просто пометку раздела. Записи,
+  // сохранённые до появления «kind», считаются дверными (kind: "door").
   function orderItemMeta(it) {
+    if (it.kind === "pogonazh") return "Погонаж";
+    if (it.kind === "furnitura") return "Фурнитура";
     return it.section === "матрица"
       ? "Матрица"
       : `${it.material} · ${it.color || ""} · ${it.glassName || "Глухая"}`;
+  }
+
+  // Строка с размерами/количеством — у двери это ВхШхТ + стандарт/нестандарт,
+  // у погонажа — длина в метрах, у фурнитуры — количество в штуках.
+  function orderItemDimLine(it) {
+    if (it.kind === "pogonazh") return `${it.quantity} м`;
+    if (it.kind === "furnitura") return `${it.quantity} шт.`;
+    return `${it.height} × ${it.width} × ${it.thickness} мм — ${it.standard ? "Стандарт" : "Нестандарт"} · ${it.quantity} шт.`;
   }
 
   function removeOrderItem(id) {
@@ -1803,7 +2010,7 @@ const DB = {
         <div class="order-item">
           <div class="order-item-title">${idx + 1}. ${esc(it.modelName)}</div>
           <div class="order-item-sub">${esc(orderItemMeta(it))}</div>
-          <div class="order-item-sub">${it.height} × ${it.width} × ${it.thickness} мм — ${it.standard ? "Стандарт" : "Нестандарт"} · ${it.quantity} шт.</div>
+          <div class="order-item-sub">${esc(orderItemDimLine(it))}</div>
           <div class="breakdown">${it.rows.map((r) => `<div class="breakdown-row">${esc(r)}</div>`).join("")}</div>
           <div class="order-item-total"><span>Итого</span><span>${it.total.toLocaleString("ru-RU")} ₽</span></div>
           <button type="button" class="row-add order-item-del" data-order-del="${it.id}">✕ Удалить</button>
@@ -1816,7 +2023,7 @@ const DB = {
     if (!orderItems.length) return "Спецификация дверей пуста.";
     const lines = orderItems.map((it, idx) =>
       `${idx + 1}. ${it.modelName} (${orderItemMeta(it)}) — ` +
-      `${it.height}×${it.width}×${it.thickness} мм, ${it.quantity} шт. — ${it.total.toLocaleString("ru-RU")} ₽`
+      `${orderItemDimLine(it)} — ${it.total.toLocaleString("ru-RU")} ₽`
     );
     lines.push("", `Итого по заказу: ${orderGrandTotal().toLocaleString("ru-RU")} ₽`);
     return "Спецификация дверей\n\n" + lines.join("\n");
@@ -1855,7 +2062,7 @@ const DB = {
           <div style="font-weight:700;font-size:15px;margin-bottom:4px;">${idx + 1}. ${esc(it.modelName)}</div>
           <div style="font-size:13px;color:#666;margin-bottom:8px;">
             ${esc(orderItemMeta(it))}<br>
-            ${it.height} × ${it.width} × ${it.thickness} мм — ${it.standard ? "Стандарт" : "Нестандарт"} · ${it.quantity} шт.
+            ${esc(orderItemDimLine(it))}
           </div>
           <div style="font-size:13px;color:#444;">${it.rows.map((r) => `<div>${esc(r)}</div>`).join("")}</div>
           <div style="display:flex;justify-content:space-between;font-weight:700;font-size:15px;border-top:1px solid #ddd;padding-top:8px;margin-top:8px;">
@@ -1984,6 +2191,42 @@ const DB = {
       const btn = e.target.closest(".wall-texture");
       if (btn) setWallTexture(btn.dataset.tex);
     });
+    el.pogonazhItem.addEventListener("change", () => {
+      state.pogonazhId = el.pogonazhItem.value;
+      renderPogonazh();
+    });
+    el.pogonazhLength.addEventListener("input", () => {
+      state.pogonazhLength = el.pogonazhLength.value;
+      renderPogonazh();
+    });
+    el.pogonazhDiscount.addEventListener("input", () => {
+      state.pogonazhDiscount = el.pogonazhDiscount.value;
+      renderPogonazh();
+    });
+    el.pogonazhSaveBtn.addEventListener("click", addPogonazhToOrder);
+    el.furnituraItem.addEventListener("change", () => {
+      state.furnituraId = el.furnituraItem.value;
+      renderFurnitura();
+    });
+    el.furnituraQuantity.addEventListener("input", () => {
+      state.furnituraQuantity = Math.max(1, Math.round(Number(el.furnituraQuantity.value)) || 1);
+      renderFurnitura();
+    });
+    el.furnituraQtyMinus.addEventListener("click", () => {
+      state.furnituraQuantity = Math.max(1, state.furnituraQuantity - 1);
+      el.furnituraQuantity.value = state.furnituraQuantity;
+      renderFurnitura();
+    });
+    el.furnituraQtyPlus.addEventListener("click", () => {
+      state.furnituraQuantity = state.furnituraQuantity + 1;
+      el.furnituraQuantity.value = state.furnituraQuantity;
+      renderFurnitura();
+    });
+    el.furnituraDiscount.addEventListener("input", () => {
+      state.furnituraDiscount = el.furnituraDiscount.value;
+      renderFurnitura();
+    });
+    el.furnituraSaveBtn.addEventListener("click", addFurnituraToOrder);
   }
 
   function onWallSwatchClick(e) {
@@ -2036,9 +2279,12 @@ const DB = {
     el.viewPrices.hidden = view !== "prices";
     el.viewRoom3d.hidden = view !== "room3d";
     el.viewOrder.hidden = view !== "order";
+    el.viewPogonazh.hidden = view !== "pogonazh";
+    el.viewFurnitura.hidden = view !== "furnitura";
     el.viewTitle.textContent =
       view === "prices" ? "Изменение цен" : view === "scene" ? "2D картинка" :
       view === "room3d" ? "3D комната" : view === "order" ? "Спецификация" :
+      view === "pogonazh" ? "Погонаж" : view === "furnitura" ? "Фурнитура" :
       "Расчет — межкомнатные двери";
     el.menu.querySelectorAll(".menu-item").forEach((b) =>
       b.classList.toggle("active", b.dataset.view === view)
@@ -2047,6 +2293,8 @@ const DB = {
     if (view === "scene") drawDoor(sceneCtx, true);
     if (view === "room3d" && window.initRoom3D) window.initRoom3D();
     if (view === "order") renderOrderPage();
+    if (view === "pogonazh") renderPogonazh();
+    if (view === "furnitura") renderFurnitura();
     toggleMenu(false);
   }
 
@@ -2065,7 +2313,9 @@ const DB = {
       categoryNames: DB.categoryNames,
       glass: DB.glass.map((g) => ({ id: g.id, name: g.name, price: g.price })),
       options: DB.options,
-      nonStandardPercent: DB.nonStandardPercent
+      nonStandardPercent: DB.nonStandardPercent,
+      pogonazh: DB.pogonazh.map((p) => ({ id: p.id, name: p.name, price: p.price })),
+      furnitura: DB.furnitura.map((f) => ({ id: f.id, name: f.name, price: f.price }))
     };
   }
 
@@ -2087,6 +2337,8 @@ const DB = {
     if (Array.isArray(s.glass)) DB.glass = s.glass.map((g) => ({ ...g }));
     if (s.options) DB.options = s.options;
     if (typeof s.nonStandardPercent === "number") DB.nonStandardPercent = s.nonStandardPercent;
+    if (Array.isArray(s.pogonazh)) DB.pogonazh = s.pogonazh.map((p) => ({ ...p }));
+    if (Array.isArray(s.furnitura)) DB.furnitura = s.furnitura.map((f) => ({ ...f }));
   }
 
   function savePrices() {
@@ -2251,6 +2503,22 @@ const DB = {
       <summary>Стекло</summary>
       <div class="price-body">${glassRows}</div></details>`);
 
+    // Погонаж (наличники, доборы) — цена за погонный метр
+    let pogonazhRows = DB.pogonazh.map((p) =>
+      editItem("pogonazh", { id: p.id }, p.name, p.price, { isOpen })).join("");
+    pogonazhRows += addBtn("pogonazh", {}, "Добавить позицию");
+    parts.push(`<details class="price-group" data-key="pogonazh"${isOpen("pogonazh", false) ? " open" : ""}>
+      <summary>Погонаж (цена за метр)</summary>
+      <div class="price-body">${pogonazhRows}</div></details>`);
+
+    // Фурнитура (ручки, петли, замки) — цена за комплект/штуку
+    let furnituraRows = DB.furnitura.map((f) =>
+      editItem("furnitura", { id: f.id }, f.name, f.price, { isOpen })).join("");
+    furnituraRows += addBtn("furnitura", {}, "Добавить позицию");
+    parts.push(`<details class="price-group" data-key="furnitura"${isOpen("furnitura", false) ? " open" : ""}>
+      <summary>Фурнитура (цена за шт/комплект)</summary>
+      <div class="price-body">${furnituraRows}</div></details>`);
+
     // Опции
     let optRows = "";
     Object.keys(DB.options).forEach((mat) => {
@@ -2345,6 +2613,16 @@ const DB = {
         if (isName) g.name = val; else g.price = val;
         refresh = populateGlass; break;
       }
+      case "pogonazh": {
+        const p = DB.pogonazh.find((x) => x.id === d.id); if (!p) break;
+        if (isName) p.name = val; else p.price = val;
+        refresh = populatePogonazh; break;
+      }
+      case "furnitura": {
+        const f = DB.furnitura.find((x) => x.id === d.id); if (!f) break;
+        if (isName) f.name = val; else f.price = val;
+        refresh = populateFurnitura; break;
+      }
       case "model": {
         const m = DB.models.find((x) => x.id === d.id); if (!m) break;
         if (isName) m.name = val; else m.basePrice = val;
@@ -2378,6 +2656,8 @@ const DB = {
     if (refresh) refresh();
     savePrices();
     render();
+    renderPogonazh();
+    renderFurnitura();
   }
 
   // Клик по «удалить»/«добавить» — меняет структуру → перерисовываем редактор
@@ -2394,6 +2674,10 @@ const DB = {
         // стирала бы разом все цвета/плёнки внутри категории.
         case "glass":
           DB.glass = DB.glass.filter((g) => g.id !== d.id); populateGlass(); break;
+        case "pogonazh":
+          DB.pogonazh = DB.pogonazh.filter((p) => p.id !== d.id); populatePogonazh(); break;
+        case "furnitura":
+          DB.furnitura = DB.furnitura.filter((f) => f.id !== d.id); populateFurnitura(); break;
         case "model":
           DB.models = DB.models.filter((m) => m.id !== d.id); populateModels(); break;
         // "optionName" (удаление радио-опции целиком, например «Кромка») нет
@@ -2429,6 +2713,10 @@ const DB = {
           populateColors(); break;
         case "glass":
           DB.glass.push({ id: uid("g"), name: "Новое стекло", price: 0 }); populateGlass(); break;
+        case "pogonazh":
+          DB.pogonazh.push({ id: uid("pg"), name: "Новая позиция", price: 0 }); populatePogonazh(); break;
+        case "furnitura":
+          DB.furnitura.push({ id: uid("fr"), name: "Новая позиция", price: 0 }); populateFurnitura(); break;
         case "model": {
           const type = d.type === "матрица" ? "матрица" : d.type === "сборное" ? "сборное" : "щитовое";
           DB.models.push({ id: uid("m"), name: "Новая модель", type, basePrice: 0, pvhOnly: type !== "щитовое" });
@@ -2448,6 +2736,8 @@ const DB = {
     savePrices();
     renderPriceEditor();
     render();
+    renderPogonazh();
+    renderFurnitura();
   }
 
   function onModelSearch(e) {
@@ -2476,12 +2766,18 @@ const DB = {
     populateColors();
     populateGlass();
     populateOptions();
+    populatePogonazh();
+    populateFurnitura();
     el.height.value = state.height;
     el.width.value = state.width;
     el.thickness.value = state.thickness;
     el.discount.value = state.discount;
     el.promo.value = state.promo;
     el.quantity.value = state.quantity;
+    el.pogonazhLength.value = state.pogonazhLength;
+    el.pogonazhDiscount.value = state.pogonazhDiscount;
+    el.furnituraQuantity.value = state.furnituraQuantity;
+    el.furnituraDiscount.value = state.furnituraDiscount;
     el.sceneWallColor.value = state.wallColor;
     renderWallSwatches();
     renderWallTextures();
@@ -2499,6 +2795,8 @@ const DB = {
     el.priceEditor.addEventListener("click", onPriceClick);
 
     render();
+    renderPogonazh();
+    renderFurnitura();
   }
 
   document.addEventListener("DOMContentLoaded", init);
