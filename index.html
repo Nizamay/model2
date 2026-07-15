@@ -359,6 +359,24 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 .btn-primary:hover { filter: brightness(1.06); }
 .btn-primary:active { filter: brightness(0.94); }
 
+.result-actions { display: flex; gap: 8px; margin-top: 4px; }
+.result-actions button {
+  flex: 1 1 0; padding: 9px 8px; border-radius: 8px;
+  font-size: 13px; font-weight: 600; cursor: pointer; border: none;
+}
+.result-actions .btn-save { background: var(--accent); color: #fff; }
+.result-actions .btn-save:hover { filter: brightness(1.06); }
+.result-actions .btn-save:active { filter: brightness(0.94); }
+.result-actions .btn-save:disabled { opacity: .7; cursor: default; }
+.result-actions .btn-goto { background: var(--bg); color: var(--text); border: 1px solid var(--border); }
+.result-actions .btn-goto:hover { background: var(--border); }
+
+.spec-header { text-align: right; margin-bottom: 14px; }
+.spec-number { font-size: 15px; font-weight: 700; }
+.spec-company { font-size: 12px; color: var(--muted); margin-top: 4px; line-height: 1.5; }
+
+.spec-customer { margin-bottom: 16px; display: flex; flex-direction: column; gap: 10px; }
+
 .qty-stepper { display: flex; align-items: center; gap: 8px; }
 .qty-stepper input[type="number"] { flex: 1 1 auto; text-align: center; }
 .qty-stepper button {
@@ -401,7 +419,8 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
   body * { visibility: hidden; }
   #viewOrder, #viewOrder * { visibility: visible; }
   #viewOrder { position: absolute; left: 0; top: 0; width: 100%; padding: 0; }
-  .order-toolbar, .order-note, .topbar { display: none !important; }
+  .order-toolbar, .order-note, .topbar, .order-item-del { display: none !important; }
+  .spec-customer input { border: none; background: none; padding: 0; font-size: 13px; outline: none; }
 }
 
 /* --- 3D комната с дверью --- */
@@ -598,7 +617,10 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
         <span>Итоговая стоимость</span>
         <span id="total" class="total-value">0 ₽</span>
       </div>
-      <button type="button" id="saveToOrderBtn" class="btn-primary">Сохранить в спецификацию</button>
+      <div class="result-actions">
+        <button type="button" id="saveToOrderBtn" class="btn-save">Сохранить в спецификацию</button>
+        <button type="button" id="goToOrderBtn" class="btn-goto">Перейти в спецификацию →</button>
+      </div>
     </div>
     </div><!-- /viewCalc -->
 
@@ -671,6 +693,20 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
     </div>
 
     <div id="viewOrder" hidden>
+      <div class="spec-header">
+        <div class="spec-number" id="specNumber">—</div>
+        <div class="spec-company">
+          ИП Ихсанов Азат Фаисович<br>
+          Магазин «1ый Сорт» Окна и Двери<br>
+          г. Азнакаево, ул. Марджани, 41<br>
+          тел: 89173989190 (Азат), 89172744324 (Фанис)
+        </div>
+      </div>
+      <div class="spec-customer">
+        <div class="field"><label for="custLastName">Заказчик — фамилия</label><input type="text" id="custLastName" placeholder="Фамилия"></div>
+        <div class="field"><label for="custFirstName">Имя</label><input type="text" id="custFirstName" placeholder="Имя"></div>
+        <div class="field"><label for="custPhone">Телефон</label><input type="text" id="custPhone" placeholder="+7 ..."></div>
+      </div>
       <p class="scene-view-hint">Каждое сохранённое из калькулятора полотно — отдельная позиция ниже, с размерами и расчётом. Список сохраняется в этом браузере.</p>
       <div id="orderList"></div>
       <div class="order-grand-total"><span>Итого по заказу</span><span id="orderGrandTotal">0 ₽</span></div>
@@ -1143,6 +1179,11 @@ const DB = {
     qtyMinus: document.getElementById("qtyMinus"),
     qtyPlus: document.getElementById("qtyPlus"),
     saveToOrderBtn: document.getElementById("saveToOrderBtn"),
+    goToOrderBtn: document.getElementById("goToOrderBtn"),
+    specNumber: document.getElementById("specNumber"),
+    custLastName: document.getElementById("custLastName"),
+    custFirstName: document.getElementById("custFirstName"),
+    custPhone: document.getElementById("custPhone"),
     breakdown: document.getElementById("breakdown"),
     total: document.getElementById("total"),
     sceneWallSwatches: document.getElementById("s_wallSwatches"),
@@ -2169,20 +2210,99 @@ const DB = {
   // --- Спецификация: сохранённые полотна --------------------------------
 
   const ORDER_STORE_KEY = "doorcalc_order_v1";
+  const SPEC_SEQ_KEY = "doorcalc_spec_seq_v1";
+  const SPEC_COMPANY_LINES = [
+    "ИП Ихсанов Азат Фаисович",
+    "Магазин «1ый Сорт» Окна и Двери",
+    "г. Азнакаево, ул. Марджани, 41",
+    "тел: 89173989190 (Азат), 89172744324 (Фанис)"
+  ];
   let orderItems = [];
+  // Номер спецификации выдаётся один раз на весь текущий заказ (пока в нём
+  // есть хоть одна позиция) — см. ensureOrderNumber. Нужен, чтобы потом
+  // можно было найти нужный распечатанный/скачанный файл по номеру.
+  let orderMeta = { number: null, date: null };
+  let orderCustomer = { lastName: "", firstName: "", phone: "" };
 
   function loadOrderItems() {
     try {
       const raw = localStorage.getItem(ORDER_STORE_KEY);
-      const parsed = raw ? JSON.parse(raw) : [];
-      orderItems = Array.isArray(parsed) ? parsed : [];
+      const parsed = raw ? JSON.parse(raw) : null;
+      if (Array.isArray(parsed)) {
+        // Старый формат хранения — просто список позиций, без номера/заказчика.
+        orderItems = parsed;
+        orderMeta = { number: null, date: null };
+        orderCustomer = { lastName: "", firstName: "", phone: "" };
+      } else if (parsed && typeof parsed === "object") {
+        orderItems = Array.isArray(parsed.items) ? parsed.items : [];
+        orderMeta = (parsed.meta && typeof parsed.meta === "object") ? parsed.meta : { number: null, date: null };
+        orderCustomer = (parsed.customer && typeof parsed.customer === "object") ? parsed.customer : { lastName: "", firstName: "", phone: "" };
+      } else {
+        orderItems = [];
+        orderMeta = { number: null, date: null };
+        orderCustomer = { lastName: "", firstName: "", phone: "" };
+      }
     } catch (e) {
       orderItems = [];
+      orderMeta = { number: null, date: null };
+      orderCustomer = { lastName: "", firstName: "", phone: "" };
     }
   }
 
   function saveOrderItems() {
-    try { localStorage.setItem(ORDER_STORE_KEY, JSON.stringify(orderItems)); } catch (e) {}
+    try {
+      localStorage.setItem(ORDER_STORE_KEY, JSON.stringify({ items: orderItems, meta: orderMeta, customer: orderCustomer }));
+    } catch (e) {}
+  }
+
+  function nextSpecSeq() {
+    let n = 1;
+    try {
+      n = (Number(localStorage.getItem(SPEC_SEQ_KEY)) || 0) + 1;
+      localStorage.setItem(SPEC_SEQ_KEY, String(n));
+    } catch (e) {}
+    return n;
+  }
+
+  function formatSpecDate(d) {
+    const pad = (x) => String(x).padStart(2, "0");
+    return `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()}`;
+  }
+
+  // Новый номер выдаётся при переходе списка из пустого в непустой (начало
+  // новой спецификации) и сбрасывается, когда все позиции удалены — так
+  // одна и та же спецификация (пока в ней что-то остаётся) сохраняет один
+  // номер, а следующая, начатая с нуля, получает новый.
+  function ensureOrderNumber() {
+    if (orderItems.length && orderMeta.number == null) {
+      orderMeta = { number: nextSpecSeq(), date: formatSpecDate(new Date()) };
+    } else if (!orderItems.length) {
+      orderMeta = { number: null, date: null };
+    }
+  }
+
+  function specNumberText() {
+    return orderMeta.number != null ? `${orderMeta.date} / №${orderMeta.number}` : "—";
+  }
+
+  function customerLine() {
+    const name = [orderCustomer.lastName, orderCustomer.firstName].filter(Boolean).join(" ");
+    if (!name && !orderCustomer.phone) return "";
+    return `Заказчик: ${name || "—"}${orderCustomer.phone ? ", тел. " + orderCustomer.phone : ""}`;
+  }
+
+  function updateSpecHeader() {
+    el.specNumber.textContent = specNumberText();
+    el.custLastName.value = orderCustomer.lastName;
+    el.custFirstName.value = orderCustomer.firstName;
+    el.custPhone.value = orderCustomer.phone;
+  }
+
+  function flashSaved(btn) {
+    const original = btn.textContent;
+    btn.textContent = "✓ Сохранено";
+    btn.disabled = true;
+    setTimeout(() => { btn.textContent = original; btn.disabled = false; }, 1200);
   }
 
   function addCurrentToOrder() {
@@ -2205,8 +2325,9 @@ const DB = {
       total: o.total,
       rows: o.rows
     });
+    ensureOrderNumber();
     saveOrderItems();
-    setView("order");
+    flashSaved(el.saveToOrderBtn);
   }
 
   // «Матрица» — готовая комплектация без выбора материала/цвета/стекла,
@@ -2227,6 +2348,7 @@ const DB = {
 
   function removeOrderItem(id) {
     orderItems = orderItems.filter((it) => it.id !== id);
+    ensureOrderNumber();
     saveOrderItems();
     renderOrderPage();
   }
@@ -2236,6 +2358,7 @@ const DB = {
   }
 
   function renderOrderPage() {
+    updateSpecHeader();
     if (!orderItems.length) {
       el.orderList.innerHTML = `<div class="order-empty">Пока пусто — откройте «Калькулятор цены» и нажмите «Сохранить в спецификацию».</div>`;
       el.orderGrandTotal.textContent = "0 ₽";
@@ -2256,22 +2379,32 @@ const DB = {
   }
 
   function buildOrderShareText() {
-    if (!orderItems.length) return "Спецификация дверей пуста.";
-    const lines = orderItems.map((it, idx) =>
-      `${idx + 1}. ${it.modelName} (${orderItemMeta(it)}) — ` +
-      (it.section === "погонаж"
-        ? `${it.quantity} шт.`
-        : `${it.height}×${it.width}×${it.thickness} мм, ${it.quantity} шт.`) +
-      ` — ${it.total.toLocaleString("ru-RU")} ₽`
-    );
-    lines.push("", `Итого по заказу: ${orderGrandTotal().toLocaleString("ru-RU")} ₽`);
-    return "Спецификация дверей\n\n" + lines.join("\n");
+    const lines = [`Спецификация ${specNumberText()}`, "", ...SPEC_COMPANY_LINES];
+    const custLine = customerLine();
+    if (custLine) lines.push("", custLine);
+    lines.push("");
+
+    if (!orderItems.length) {
+      lines.push("Пуста.");
+      return lines.join("\n");
+    }
+
+    orderItems.forEach((it, idx) => {
+      lines.push(`${idx + 1}. ${it.modelName} (${orderItemMeta(it)})`);
+      if (it.section !== "погонаж") {
+        lines.push(`${it.height}×${it.width}×${it.thickness} мм — ${it.standard ? "Стандарт" : "Нестандарт"}`);
+      }
+      it.rows.forEach((r) => lines.push("   " + r));
+      lines.push(`Итого по позиции: ${it.total.toLocaleString("ru-RU")} ₽`, "");
+    });
+    lines.push(`Итого по заказу: ${orderGrandTotal().toLocaleString("ru-RU")} ₽`);
+    return lines.join("\n");
   }
 
   function shareOrder() {
     const text = buildOrderShareText();
     if (navigator.share) {
-      navigator.share({ title: "Спецификация дверей", text }).catch(() => {});
+      navigator.share({ title: `Спецификация ${specNumberText()}`, text }).catch(() => {});
     } else {
       shareOrderViaWhatsApp();
     }
@@ -2287,7 +2420,7 @@ const DB = {
 
   function shareOrderViaEmail() {
     const body = encodeURIComponent(buildOrderShareText());
-    location.href = "mailto:?subject=" + encodeURIComponent("Спецификация дверей") + "&body=" + body;
+    location.href = "mailto:?subject=" + encodeURIComponent(`Спецификация ${specNumberText()}`) + "&body=" + body;
   }
 
   function printOrder() {
@@ -2301,7 +2434,7 @@ const DB = {
           <div style="font-weight:700;font-size:15px;margin-bottom:4px;">${idx + 1}. ${esc(it.modelName)}</div>
           <div style="font-size:13px;color:#666;margin-bottom:8px;">
             ${esc(orderItemMeta(it))}<br>
-            ${it.height} × ${it.width} × ${it.thickness} мм — ${it.standard ? "Стандарт" : "Нестандарт"} · ${it.quantity} шт.
+            ${esc(orderItemDimsLine(it))}
           </div>
           <div style="font-size:13px;color:#444;">${it.rows.map((r) => `<div>${esc(r)}</div>`).join("")}</div>
           <div style="display:flex;justify-content:space-between;font-weight:700;font-size:15px;border-top:1px solid #ddd;padding-top:8px;margin-top:8px;">
@@ -2309,8 +2442,14 @@ const DB = {
           </div>
         </div>`)
       .join("");
+    const custLine = customerLine();
     const html = `<!doctype html><html lang="ru"><head><meta charset="UTF-8"><title>Спецификация дверей</title></head>
 <body style="font-family:-apple-system,'Segoe UI',Roboto,Arial,sans-serif;max-width:640px;margin:24px auto;padding:0 16px;color:#1c1f26;">
+  <div style="text-align:right;margin-bottom:16px;">
+    <div style="font-size:15px;font-weight:700;">${esc(specNumberText())}</div>
+    <div style="font-size:12px;color:#666;margin-top:4px;line-height:1.5;">${SPEC_COMPANY_LINES.map(esc).join("<br>")}</div>
+  </div>
+  ${custLine ? `<div style="font-size:13px;margin-bottom:14px;">${esc(custLine)}</div>` : ""}
   <h1 style="font-size:20px;">Спецификация дверей</h1>
   ${itemsHtml || "<p>Пусто.</p>"}
   <div style="display:flex;justify-content:space-between;font-size:20px;font-weight:800;border-top:2px solid #1c1f26;padding-top:14px;margin-top:6px;">
@@ -2462,9 +2601,20 @@ const DB = {
       render();
     });
     el.saveToOrderBtn.addEventListener("click", addCurrentToOrder);
+    el.goToOrderBtn.addEventListener("click", () => setView("order"));
     el.orderList.addEventListener("click", (e) => {
       const btn = e.target.closest("[data-order-del]");
       if (btn) removeOrderItem(btn.dataset.orderDel);
+    });
+    [
+      [el.custLastName, "lastName"],
+      [el.custFirstName, "firstName"],
+      [el.custPhone, "phone"]
+    ].forEach(([input, key]) => {
+      input.addEventListener("input", () => {
+        orderCustomer[key] = input.value;
+        saveOrderItems();
+      });
     });
     el.orderShareBtn.addEventListener("click", shareOrder);
     el.orderWhatsappBtn.addEventListener("click", shareOrderViaWhatsApp);
@@ -3040,6 +3190,10 @@ const DB = {
   function init() {
     loadPrices();
     loadOrderItems();
+    // Старый список позиций (без номера, до этой версии) — задним числом
+    // выдаём номер, чтобы он был у уже начатой спецификации.
+    ensureOrderNumber();
+    saveOrderItems();
     el.section.value = state.section;
     el.sizeMode.value = state.sizeMode;
     applySectionUI();
