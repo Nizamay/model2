@@ -376,6 +376,7 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 .spec-company { font-size: 12px; color: var(--muted); margin-top: 4px; line-height: 1.5; }
 
 .spec-customer { margin-bottom: 16px; display: flex; flex-direction: column; gap: 10px; }
+.spec-customer-readonly { margin-bottom: 16px; font-size: 13px; color: var(--text); }
 
 .qty-stepper { display: flex; align-items: center; gap: 8px; }
 .qty-stepper input[type="number"] { flex: 1 1 auto; text-align: center; }
@@ -419,7 +420,7 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
   body * { visibility: hidden; }
   #viewOrder, #viewOrder * { visibility: visible; }
   #viewOrder { position: absolute; left: 0; top: 0; width: 100%; padding: 0; }
-  .order-toolbar, .order-note, .topbar, .order-item-del { display: none !important; }
+  .order-toolbar, .order-note, .topbar, .order-item-del, .result-actions { display: none !important; }
   .spec-customer input { border: none; background: none; padding: 0; font-size: 13px; outline: none; }
 }
 
@@ -449,6 +450,7 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
         <button type="button" class="menu-item" data-view="scene">2D картинка</button>
         <button type="button" class="menu-item" data-view="room3d">3D комната</button>
         <button type="button" class="menu-item" data-view="order">Спецификация</button>
+        <button type="button" class="menu-item" data-view="history">Сохранённые спецификации</button>
         <button type="button" class="menu-item" data-view="prices">Изменение цен</button>
       </nav>
     </div>
@@ -702,14 +704,22 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
           тел: 89173989190 (Азат), 89172744324 (Фанис)
         </div>
       </div>
-      <div class="spec-customer">
+      <div class="spec-customer" id="specCustomerEdit">
         <div class="field"><label for="custLastName">Заказчик — фамилия</label><input type="text" id="custLastName" placeholder="Фамилия"></div>
         <div class="field"><label for="custFirstName">Имя</label><input type="text" id="custFirstName" placeholder="Имя"></div>
         <div class="field"><label for="custPhone">Телефон</label><input type="text" id="custPhone" placeholder="+7 ..."></div>
       </div>
-      <p class="scene-view-hint">Каждое сохранённое из калькулятора полотно — отдельная позиция ниже, с размерами и расчётом. Список сохраняется в этом браузере.</p>
+      <div class="spec-customer-readonly" id="specCustomerView" hidden></div>
       <div id="orderList"></div>
       <div class="order-grand-total"><span>Итого по заказу</span><span id="orderGrandTotal">0 ₽</span></div>
+      <div class="result-actions" id="draftActions">
+        <button type="button" id="saveSpecBtn" class="btn-save">💾 Сохранить спецификацию</button>
+        <button type="button" id="newSpecBtn" class="btn-goto">🆕 Новая спецификация</button>
+      </div>
+      <div class="result-actions" id="historyViewActions" hidden>
+        <button type="button" id="backToHistoryBtn" class="btn-goto">← К списку сохранённых</button>
+        <button type="button" id="restoreHistoryBtn" class="btn-save">✏️ Вернуть для изменения</button>
+      </div>
       <div class="order-toolbar">
         <button type="button" id="orderShareBtn">📤 Поделиться</button>
         <button type="button" id="orderWhatsappBtn">💬 WhatsApp</button>
@@ -719,6 +729,10 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
         <button type="button" id="orderDownloadBtn">💾 Скачать файл</button>
       </div>
       <p class="order-note">«Поделиться» на телефоне открывает системное меню — там же будут Max, imo, WhatsApp, Telegram, Email и другие установленные приложения. «Скачать файл» подходит и для телефона, и для компьютера.</p>
+    </div>
+
+    <div id="viewSpecHistory" hidden>
+      <div id="specHistoryList"></div>
     </div>
   </main>
 
@@ -1181,9 +1195,19 @@ const DB = {
     saveToOrderBtn: document.getElementById("saveToOrderBtn"),
     goToOrderBtn: document.getElementById("goToOrderBtn"),
     specNumber: document.getElementById("specNumber"),
+    specCustomerEdit: document.getElementById("specCustomerEdit"),
+    specCustomerView: document.getElementById("specCustomerView"),
     custLastName: document.getElementById("custLastName"),
     custFirstName: document.getElementById("custFirstName"),
     custPhone: document.getElementById("custPhone"),
+    draftActions: document.getElementById("draftActions"),
+    saveSpecBtn: document.getElementById("saveSpecBtn"),
+    newSpecBtn: document.getElementById("newSpecBtn"),
+    historyViewActions: document.getElementById("historyViewActions"),
+    backToHistoryBtn: document.getElementById("backToHistoryBtn"),
+    restoreHistoryBtn: document.getElementById("restoreHistoryBtn"),
+    viewSpecHistory: document.getElementById("viewSpecHistory"),
+    specHistoryList: document.getElementById("specHistoryList"),
     breakdown: document.getElementById("breakdown"),
     total: document.getElementById("total"),
     sceneWallSwatches: document.getElementById("s_wallSwatches"),
@@ -1275,10 +1299,33 @@ const DB = {
   // пикер ширины 400/600/700/800/900, «Нестандарт» — высота/ширина
   // произвольные, толщина — 36 (Сборные, поле заблокировано) либо выбор
   // 36/42 (Щитовые).
+  // Количество: у Погонажа продают и половину штуки (кратно 0,5), у
+  // дверных полотен — только целыми (кратно 1). Шаг/минимум поля и уже
+  // введённое количество пересчитываются при каждой смене раздела.
+  function quantityStep() {
+    return state.section === "погонаж" ? 0.5 : 1;
+  }
+
+  function roundQuantity(value) {
+    const step = quantityStep();
+    const rounded = Math.round((Number(value) || 0) / step) * step;
+    return Math.max(step, rounded);
+  }
+
+  function updateQuantityStep() {
+    const step = quantityStep();
+    el.quantity.step = String(step);
+    el.quantity.min = String(step);
+    state.quantity = roundQuantity(state.quantity);
+    el.quantity.value = state.quantity;
+  }
+
   function applySectionUI() {
     const isMatrix = state.section === "матрица";
     const isTrim = state.section === "погонаж";
     const isStdSize = isMatrix || state.sizeMode === "стандарт";
+
+    updateQuantityStep();
 
     el.modelField.hidden = isTrim;
     el.trimVidField.hidden = !isTrim;
@@ -2057,19 +2104,30 @@ const DB = {
   // чтобы расчёт нигде не расходился.
   // Общий хвост расчёта: количество/скидка/итог — одинаков для «Матрицы» и
   // обычных разделов, различается только то, что складывается в perUnit.
-  function finishOrder(model, perUnitBeforeQty, rows, unitLabel) {
+  // Скидка и Акция вместе не суммируются на одном и том же товаре: если для
+  // текущего полотна выбрана Акция, Скидка на него не действует (но
+  // остаётся выставленной для остальных товаров — см. skipDiscount).
+  function finishOrder(model, perUnitBeforeQty, rows, unitLabel, skipDiscount) {
     const unit = unitLabel || "полотно";
     const perUnit = perUnitBeforeQty;
-    const quantity = Math.max(1, Math.round(Number(state.quantity)) || 1);
+    const quantity = Number(state.quantity) > 0 ? Number(state.quantity) : 1;
     const lineSubtotal = perUnit * quantity;
-    const discount = Number(state.discount) || 0;
+    const discount = skipDiscount ? 0 : (Number(state.discount) || 0);
     const total = Math.round(lineSubtotal * (1 - discount / 100));
 
     rows.push(`Подытог за 1 ${unit}: ${perUnit} ₽`);
-    if (quantity > 1) rows.push(`Количество: ${quantity} шт. × ${perUnit} ₽ = ${lineSubtotal} ₽`);
-    if (discount) rows.push(`Скидка ${discount}%: -${Math.round(lineSubtotal * discount / 100)} ₽`);
+    if (quantity !== 1) rows.push(`Количество: ${quantity} шт. × ${perUnit} ₽ = ${lineSubtotal} ₽`);
+    if (discount) {
+      rows.push(`Скидка ${discount}%: -${Math.round(lineSubtotal * discount / 100)} ₽`);
+    } else if (skipDiscount && Number(state.discount) > 0) {
+      rows.push(`Скидка ${Number(state.discount)}% не применяется — действует Акция`);
+    }
 
     return { model, quantity, perUnit, lineSubtotal, discount, total, rows };
+  }
+
+  function promoActive() {
+    return Math.max(0, Math.min(100, Number(state.promo) || 0)) > 0;
   }
 
   // Акция — скидка в %, действует только на цену самой модели полотна
@@ -2152,8 +2210,9 @@ const DB = {
       // Готовая комплектация: категория цвета, стекло и опции не влияют —
       // всё уже заложено в basePrice самой позиции.
       rows.push(`Полотно (${model.name}): ${model.basePrice} ₽`);
+      const promo = promoActive();
       const perUnit = applyPromo(model.basePrice, rows);
-      const result = finishOrder(model, perUnit, rows);
+      const result = finishOrder(model, perUnit, rows, undefined, promo);
       return {
         ...result,
         standard: true,
@@ -2168,6 +2227,7 @@ const DB = {
     const leafBase = model.basePrice + surcharge;
     rows.push(`Полотно (${model.name}): ${leafBase} ₽`);
 
+    const promo = promoActive();
     let leafPrice = applyPromo(leafBase, rows);
     const standard = isStandardSize(state.height, state.width, state.thickness);
     const nsMult = 1 + (Number(DB.nonStandardPercent) || 0) / 100;
@@ -2183,7 +2243,7 @@ const DB = {
     if (glassPrice) rows.push(`Стекло (${glass.name}): +${glassPrice} ₽`);
 
     const perUnit = leafPrice + optionsSum + glassPrice;
-    const result = finishOrder(model, perUnit, rows);
+    const result = finishOrder(model, perUnit, rows, undefined, promo);
     return {
       ...result,
       standard,
@@ -2211,18 +2271,26 @@ const DB = {
 
   const ORDER_STORE_KEY = "doorcalc_order_v1";
   const SPEC_SEQ_KEY = "doorcalc_spec_seq_v1";
+  const SPEC_HISTORY_KEY = "doorcalc_spec_history_v1";
   const SPEC_COMPANY_LINES = [
     "ИП Ихсанов Азат Фаисович",
     "Магазин «1ый Сорт» Окна и Двери",
     "г. Азнакаево, ул. Марджани, 41",
     "тел: 89173989190 (Азат), 89172744324 (Фанис)"
   ];
+  // orderItems/orderMeta/orderCustomer — текущий, ещё редактируемый черновик
+  // спецификации. Номер (orderMeta.number) не присваивается автоматически —
+  // только явным нажатием «Сохранить спецификацию» (см. saveSpecification),
+  // и именно тогда черновик копируется в specHistory (список сохранённых).
   let orderItems = [];
-  // Номер спецификации выдаётся один раз на весь текущий заказ (пока в нём
-  // есть хоть одна позиция) — см. ensureOrderNumber. Нужен, чтобы потом
-  // можно было найти нужный распечатанный/скачанный файл по номеру.
   let orderMeta = { number: null, date: null };
   let orderCustomer = { lastName: "", firstName: "", phone: "" };
+  let specHistory = [];
+  // Не null, когда открыт просмотр одной из сохранённых спецификаций (через
+  // «Сохранённые спецификации» → «Просмотреть») — тогда страница
+  // «Спецификация» показывает её данные вместо живого черновика,
+  // read-only (см. currentSpecView/renderOrderPage).
+  let viewingHistoryNumber = null;
 
   function loadOrderItems() {
     try {
@@ -2255,6 +2323,20 @@ const DB = {
     } catch (e) {}
   }
 
+  function loadSpecHistory() {
+    try {
+      const raw = localStorage.getItem(SPEC_HISTORY_KEY);
+      const parsed = raw ? JSON.parse(raw) : [];
+      specHistory = Array.isArray(parsed) ? parsed : [];
+    } catch (e) {
+      specHistory = [];
+    }
+  }
+
+  function saveSpecHistory() {
+    try { localStorage.setItem(SPEC_HISTORY_KEY, JSON.stringify(specHistory)); } catch (e) {}
+  }
+
   function nextSpecSeq() {
     let n = 1;
     try {
@@ -2269,38 +2351,37 @@ const DB = {
     return `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()}`;
   }
 
-  // Новый номер выдаётся при переходе списка из пустого в непустой (начало
-  // новой спецификации) и сбрасывается, когда все позиции удалены — так
-  // одна и та же спецификация (пока в ней что-то остаётся) сохраняет один
-  // номер, а следующая, начатая с нуля, получает новый.
-  function ensureOrderNumber() {
-    if (orderItems.length && orderMeta.number == null) {
-      orderMeta = { number: nextSpecSeq(), date: formatSpecDate(new Date()) };
-    } else if (!orderItems.length) {
-      orderMeta = { number: null, date: null };
+  function specNumberText(meta) {
+    meta = meta || orderMeta;
+    return meta.number != null ? `${meta.date} / №${meta.number}` : "Черновик — ещё не сохранена";
+  }
+
+  function customerLine(customer) {
+    customer = customer || orderCustomer;
+    const name = [customer.lastName, customer.firstName].filter(Boolean).join(" ");
+    if (!name && !customer.phone) return "";
+    return `Заказчик: ${name || "—"}${customer.phone ? ", тел. " + customer.phone : ""}`;
+  }
+
+  // Источник данных для страницы «Спецификация» и всех форм экспорта —
+  // либо живой редактируемый черновик, либо (при просмотре из истории)
+  // сохранённая запись целиком, без изменения черновика.
+  function currentSpecView() {
+    if (viewingHistoryNumber != null) {
+      const entry = specHistory.find((e) => e.number === viewingHistoryNumber);
+      if (entry) {
+        return {
+          items: entry.items, meta: { number: entry.number, date: entry.date },
+          customer: entry.customer, readOnly: true
+        };
+      }
     }
+    return { items: orderItems, meta: orderMeta, customer: orderCustomer, readOnly: false };
   }
 
-  function specNumberText() {
-    return orderMeta.number != null ? `${orderMeta.date} / №${orderMeta.number}` : "—";
-  }
-
-  function customerLine() {
-    const name = [orderCustomer.lastName, orderCustomer.firstName].filter(Boolean).join(" ");
-    if (!name && !orderCustomer.phone) return "";
-    return `Заказчик: ${name || "—"}${orderCustomer.phone ? ", тел. " + orderCustomer.phone : ""}`;
-  }
-
-  function updateSpecHeader() {
-    el.specNumber.textContent = specNumberText();
-    el.custLastName.value = orderCustomer.lastName;
-    el.custFirstName.value = orderCustomer.firstName;
-    el.custPhone.value = orderCustomer.phone;
-  }
-
-  function flashSaved(btn) {
+  function flashSaved(btn, label) {
     const original = btn.textContent;
-    btn.textContent = "✓ Сохранено";
+    btn.textContent = label || "✓ Сохранено";
     btn.disabled = true;
     setTimeout(() => { btn.textContent = original; btn.disabled = false; }, 1200);
   }
@@ -2325,7 +2406,6 @@ const DB = {
       total: o.total,
       rows: o.rows
     });
-    ensureOrderNumber();
     saveOrderItems();
     flashSaved(el.saveToOrderBtn);
   }
@@ -2348,23 +2428,95 @@ const DB = {
 
   function removeOrderItem(id) {
     orderItems = orderItems.filter((it) => it.id !== id);
-    ensureOrderNumber();
     saveOrderItems();
     renderOrderPage();
   }
 
-  function orderGrandTotal() {
-    return orderItems.reduce((sum, it) => sum + it.total, 0);
+  function orderGrandTotal(items) {
+    return (items || orderItems).reduce((sum, it) => sum + it.total, 0);
+  }
+
+  // Присваивает номер (если ещё не присвоен — только в этот момент, не
+  // раньше) и сохраняет черновик как запись в истории; повторное нажатие
+  // на уже сохранённой спецификации обновляет ту же запись, а не создаёт
+  // новую.
+  function saveSpecification() {
+    if (!orderItems.length) return;
+    if (orderMeta.number == null) {
+      orderMeta = { number: nextSpecSeq(), date: formatSpecDate(new Date()) };
+    }
+    const entry = {
+      number: orderMeta.number,
+      date: orderMeta.date,
+      customer: { ...orderCustomer },
+      items: orderItems.map((it) => ({ ...it, rows: it.rows.slice() })),
+      grandTotal: orderGrandTotal(orderItems)
+    };
+    const idx = specHistory.findIndex((e) => e.number === entry.number);
+    if (idx >= 0) specHistory[idx] = entry; else specHistory.unshift(entry);
+    saveSpecHistory();
+    saveOrderItems();
+    renderOrderPage();
+    flashSaved(el.saveSpecBtn, "✓ Спецификация сохранена");
+  }
+
+  function startNewSpecification() {
+    if (!confirm("Начать новую спецификацию? Текущий черновик будет очищен (уже сохранённые спецификации не пострадают).")) return;
+    orderItems = [];
+    orderMeta = { number: null, date: null };
+    orderCustomer = { lastName: "", firstName: "", phone: "" };
+    saveOrderItems();
+    renderOrderPage();
+  }
+
+  function viewHistoryEntry(number) {
+    viewingHistoryNumber = number;
+    setView("order");
+  }
+
+  // Загружает сохранённую спецификацию обратно в черновик для правки —
+  // при следующем «Сохранить спецификацию» обновится та же запись в истории.
+  function restoreSpecFromHistory(number) {
+    const entry = specHistory.find((e) => e.number === number);
+    if (!entry) return;
+    orderItems = entry.items.map((it) => ({ ...it, rows: it.rows.slice() }));
+    orderMeta = { number: entry.number, date: entry.date };
+    orderCustomer = { ...entry.customer };
+    viewingHistoryNumber = null;
+    saveOrderItems();
+    setView("order");
+  }
+
+  function deleteHistoryEntry(number) {
+    if (!confirm("Удалить сохранённую спецификацию из списка? Действие необратимо.")) return;
+    specHistory = specHistory.filter((e) => e.number !== number);
+    saveSpecHistory();
+    renderSpecHistoryPage();
   }
 
   function renderOrderPage() {
-    updateSpecHeader();
-    if (!orderItems.length) {
+    const view = currentSpecView();
+
+    el.specNumber.textContent = specNumberText(view.meta);
+    el.draftActions.hidden = view.readOnly;
+    el.historyViewActions.hidden = !view.readOnly;
+    el.specCustomerEdit.hidden = view.readOnly;
+    el.specCustomerView.hidden = !view.readOnly;
+
+    if (view.readOnly) {
+      el.specCustomerView.textContent = customerLine(view.customer) || "Заказчик не указан";
+    } else {
+      el.custLastName.value = view.customer.lastName;
+      el.custFirstName.value = view.customer.firstName;
+      el.custPhone.value = view.customer.phone;
+    }
+
+    if (!view.items.length) {
       el.orderList.innerHTML = `<div class="order-empty">Пока пусто — откройте «Калькулятор цены» и нажмите «Сохранить в спецификацию».</div>`;
       el.orderGrandTotal.textContent = "0 ₽";
       return;
     }
-    el.orderList.innerHTML = orderItems
+    el.orderList.innerHTML = view.items
       .map((it, idx) => `
         <div class="order-item">
           <div class="order-item-title">${idx + 1}. ${esc(it.modelName)}</div>
@@ -2372,24 +2524,54 @@ const DB = {
           <div class="order-item-sub">${orderItemDimsLine(it)}</div>
           <div class="breakdown">${it.rows.map((r) => `<div class="breakdown-row">${esc(r)}</div>`).join("")}</div>
           <div class="order-item-total"><span>Итого</span><span>${it.total.toLocaleString("ru-RU")} ₽</span></div>
-          <button type="button" class="row-add order-item-del" data-order-del="${it.id}">✕ Удалить</button>
+          ${view.readOnly ? "" : `<button type="button" class="row-add order-item-del" data-order-del="${it.id}">✕ Удалить</button>`}
         </div>`)
       .join("");
-    el.orderGrandTotal.textContent = orderGrandTotal().toLocaleString("ru-RU") + " ₽";
+    el.orderGrandTotal.textContent = orderGrandTotal(view.items).toLocaleString("ru-RU") + " ₽";
+  }
+
+  function renderSpecHistoryPage() {
+    if (!specHistory.length) {
+      el.specHistoryList.innerHTML = `<div class="order-empty">Пока нет сохранённых спецификаций — сохраните текущую на странице «Спецификация».</div>`;
+      return;
+    }
+    el.specHistoryList.innerHTML = specHistory
+      .slice()
+      .sort((a, b) => b.number - a.number)
+      .map((entryItem) => {
+        const name = [entryItem.customer.lastName, entryItem.customer.firstName].filter(Boolean).join(" ");
+        const custSub = name || entryItem.customer.phone
+          ? `${esc(name || "—")}${entryItem.customer.phone ? ", тел. " + esc(entryItem.customer.phone) : ""}`
+          : "Заказчик не указан";
+        return `
+        <div class="order-item">
+          <div class="order-item-title">${esc(entryItem.date)} / №${entryItem.number}</div>
+          <div class="order-item-sub">${custSub}</div>
+          <div class="order-item-sub">${entryItem.items.length} поз.</div>
+          <div class="order-item-total"><span>Итого</span><span>${entryItem.grandTotal.toLocaleString("ru-RU")} ₽</span></div>
+          <div class="result-actions">
+            <button type="button" class="btn-goto" data-hist-view="${entryItem.number}">👁 Просмотреть</button>
+            <button type="button" class="btn-save" data-hist-restore="${entryItem.number}">✏️ Вернуть для изменения</button>
+          </div>
+          <button type="button" class="row-add order-item-del" data-hist-del="${entryItem.number}">✕ Удалить из списка</button>
+        </div>`;
+      })
+      .join("");
   }
 
   function buildOrderShareText() {
-    const lines = [`Спецификация ${specNumberText()}`, "", ...SPEC_COMPANY_LINES];
-    const custLine = customerLine();
+    const view = currentSpecView();
+    const lines = [`Спецификация ${specNumberText(view.meta)}`, "", ...SPEC_COMPANY_LINES];
+    const custLine = customerLine(view.customer);
     if (custLine) lines.push("", custLine);
     lines.push("");
 
-    if (!orderItems.length) {
+    if (!view.items.length) {
       lines.push("Пуста.");
       return lines.join("\n");
     }
 
-    orderItems.forEach((it, idx) => {
+    view.items.forEach((it, idx) => {
       lines.push(`${idx + 1}. ${it.modelName} (${orderItemMeta(it)})`);
       if (it.section !== "погонаж") {
         lines.push(`${it.height}×${it.width}×${it.thickness} мм — ${it.standard ? "Стандарт" : "Нестандарт"}`);
@@ -2397,14 +2579,14 @@ const DB = {
       it.rows.forEach((r) => lines.push("   " + r));
       lines.push(`Итого по позиции: ${it.total.toLocaleString("ru-RU")} ₽`, "");
     });
-    lines.push(`Итого по заказу: ${orderGrandTotal().toLocaleString("ru-RU")} ₽`);
+    lines.push(`Итого по заказу: ${orderGrandTotal(view.items).toLocaleString("ru-RU")} ₽`);
     return lines.join("\n");
   }
 
   function shareOrder() {
     const text = buildOrderShareText();
     if (navigator.share) {
-      navigator.share({ title: `Спецификация ${specNumberText()}`, text }).catch(() => {});
+      navigator.share({ title: `Спецификация ${specNumberText(currentSpecView().meta)}`, text }).catch(() => {});
     } else {
       shareOrderViaWhatsApp();
     }
@@ -2420,7 +2602,7 @@ const DB = {
 
   function shareOrderViaEmail() {
     const body = encodeURIComponent(buildOrderShareText());
-    location.href = "mailto:?subject=" + encodeURIComponent(`Спецификация ${specNumberText()}`) + "&body=" + body;
+    location.href = "mailto:?subject=" + encodeURIComponent(`Спецификация ${specNumberText(currentSpecView().meta)}`) + "&body=" + body;
   }
 
   function printOrder() {
@@ -2428,7 +2610,8 @@ const DB = {
   }
 
   function downloadOrderFile() {
-    const itemsHtml = orderItems
+    const view = currentSpecView();
+    const itemsHtml = view.items
       .map((it, idx) => `
         <div style="border:1px solid #ddd;border-radius:10px;padding:14px;margin-bottom:12px;">
           <div style="font-weight:700;font-size:15px;margin-bottom:4px;">${idx + 1}. ${esc(it.modelName)}</div>
@@ -2442,18 +2625,18 @@ const DB = {
           </div>
         </div>`)
       .join("");
-    const custLine = customerLine();
+    const custLine = customerLine(view.customer);
     const html = `<!doctype html><html lang="ru"><head><meta charset="UTF-8"><title>Спецификация дверей</title></head>
 <body style="font-family:-apple-system,'Segoe UI',Roboto,Arial,sans-serif;max-width:640px;margin:24px auto;padding:0 16px;color:#1c1f26;">
   <div style="text-align:right;margin-bottom:16px;">
-    <div style="font-size:15px;font-weight:700;">${esc(specNumberText())}</div>
+    <div style="font-size:15px;font-weight:700;">${esc(specNumberText(view.meta))}</div>
     <div style="font-size:12px;color:#666;margin-top:4px;line-height:1.5;">${SPEC_COMPANY_LINES.map(esc).join("<br>")}</div>
   </div>
   ${custLine ? `<div style="font-size:13px;margin-bottom:14px;">${esc(custLine)}</div>` : ""}
   <h1 style="font-size:20px;">Спецификация дверей</h1>
   ${itemsHtml || "<p>Пусто.</p>"}
   <div style="display:flex;justify-content:space-between;font-size:20px;font-weight:800;border-top:2px solid #1c1f26;padding-top:14px;margin-top:6px;">
-    <span>Итого по заказу</span><span>${orderGrandTotal().toLocaleString("ru-RU")} ₽</span>
+    <span>Итого по заказу</span><span>${orderGrandTotal(view.items).toLocaleString("ru-RU")} ₽</span>
   </div>
 </body></html>`;
     const blob = new Blob([html], { type: "text/html;charset=utf-8" });
@@ -2587,16 +2770,21 @@ const DB = {
       render();
     });
     el.quantity.addEventListener("input", () => {
-      state.quantity = Math.max(1, Math.round(Number(el.quantity.value)) || 1);
+      state.quantity = roundQuantity(el.quantity.value);
       render();
     });
+    // "change" (не "input") — чтобы не мешать вводу посимвольно, а
+    // подравнять отображаемое значение к шагу только когда поле отпустили.
+    el.quantity.addEventListener("change", () => {
+      el.quantity.value = state.quantity;
+    });
     el.qtyMinus.addEventListener("click", () => {
-      state.quantity = Math.max(1, state.quantity - 1);
+      state.quantity = roundQuantity(state.quantity - quantityStep());
       el.quantity.value = state.quantity;
       render();
     });
     el.qtyPlus.addEventListener("click", () => {
-      state.quantity = state.quantity + 1;
+      state.quantity = roundQuantity(state.quantity + quantityStep());
       el.quantity.value = state.quantity;
       render();
     });
@@ -2605,6 +2793,23 @@ const DB = {
     el.orderList.addEventListener("click", (e) => {
       const btn = e.target.closest("[data-order-del]");
       if (btn) removeOrderItem(btn.dataset.orderDel);
+    });
+    el.saveSpecBtn.addEventListener("click", saveSpecification);
+    el.newSpecBtn.addEventListener("click", startNewSpecification);
+    el.backToHistoryBtn.addEventListener("click", () => {
+      viewingHistoryNumber = null;
+      setView("history");
+    });
+    el.restoreHistoryBtn.addEventListener("click", () => {
+      if (viewingHistoryNumber != null) restoreSpecFromHistory(viewingHistoryNumber);
+    });
+    el.specHistoryList.addEventListener("click", (e) => {
+      const viewBtn = e.target.closest("[data-hist-view]");
+      const restoreBtn = e.target.closest("[data-hist-restore]");
+      const delBtn = e.target.closest("[data-hist-del]");
+      if (viewBtn) viewHistoryEntry(Number(viewBtn.dataset.histView));
+      else if (restoreBtn) restoreSpecFromHistory(Number(restoreBtn.dataset.histRestore));
+      else if (delBtn) deleteHistoryEntry(Number(delBtn.dataset.histDel));
     });
     [
       [el.custLastName, "lastName"],
@@ -2680,9 +2885,11 @@ const DB = {
     el.viewPrices.hidden = view !== "prices";
     el.viewRoom3d.hidden = view !== "room3d";
     el.viewOrder.hidden = view !== "order";
+    el.viewSpecHistory.hidden = view !== "history";
     el.viewTitle.textContent =
       view === "prices" ? "Изменение цен" : view === "scene" ? "2D картинка" :
       view === "room3d" ? "3D комната" : view === "order" ? "Спецификация" :
+      view === "history" ? "Сохранённые спецификации" :
       "Расчет — межкомнатные двери";
     el.menu.querySelectorAll(".menu-item").forEach((b) =>
       b.classList.toggle("active", b.dataset.view === view)
@@ -2691,6 +2898,7 @@ const DB = {
     if (view === "scene") drawDoor(sceneCtx, true);
     if (view === "room3d" && window.initRoom3D) window.initRoom3D();
     if (view === "order") renderOrderPage();
+    if (view === "history") renderSpecHistoryPage();
     toggleMenu(false);
   }
 
@@ -3190,10 +3398,7 @@ const DB = {
   function init() {
     loadPrices();
     loadOrderItems();
-    // Старый список позиций (без номера, до этой версии) — задним числом
-    // выдаём номер, чтобы он был у уже начатой спецификации.
-    ensureOrderNumber();
-    saveOrderItems();
+    loadSpecHistory();
     el.section.value = state.section;
     el.sizeMode.value = state.sizeMode;
     applySectionUI();
@@ -3218,7 +3423,11 @@ const DB = {
     el.menuBtn.addEventListener("click", (e) => { e.stopPropagation(); toggleMenu(); });
     el.menu.addEventListener("click", (e) => {
       const btn = e.target.closest(".menu-item");
-      if (btn) setView(btn.dataset.view);
+      if (!btn) return;
+      // Прямой переход в «Спецификацию» из меню — всегда живой черновик,
+      // а не то, что могло остаться открытым через «Просмотреть» из истории.
+      if (btn.dataset.view === "order") viewingHistoryNumber = null;
+      setView(btn.dataset.view);
     });
     document.addEventListener("click", (e) => {
       if (!el.menu.hidden && !el.menu.contains(e.target) && e.target !== el.menuBtn) toggleMenu(false);
