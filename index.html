@@ -378,6 +378,28 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 .spec-customer { margin-bottom: 16px; display: flex; flex-direction: column; gap: 10px; }
 .spec-customer-readonly { margin-bottom: 16px; font-size: 13px; color: var(--text); }
 
+.edit-banner, .spec-editing-banner {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  background: var(--warn-bg); color: var(--warn); font-size: 13px; font-weight: 600;
+  padding: 10px 12px; border-radius: 8px; margin-bottom: 14px;
+}
+.edit-banner span { flex: 1 1 auto; }
+.edit-banner button {
+  flex: 0 0 auto; padding: 6px 10px; border-radius: 6px; border: 1px solid var(--warn);
+  background: none; color: var(--warn); font-size: 12px; font-weight: 600; cursor: pointer;
+}
+.edit-banner button:hover { background: var(--warn); color: #fff; }
+
+.order-item-title-link { cursor: pointer; }
+.order-item-title-link:hover { text-decoration: underline; }
+.item-actions { display: flex; gap: 8px; margin-top: 8px; }
+.item-actions button {
+  flex: 1 1 0; padding: 7px 8px; border-radius: 8px; font-size: 12px; font-weight: 600;
+  cursor: pointer; border: 1px dashed var(--border); background: none; color: var(--accent);
+}
+.item-actions button:hover { background: var(--bg); }
+.item-actions .order-item-del { color: var(--warn); border-color: var(--warn); }
+
 .qty-stepper { display: flex; align-items: center; gap: 8px; }
 .qty-stepper input[type="number"] { flex: 1 1 auto; text-align: center; }
 .qty-stepper button {
@@ -420,7 +442,7 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
   body * { visibility: hidden; }
   #viewOrder, #viewOrder * { visibility: visible; }
   #viewOrder { position: absolute; left: 0; top: 0; width: 100%; padding: 0; }
-  .order-toolbar, .order-note, .topbar, .order-item-del, .result-actions { display: none !important; }
+  .order-toolbar, .order-note, .topbar, .item-actions, .result-actions, .spec-editing-banner, .edit-banner { display: none !important; }
   .spec-customer input { border: none; background: none; padding: 0; font-size: 13px; outline: none; }
 }
 
@@ -456,6 +478,11 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
     </div>
 
     <div id="viewCalc">
+
+    <div class="edit-banner" id="editBanner" hidden>
+      <span>✏️ Редактирование позиции спецификации — после сохранения вернётесь в спецификацию.</span>
+      <button type="button" id="cancelEditBtn">Отменить</button>
+    </div>
 
     <div class="field">
       <label for="section">Раздел</label>
@@ -695,6 +722,9 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
     </div>
 
     <div id="viewOrder" hidden>
+      <div class="spec-editing-banner" id="specEditingBanner" hidden>
+        ✏️ В изменении — эта спецификация уже сохранена. Правки попадут в историю только после повторного «Сохранить спецификацию».
+      </div>
       <div class="spec-header">
         <div class="spec-number" id="specNumber">—</div>
         <div class="spec-company">
@@ -1194,6 +1224,9 @@ const DB = {
     qtyPlus: document.getElementById("qtyPlus"),
     saveToOrderBtn: document.getElementById("saveToOrderBtn"),
     goToOrderBtn: document.getElementById("goToOrderBtn"),
+    editBanner: document.getElementById("editBanner"),
+    cancelEditBtn: document.getElementById("cancelEditBtn"),
+    specEditingBanner: document.getElementById("specEditingBanner"),
     specNumber: document.getElementById("specNumber"),
     specCustomerEdit: document.getElementById("specCustomerEdit"),
     specCustomerView: document.getElementById("specCustomerView"),
@@ -2386,11 +2419,97 @@ const DB = {
     setTimeout(() => { btn.textContent = original; btn.disabled = false; }, 1200);
   }
 
+  // Поля калькулятора, которые нужно сохранить/восстановить целиком, чтобы
+  // позицию спецификации можно было открыть заново на странице «Калькулятор
+  // цены» и отредактировать (а не просто посмотреть готовую цену) —
+  // см. captureCalcState/restoreCalcState и editingItemId ниже.
+  const CALC_STATE_FIELDS = [
+    "section", "sizeMode", "modelId", "material", "color", "glassId",
+    "height", "width", "thickness", "discount", "promo", "quantity",
+    "trimVid", "trimLength", "trimThickness", "trimDoor42", "trimTenon",
+    "trimVariant", "trimWidthMode", "trimWidthStd", "trimWidthFree"
+  ];
+
+  function captureCalcState() {
+    const snap = {};
+    CALC_STATE_FIELDS.forEach((k) => { snap[k] = state[k]; });
+    snap.options = { ...state.options };
+    return snap;
+  }
+
+  // populateOptions() всегда пересобирает state.options на дефолтах (чекбоксы
+  // выключены, у радио выбран первый вариант) — восстанавливаем реальный
+  // выбор поверх, синхронизируя и DOM (чекбоксы/радио), и сам state.options.
+  function restoreOptionsSelection(savedOptions) {
+    if (!savedOptions) return;
+    Object.keys(savedOptions).forEach((optId) => {
+      if (!(optId in state.options)) return; // опции нет у текущей модели/материала
+      const val = savedOptions[optId];
+      if (typeof val === "boolean") {
+        const cb = el.options.querySelector(`input[data-opt="${CSS.escape(optId)}"][data-kind="checkbox"]`);
+        if (cb) { cb.checked = val; state.options[optId] = val; }
+      } else {
+        const radio = el.options.querySelector(`input[data-opt="${CSS.escape(optId)}"][data-kind="radio"][value="${CSS.escape(String(val))}"]`);
+        if (radio) { radio.checked = true; state.options[optId] = val; }
+      }
+    });
+  }
+
+  // Восстанавливает калькулятор до состояния, в котором была сохранена
+  // позиция — тот же порядок вызовов, что и в init().
+  function restoreCalcState(snapshot) {
+    if (!snapshot) return;
+    CALC_STATE_FIELDS.forEach((k) => { if (k in snapshot) state[k] = snapshot[k]; });
+    el.section.value = state.section;
+    el.sizeMode.value = state.sizeMode;
+    applySectionUI();
+    populateWidthMatrix();
+    populateModels();
+    populateMaterial();
+    populateColors();
+    populateGlass();
+    populateOptions();
+    restoreOptionsSelection(snapshot.options);
+    populateTrimAll();
+    el.height.value = state.height;
+    el.width.value = state.width;
+    el.thickness.value = state.thickness;
+    el.discount.value = state.discount;
+    el.promo.value = state.promo;
+    el.quantity.value = state.quantity;
+    render();
+  }
+
+  // Id позиции спецификации, которая сейчас редактируется в калькуляторе
+  // (не null между «Изменить»/клик по названию и следующим «Сохранить» —
+  // см. beginEditItem/addCurrentToOrder).
+  let editingItemId = null;
+
+  function updateEditBanner() {
+    const editing = editingItemId != null;
+    el.editBanner.hidden = !editing;
+    el.saveToOrderBtn.textContent = editing ? "💾 Сохранить изменения" : "Сохранить в спецификацию";
+  }
+
+  function beginEditItem(id) {
+    const item = orderItems.find((it) => it.id === id);
+    if (!item || !item.calcState) return;
+    editingItemId = id;
+    restoreCalcState(item.calcState);
+    updateEditBanner();
+    setView("calc");
+  }
+
+  function cancelEditItem() {
+    editingItemId = null;
+    updateEditBanner();
+  }
+
   function addCurrentToOrder() {
     const o = computeOrder();
     if (!o.model) return;
-    orderItems.push({
-      id: uid("item"),
+    const record = {
+      id: editingItemId || uid("item"),
       section: o.section,
       modelName: o.model.name,
       material: o.materialLabel,
@@ -2404,10 +2523,21 @@ const DB = {
       perUnit: o.perUnit,
       discount: o.discount,
       total: o.total,
-      rows: o.rows
-    });
-    saveOrderItems();
-    flashSaved(el.saveToOrderBtn);
+      rows: o.rows,
+      calcState: captureCalcState()
+    };
+    if (editingItemId) {
+      const idx = orderItems.findIndex((it) => it.id === editingItemId);
+      if (idx >= 0) orderItems[idx] = record; else orderItems.push(record);
+      editingItemId = null;
+      saveOrderItems();
+      updateEditBanner();
+      setView("order");
+    } else {
+      orderItems.push(record);
+      saveOrderItems();
+      flashSaved(el.saveToOrderBtn);
+    }
   }
 
   // «Матрица» — готовая комплектация без выбора материала/цвета/стекла,
@@ -2502,6 +2632,10 @@ const DB = {
     el.historyViewActions.hidden = !view.readOnly;
     el.specCustomerEdit.hidden = view.readOnly;
     el.specCustomerView.hidden = !view.readOnly;
+    // Черновик уже с номером — значит он либо только что сохранён, либо
+    // возвращён из истории через «Вернуть для изменения»: в любом случае
+    // это правки поверх уже сохранённой спецификации, а не новая.
+    el.specEditingBanner.hidden = view.readOnly || view.meta.number == null;
 
     if (view.readOnly) {
       el.specCustomerView.textContent = customerLine(view.customer) || "Заказчик не указан";
@@ -2517,15 +2651,24 @@ const DB = {
       return;
     }
     el.orderList.innerHTML = view.items
-      .map((it, idx) => `
+      .map((it, idx) => {
+        const canEdit = !view.readOnly && !!it.calcState;
+        const titleAttrs = canEdit ? ` data-order-edit="${it.id}"` : "";
+        const titleCls = canEdit ? " order-item-title-link" : "";
+        return `
         <div class="order-item">
-          <div class="order-item-title">${idx + 1}. ${esc(it.modelName)}</div>
+          <div class="order-item-title${titleCls}"${titleAttrs}>${idx + 1}. ${esc(it.modelName)}</div>
           <div class="order-item-sub">${esc(orderItemMeta(it))}</div>
           <div class="order-item-sub">${orderItemDimsLine(it)}</div>
           <div class="breakdown">${it.rows.map((r) => `<div class="breakdown-row">${esc(r)}</div>`).join("")}</div>
           <div class="order-item-total"><span>Итого</span><span>${it.total.toLocaleString("ru-RU")} ₽</span></div>
-          ${view.readOnly ? "" : `<button type="button" class="row-add order-item-del" data-order-del="${it.id}">✕ Удалить</button>`}
-        </div>`)
+          ${view.readOnly ? "" : `
+          <div class="item-actions">
+            ${canEdit ? `<button type="button" data-order-edit="${it.id}">✏️ Изменить</button>` : ""}
+            <button type="button" class="order-item-del" data-order-del="${it.id}">✕ Удалить</button>
+          </div>`}
+        </div>`;
+      })
       .join("");
     el.orderGrandTotal.textContent = orderGrandTotal(view.items).toLocaleString("ru-RU") + " ₽";
   }
@@ -2790,9 +2933,12 @@ const DB = {
     });
     el.saveToOrderBtn.addEventListener("click", addCurrentToOrder);
     el.goToOrderBtn.addEventListener("click", () => setView("order"));
+    el.cancelEditBtn.addEventListener("click", cancelEditItem);
     el.orderList.addEventListener("click", (e) => {
-      const btn = e.target.closest("[data-order-del]");
-      if (btn) removeOrderItem(btn.dataset.orderDel);
+      const delBtn = e.target.closest("[data-order-del]");
+      const editBtn = e.target.closest("[data-order-edit]");
+      if (delBtn) removeOrderItem(delBtn.dataset.orderDel);
+      else if (editBtn) beginEditItem(editBtn.dataset.orderEdit);
     });
     el.saveSpecBtn.addEventListener("click", saveSpecification);
     el.newSpecBtn.addEventListener("click", startNewSpecification);
@@ -3418,6 +3564,7 @@ const DB = {
     el.sceneWallColor.value = state.wallColor;
     renderWallSwatches();
     renderWallTextures();
+    updateEditBanner();
     bind();
 
     el.menuBtn.addEventListener("click", (e) => { e.stopPropagation(); toggleMenu(); });
