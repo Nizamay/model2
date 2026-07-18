@@ -481,7 +481,7 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
   body * { visibility: hidden; }
   #viewOrder, #viewOrder * { visibility: visible; }
   #viewOrder { position: absolute; left: 0; top: 0; width: 100%; padding: 0; }
-  .order-toolbar, .order-note, .topbar, .item-actions, .result-actions, .spec-editing-banner, .edit-banner { display: none !important; }
+  .order-toolbar, .order-note, .topbar, .item-actions, .result-actions, .spec-editing-banner, .edit-banner, #orderDiscountField { display: none !important; }
   .spec-customer input { border: none; background: none; padding: 0; font-size: 13px; outline: none; }
 }
 
@@ -780,6 +780,11 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
       </div>
       <div class="spec-customer-readonly" id="specCustomerView" hidden></div>
       <div id="orderList"></div>
+      <div class="field" id="orderDiscountField">
+        <label for="orderDiscountInput">Скидка на заказ, %</label>
+        <input type="number" id="orderDiscountInput" step="0.1" min="0" max="100" value="0">
+      </div>
+      <div class="breakdown" id="orderSummaryLines"></div>
       <div class="order-grand-total"><span>Итого по заказу</span><span id="orderGrandTotal">0 ₽</span></div>
       <div class="result-actions" id="draftActions">
         <button type="button" id="saveSpecBtn" class="btn-save">💾 Сохранить спецификацию</button>
@@ -1283,6 +1288,9 @@ const DB = {
     custLastName: document.getElementById("custLastName"),
     custFirstName: document.getElementById("custFirstName"),
     custPhone: document.getElementById("custPhone"),
+    orderDiscountField: document.getElementById("orderDiscountField"),
+    orderDiscountInput: document.getElementById("orderDiscountInput"),
+    orderSummaryLines: document.getElementById("orderSummaryLines"),
     draftActions: document.getElementById("draftActions"),
     saveSpecBtn: document.getElementById("saveSpecBtn"),
     newSpecBtn: document.getElementById("newSpecBtn"),
@@ -2374,6 +2382,11 @@ const DB = {
   let orderItems = [];
   let orderMeta = { number: null, date: null };
   let orderCustomer = { lastName: "", firstName: "", phone: "" };
+  // Скидка на весь заказ (%), в отличие от «Скидка, %» на калькуляторе —
+  // не на одно полотно, а на сумму всех позиций спецификации целиком (см.
+  // orderDiscountPercent/orderDiscountAmount/orderFinalTotal ниже). Те же
+  // правила ввода, что и у калькулятора: 0–100%, округление до рубля.
+  let orderDiscount = 0;
   let specHistory = [];
   // Не null, когда открыт просмотр одной из сохранённых спецификаций (через
   // «Сохранённые спецификации» → «Просмотреть») — тогда страница
@@ -2390,25 +2403,29 @@ const DB = {
         orderItems = parsed;
         orderMeta = { number: null, date: null };
         orderCustomer = { lastName: "", firstName: "", phone: "" };
+        orderDiscount = 0;
       } else if (parsed && typeof parsed === "object") {
         orderItems = Array.isArray(parsed.items) ? parsed.items : [];
         orderMeta = (parsed.meta && typeof parsed.meta === "object") ? parsed.meta : { number: null, date: null };
         orderCustomer = (parsed.customer && typeof parsed.customer === "object") ? parsed.customer : { lastName: "", firstName: "", phone: "" };
+        orderDiscount = (typeof parsed.discount === "number") ? parsed.discount : 0;
       } else {
         orderItems = [];
         orderMeta = { number: null, date: null };
         orderCustomer = { lastName: "", firstName: "", phone: "" };
+        orderDiscount = 0;
       }
     } catch (e) {
       orderItems = [];
       orderMeta = { number: null, date: null };
       orderCustomer = { lastName: "", firstName: "", phone: "" };
+      orderDiscount = 0;
     }
   }
 
   function saveOrderItems() {
     try {
-      localStorage.setItem(ORDER_STORE_KEY, JSON.stringify({ items: orderItems, meta: orderMeta, customer: orderCustomer }));
+      localStorage.setItem(ORDER_STORE_KEY, JSON.stringify({ items: orderItems, meta: orderMeta, customer: orderCustomer, discount: orderDiscount }));
     } catch (e) {}
   }
 
@@ -2461,11 +2478,11 @@ const DB = {
       if (entry) {
         return {
           items: entry.items, meta: { number: entry.number, date: entry.date },
-          customer: entry.customer, readOnly: true
+          customer: entry.customer, discount: entry.discount || 0, readOnly: true
         };
       }
     }
-    return { items: orderItems, meta: orderMeta, customer: orderCustomer, readOnly: false };
+    return { items: orderItems, meta: orderMeta, customer: orderCustomer, discount: orderDiscount, readOnly: false };
   }
 
   function flashSaved(btn, label) {
@@ -2617,6 +2634,19 @@ const DB = {
     return (items || orderItems).reduce((sum, it) => sum + it.total, 0);
   }
 
+  // Скидка на заказ — те же правила ввода, что и «Скидка, %» на калькуляторе
+  // (0–100%, округление суммы скидки до рубля), но применяется к сумме всех
+  // позиций спецификации целиком, а не к одному полотну.
+  function orderDiscountPercent(view) {
+    return Math.max(0, Math.min(100, Number(view.discount) || 0));
+  }
+  function orderDiscountAmount(view) {
+    return Math.round(orderGrandTotal(view.items) * orderDiscountPercent(view) / 100);
+  }
+  function orderFinalTotal(view) {
+    return orderGrandTotal(view.items) - orderDiscountAmount(view);
+  }
+
   // Присваивает номер (если ещё не присвоен — только в этот момент, не
   // раньше) и сохраняет черновик как запись в истории; повторное нажатие
   // на уже сохранённой спецификации обновляет ту же запись, а не создаёт
@@ -2630,8 +2660,9 @@ const DB = {
       number: orderMeta.number,
       date: orderMeta.date,
       customer: { ...orderCustomer },
+      discount: orderDiscount,
       items: orderItems.map((it) => ({ ...it, rows: it.rows.slice() })),
-      grandTotal: orderGrandTotal(orderItems)
+      grandTotal: orderFinalTotal({ items: orderItems, discount: orderDiscount })
     };
     const idx = specHistory.findIndex((e) => e.number === entry.number);
     if (idx >= 0) specHistory[idx] = entry; else specHistory.unshift(entry);
@@ -2644,6 +2675,7 @@ const DB = {
     orderItems = [];
     orderMeta = { number: null, date: null };
     orderCustomer = { lastName: "", firstName: "", phone: "" };
+    orderDiscount = 0;
     saveOrderItems();
     renderOrderPage();
     flashSaved(el.saveSpecBtn, "✓ Спецификация сохранена");
@@ -2654,6 +2686,7 @@ const DB = {
     orderItems = [];
     orderMeta = { number: null, date: null };
     orderCustomer = { lastName: "", firstName: "", phone: "" };
+    orderDiscount = 0;
     saveOrderItems();
     renderOrderPage();
   }
@@ -2671,6 +2704,7 @@ const DB = {
     orderItems = entry.items.map((it) => ({ ...it, rows: it.rows.slice() }));
     orderMeta = { number: entry.number, date: entry.date };
     orderCustomer = { ...entry.customer };
+    orderDiscount = entry.discount || 0;
     viewingHistoryNumber = null;
     saveOrderItems();
     setView("order");
@@ -2696,39 +2730,48 @@ const DB = {
     // это правки поверх уже сохранённой спецификации, а не новая.
     el.specEditingBanner.hidden = view.readOnly || view.meta.number == null;
 
+    el.orderDiscountField.hidden = view.readOnly;
     if (view.readOnly) {
       el.specCustomerView.textContent = customerLine(view.customer) || "Заказчик не указан";
     } else {
       el.custLastName.value = view.customer.lastName;
       el.custFirstName.value = view.customer.firstName;
       el.custPhone.value = view.customer.phone;
+      el.orderDiscountInput.value = view.discount || 0;
     }
 
     if (!view.items.length) {
       el.orderList.innerHTML = `<div class="order-empty">Пока пусто — откройте «Калькулятор цены» и нажмите «Сохранить в спецификацию».</div>`;
-      el.orderGrandTotal.textContent = "0 ₽";
-      return;
+    } else {
+      el.orderList.innerHTML = view.items
+        .map((it, idx) => {
+          const canEdit = !view.readOnly && !!it.calcState;
+          const titleAttrs = canEdit ? ` data-order-edit="${it.id}"` : "";
+          const titleCls = canEdit ? " order-item-title-link" : "";
+          return `
+          <div class="order-item">
+            <div class="order-item-title${titleCls}"${titleAttrs}>${idx + 1}. ${esc(it.modelName)}</div>
+            <div class="order-item-sub">${esc(orderItemSummaryLine(it))}</div>
+            <div class="breakdown">${it.rows.map((r) => `<div class="breakdown-row">${esc(r)}</div>`).join("")}</div>
+            <div class="order-item-total"><span>Итого</span><span>${it.total.toLocaleString("ru-RU")} ₽</span></div>
+            ${view.readOnly ? "" : `
+            <div class="item-actions">
+              ${canEdit ? `<button type="button" data-order-edit="${it.id}">✏️ Изменить</button>` : ""}
+              <button type="button" class="order-item-del" data-order-del="${it.id}">✕ Удалить</button>
+            </div>`}
+          </div>`;
+        })
+        .join("");
     }
-    el.orderList.innerHTML = view.items
-      .map((it, idx) => {
-        const canEdit = !view.readOnly && !!it.calcState;
-        const titleAttrs = canEdit ? ` data-order-edit="${it.id}"` : "";
-        const titleCls = canEdit ? " order-item-title-link" : "";
-        return `
-        <div class="order-item">
-          <div class="order-item-title${titleCls}"${titleAttrs}>${idx + 1}. ${esc(it.modelName)}</div>
-          <div class="order-item-sub">${esc(orderItemSummaryLine(it))}</div>
-          <div class="breakdown">${it.rows.map((r) => `<div class="breakdown-row">${esc(r)}</div>`).join("")}</div>
-          <div class="order-item-total"><span>Итого</span><span>${it.total.toLocaleString("ru-RU")} ₽</span></div>
-          ${view.readOnly ? "" : `
-          <div class="item-actions">
-            ${canEdit ? `<button type="button" data-order-edit="${it.id}">✏️ Изменить</button>` : ""}
-            <button type="button" class="order-item-del" data-order-del="${it.id}">✕ Удалить</button>
-          </div>`}
-        </div>`;
-      })
-      .join("");
-    el.orderGrandTotal.textContent = orderGrandTotal(view.items).toLocaleString("ru-RU") + " ₽";
+
+    const rawTotal = orderGrandTotal(view.items);
+    const discPct = orderDiscountPercent(view);
+    const discAmt = orderDiscountAmount(view);
+    el.orderSummaryLines.innerHTML = discPct > 0
+      ? `<div class="breakdown-row">Сумма позиций: ${rawTotal.toLocaleString("ru-RU")} ₽</div>` +
+        `<div class="breakdown-row">Скидка на заказ ${discPct}%: -${discAmt.toLocaleString("ru-RU")} ₽</div>`
+      : "";
+    el.orderGrandTotal.textContent = (rawTotal - discAmt).toLocaleString("ru-RU") + " ₽";
   }
 
   function renderSpecHistoryPage() {
@@ -2778,7 +2821,12 @@ const DB = {
       it.rows.forEach((r) => lines.push("   " + r));
       lines.push(`Итого по позиции: ${it.total.toLocaleString("ru-RU")} ₽`, "");
     });
-    lines.push(`Итого по заказу: ${orderGrandTotal(view.items).toLocaleString("ru-RU")} ₽`);
+    const discPct = orderDiscountPercent(view);
+    if (discPct > 0) {
+      lines.push(`Сумма позиций: ${orderGrandTotal(view.items).toLocaleString("ru-RU")} ₽`);
+      lines.push(`Скидка на заказ ${discPct}%: -${orderDiscountAmount(view).toLocaleString("ru-RU")} ₽`);
+    }
+    lines.push(`Итого по заказу: ${orderFinalTotal(view).toLocaleString("ru-RU")} ₽`);
     return lines.join("\n");
   }
 
@@ -2822,6 +2870,14 @@ const DB = {
         </div>`)
       .join("");
     const custLine = customerLine(view.customer);
+    const discPct = orderDiscountPercent(view);
+    const summaryHtml = discPct > 0 ? `
+  <div style="display:flex;justify-content:space-between;font-size:14px;color:#666;">
+    <span>Сумма позиций</span><span>${orderGrandTotal(view.items).toLocaleString("ru-RU")} ₽</span>
+  </div>
+  <div style="display:flex;justify-content:space-between;font-size:14px;color:#666;margin-bottom:6px;">
+    <span>Скидка на заказ ${discPct}%</span><span>-${orderDiscountAmount(view).toLocaleString("ru-RU")} ₽</span>
+  </div>` : "";
     const html = `<!doctype html><html lang="ru"><head><meta charset="UTF-8"><title>Спецификация дверей</title></head>
 <body style="font-family:-apple-system,'Segoe UI',Roboto,Arial,sans-serif;max-width:640px;margin:24px auto;padding:0 16px;color:#1c1f26;">
   <div style="text-align:right;margin-bottom:16px;">
@@ -2831,8 +2887,9 @@ const DB = {
   ${custLine ? `<div style="font-size:13px;margin-bottom:14px;">${esc(custLine)}</div>` : ""}
   <h1 style="font-size:20px;">Спецификация дверей</h1>
   ${itemsHtml || "<p>Пусто.</p>"}
+  ${summaryHtml}
   <div style="display:flex;justify-content:space-between;font-size:20px;font-weight:800;border-top:2px solid #1c1f26;padding-top:14px;margin-top:6px;">
-    <span>Итого по заказу</span><span>${orderGrandTotal(view.items).toLocaleString("ru-RU")} ₽</span>
+    <span>Итого по заказу</span><span>${orderFinalTotal(view).toLocaleString("ru-RU")} ₽</span>
   </div>
 </body></html>`;
     const blob = new Blob([html], { type: "text/html;charset=utf-8" });
@@ -3019,6 +3076,11 @@ const DB = {
         orderCustomer[key] = input.value;
         saveOrderItems();
       });
+    });
+    el.orderDiscountInput.addEventListener("input", () => {
+      orderDiscount = el.orderDiscountInput.value;
+      saveOrderItems();
+      renderOrderPage();
     });
     el.orderShareBtn.addEventListener("click", shareOrder);
     el.orderWhatsappBtn.addEventListener("click", shareOrderViaWhatsApp);
