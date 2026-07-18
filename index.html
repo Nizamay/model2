@@ -416,7 +416,7 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 
 /* --- Спецификация (сохранённые полотна) ------------------------------ */
 .order-item { border: 1px solid var(--border); border-radius: 10px; padding: 12px; margin-bottom: 10px; }
-.order-item-title { font-weight: 700; font-size: 15px; margin-bottom: 4px; }
+.order-item-title { font-weight: 700; font-size: 18px; margin-bottom: 4px; }
 .order-item-sub { font-size: 13px; color: var(--muted); margin-bottom: 6px; }
 .order-item .breakdown { margin-bottom: 8px; }
 .order-item-total {
@@ -2204,7 +2204,9 @@ const DB = {
 
     const category = findCategory(state.material, state.color);
     const basePrice = category != null ? (item.prices[category] || 0) : 0;
-    rows.push(`${vidLabel} (${item.name}): ${basePrice} ₽`);
+    // Название позиции уже вынесено отдельным крупным заголовком (см.
+    // orderItemTitle) — здесь не повторяем его, только вид и цена.
+    rows.push(`${vidLabel}: ${basePrice} ₽`);
 
     let perUnit = basePrice;
     if (isWidthCustom) {
@@ -2246,8 +2248,9 @@ const DB = {
 
     if (state.section === "матрица") {
       // Готовая комплектация: категория цвета, стекло и опции не влияют —
-      // всё уже заложено в basePrice самой позиции.
-      rows.push(`Полотно (${model.name}): ${model.basePrice} ₽`);
+      // всё уже заложено в basePrice самой позиции. Название модели уже
+      // вынесено отдельным крупным заголовком — здесь не повторяем его.
+      rows.push(`Полотно: ${model.basePrice} ₽`);
       const promo = promoActive();
       const perUnit = applyPromo(model.basePrice, rows);
       const result = finishOrder(model, perUnit, rows, undefined, promo);
@@ -2263,7 +2266,8 @@ const DB = {
     const category = findCategory(state.material, state.color);
     const surcharge = category != null ? (DB.categorySurcharge[state.material][category] || 0) : 0;
     const leafBase = model.basePrice + surcharge;
-    rows.push(`Полотно (${model.name}): ${leafBase} ₽`);
+    // Название модели уже вынесено отдельным крупным заголовком — здесь не повторяем его.
+    rows.push(`Полотно: ${leafBase} ₽`);
 
     const promo = promoActive();
     let leafPrice = applyPromo(leafBase, rows);
@@ -2545,20 +2549,15 @@ const DB = {
     }
   }
 
-  // «Матрица» — готовая комплектация без выбора материала/цвета/стекла,
-  // поэтому вместо этой строки показываем просто пометку раздела.
-  function orderItemMeta(it) {
-    if (it.section === "матрица") return "Матрица";
-    if (it.section === "погонаж") return `${it.material} · ${it.color || ""}`;
-    return `${it.material} · ${it.color || ""} · ${it.glassName || "Глухая"}`;
-  }
-
-  // У Погонажа название позиции уже включает размеры (см. computeTrimOrder) —
-  // отдельная строка «В×Ш×Т» только дублировала бы её, поэтому для этого
-  // раздела показываем просто количество.
-  function orderItemDimsLine(it) {
-    if (it.section === "погонаж") return `${it.quantity} шт.`;
-    return `${it.height} × ${it.width} × ${it.thickness} мм — ${it.standard ? "Стандарт" : "Нестандарт"} · ${it.quantity} шт.`;
+  // Одна компактная строка на позицию вместо двух (материал/цвет/стекло +
+  // отдельно размеры) — меньше повторяющегося текста в печатных и
+  // отправляемых формах, название модели/позиции в неё не входит (оно уже
+  // крупным заголовком — см. orderItemTitle).
+  function orderItemSummaryLine(it) {
+    if (it.section === "матрица") return `Матрица · ${it.quantity} шт.`;
+    if (it.section === "погонаж") return `${it.material} · ${it.color || ""} · ${it.quantity} шт.`;
+    const dims = `${it.height}×${it.width}×${it.thickness} мм, ${it.standard ? "стандарт" : "нестандарт"}`;
+    return `${it.material} · ${it.color || ""} · ${it.glassName || "Глухая"} — ${dims}, ${it.quantity} шт.`;
   }
 
   function removeOrderItem(id) {
@@ -2671,8 +2670,7 @@ const DB = {
         return `
         <div class="order-item">
           <div class="order-item-title${titleCls}"${titleAttrs}>${idx + 1}. ${esc(it.modelName)}</div>
-          <div class="order-item-sub">${esc(orderItemMeta(it))}</div>
-          <div class="order-item-sub">${orderItemDimsLine(it)}</div>
+          <div class="order-item-sub">${esc(orderItemSummaryLine(it))}</div>
           <div class="breakdown">${it.rows.map((r) => `<div class="breakdown-row">${esc(r)}</div>`).join("")}</div>
           <div class="order-item-total"><span>Итого</span><span>${it.total.toLocaleString("ru-RU")} ₽</span></div>
           ${view.readOnly ? "" : `
@@ -2728,10 +2726,8 @@ const DB = {
     }
 
     view.items.forEach((it, idx) => {
-      lines.push(`${idx + 1}. ${it.modelName} (${orderItemMeta(it)})`);
-      if (it.section !== "погонаж") {
-        lines.push(`${it.height}×${it.width}×${it.thickness} мм — ${it.standard ? "Стандарт" : "Нестандарт"}`);
-      }
+      lines.push(`${idx + 1}. ${it.modelName}`);
+      lines.push(orderItemSummaryLine(it));
       it.rows.forEach((r) => lines.push("   " + r));
       lines.push(`Итого по позиции: ${it.total.toLocaleString("ru-RU")} ₽`, "");
     });
@@ -2770,11 +2766,8 @@ const DB = {
     const itemsHtml = view.items
       .map((it, idx) => `
         <div style="border:1px solid #ddd;border-radius:10px;padding:14px;margin-bottom:12px;">
-          <div style="font-weight:700;font-size:15px;margin-bottom:4px;">${idx + 1}. ${esc(it.modelName)}</div>
-          <div style="font-size:13px;color:#666;margin-bottom:8px;">
-            ${esc(orderItemMeta(it))}<br>
-            ${esc(orderItemDimsLine(it))}
-          </div>
+          <div style="font-weight:700;font-size:18px;margin-bottom:4px;">${idx + 1}. ${esc(it.modelName)}</div>
+          <div style="font-size:13px;color:#666;margin-bottom:8px;">${esc(orderItemSummaryLine(it))}</div>
           <div style="font-size:13px;color:#444;">${it.rows.map((r) => `<div>${esc(r)}</div>`).join("")}</div>
           <div style="display:flex;justify-content:space-between;font-weight:700;font-size:15px;border-top:1px solid #ddd;padding-top:8px;margin-top:8px;">
             <span>Итого</span><span>${it.total.toLocaleString("ru-RU")} ₽</span>
