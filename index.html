@@ -142,6 +142,40 @@ h1 { font-size: 20px; margin: 0 0 4px; }
 .pitem-field input[type="text"] { flex: 1; min-width: 0; font-size: 14px; padding: 8px 10px; }
 .pitem-field input[type="number"] { width: 120px; }
 
+/* Поле «Название» — кликабельное, открывает модалку с полным текстом
+   (см. openNameEditModal), а не редактируется прямо в узкой строке. */
+input.edit-name[readonly] {
+  cursor: pointer; background: var(--bg); text-overflow: ellipsis;
+}
+input.edit-name[readonly]:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+
+.modal-overlay {
+  position: fixed; inset: 0; background: rgba(0, 0, 0, .5);
+  display: flex; align-items: center; justify-content: center;
+  padding: 20px; z-index: 1000;
+}
+.modal-box {
+  background: var(--card-bg); border-radius: 12px; padding: 20px;
+  width: 100%; max-width: 420px; display: flex; flex-direction: column; gap: 12px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, .3);
+}
+.modal-title { font-size: 13px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.modal-box textarea {
+  width: 100%; min-height: 96px; font-size: 15px; padding: 10px 12px;
+  border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text);
+  resize: vertical; font-family: inherit; line-height: 1.4;
+}
+.modal-box textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+.modal-actions { display: flex; gap: 8px; }
+.modal-actions button {
+  flex: 1 1 0; padding: 10px 8px; border-radius: 8px;
+  font-size: 14px; font-weight: 600; cursor: pointer; border: none;
+}
+.modal-btn-primary { background: var(--accent); color: #fff; }
+.modal-btn-primary:hover { filter: brightness(1.06); }
+.modal-btn-secondary { background: var(--bg); color: var(--text); border: 1px solid var(--border) !important; }
+.modal-btn-secondary:hover { background: var(--border); }
+
 .pitem-del { display: flex; align-items: center; gap: 10px; padding-top: 2px; }
 .switch { position: relative; display: inline-block; width: 40px; height: 22px; flex: 0 0 auto; }
 .switch input { opacity: 0; width: 0; height: 0; }
@@ -771,6 +805,17 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
     </div>
   </main>
 
+  <div id="nameEditOverlay" class="modal-overlay" hidden>
+    <div class="modal-box">
+      <div class="modal-title">Название</div>
+      <textarea id="nameEditTextarea" rows="4"></textarea>
+      <div class="modal-actions">
+        <button type="button" id="nameEditCancelBtn" class="modal-btn-secondary">Отмена</button>
+        <button type="button" id="nameEditSaveBtn" class="modal-btn-primary">Сохранить</button>
+      </div>
+    </div>
+  </div>
+
 <script>
 /*
  * DoorCalc Pro — база данных (v0.2)
@@ -1267,7 +1312,11 @@ const DB = {
     orderTelegramBtn: document.getElementById("orderTelegramBtn"),
     orderEmailBtn: document.getElementById("orderEmailBtn"),
     orderPrintBtn: document.getElementById("orderPrintBtn"),
-    orderDownloadBtn: document.getElementById("orderDownloadBtn")
+    orderDownloadBtn: document.getElementById("orderDownloadBtn"),
+    nameEditOverlay: document.getElementById("nameEditOverlay"),
+    nameEditTextarea: document.getElementById("nameEditTextarea"),
+    nameEditCancelBtn: document.getElementById("nameEditCancelBtn"),
+    nameEditSaveBtn: document.getElementById("nameEditSaveBtn")
   };
 
   // Контексты рисования для двух SVG: превью в калькуляторе и картинка в
@@ -3207,6 +3256,34 @@ const DB = {
     return `<button type="button" class="row-add" ${a}>+ ${label}</button>`;
   }
 
+  // --- Редактирование «Название» через модалку ---------------------------
+  // Поля названия в редакторе цен (Стекло/Модели/Опции/Плёнка ПВХ и эмаль/
+  // Погонаж) слишком узкие для длинных названий — вместо прямого ввода
+  // в строке клик по полю открывает модалку с полным текстом; сохранение
+  // переносит значение обратно в исходный input и запускает уже
+  // существующую логику onPriceInput через обычное событие "input".
+  let nameEditTarget = null;
+
+  function openNameEditModal(input) {
+    nameEditTarget = input;
+    el.nameEditTextarea.value = input.value;
+    el.nameEditOverlay.hidden = false;
+    el.nameEditTextarea.focus();
+    el.nameEditTextarea.select();
+  }
+
+  function closeNameEditModal() {
+    el.nameEditOverlay.hidden = true;
+    nameEditTarget = null;
+  }
+
+  function saveNameEditModal() {
+    if (!nameEditTarget) return;
+    nameEditTarget.value = el.nameEditTextarea.value;
+    nameEditTarget.dispatchEvent(new Event("input", { bubbles: true }));
+    closeNameEditModal();
+  }
+
   function renderPriceEditor() {
     // запомним, какие пункты раскрыты (и верхнеуровневые группы, и вложенные
     // категории/опции/модели), чтобы не схлопывать их при перерисовке —
@@ -3345,6 +3422,9 @@ const DB = {
       </div></details>`);
 
     el.priceEditor.innerHTML = parts.join("");
+    // Поле «Название» не редактируется прямо в узкой строке — клик открывает
+    // модалку с полным текстом (см. openNameEditModal/bind()).
+    el.priceEditor.querySelectorAll("input.edit-name").forEach((inp) => { inp.readOnly = true; });
   }
 
   // Ввод названия/цены существующего элемента (не меняет структуру → не перерисовываем редактор)
@@ -3587,6 +3667,28 @@ const DB = {
     });
     el.priceEditor.addEventListener("input", (e) => { onPriceInput(e); onModelSearch(e); onTrimSearch(e); });
     el.priceEditor.addEventListener("click", onPriceClick);
+    el.priceEditor.addEventListener("click", (e) => {
+      const input = e.target.closest("input.edit-name[data-field='name']");
+      if (input) openNameEditModal(input);
+    });
+    el.priceEditor.addEventListener("keydown", (e) => {
+      const input = e.target.closest && e.target.closest("input.edit-name[data-field='name']");
+      if (input && (e.key === "Enter" || e.key === " ")) {
+        e.preventDefault();
+        openNameEditModal(input);
+      }
+    });
+    el.nameEditCancelBtn.addEventListener("click", closeNameEditModal);
+    el.nameEditSaveBtn.addEventListener("click", saveNameEditModal);
+    el.nameEditOverlay.addEventListener("click", (e) => {
+      if (e.target === el.nameEditOverlay) closeNameEditModal();
+    });
+    el.nameEditTextarea.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); saveNameEditModal(); }
+    });
+    document.addEventListener("keydown", (e) => {
+      if (!el.nameEditOverlay.hidden && e.key === "Escape") closeNameEditModal();
+    });
 
     render();
   }
