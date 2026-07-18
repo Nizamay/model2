@@ -2194,15 +2194,13 @@ const DB = {
   // Скидка и Акция вместе не суммируются на одном и том же товаре: если для
   // текущего полотна выбрана Акция, Скидка на него не действует (но
   // остаётся выставленной для остальных товаров — см. skipDiscount).
-  function finishOrder(model, perUnitBeforeQty, rows, unitLabel, skipDiscount) {
-    const unit = unitLabel || "полотно";
+  function finishOrder(model, perUnitBeforeQty, rows, skipDiscount) {
     const perUnit = perUnitBeforeQty;
     const quantity = Number(state.quantity) > 0 ? Number(state.quantity) : 1;
     const lineSubtotal = perUnit * quantity;
     const discount = skipDiscount ? 0 : (Number(state.discount) || 0);
     const total = Math.round(lineSubtotal * (1 - discount / 100));
 
-    rows.push(`Подытог за 1 ${unit}: ${perUnit} ₽`);
     if (quantity !== 1) rows.push(`Количество: ${quantity} шт. × ${perUnit} ₽ = ${lineSubtotal} ₽`);
     if (discount) {
       rows.push(`Скидка ${discount}%: -${Math.round(lineSubtotal * discount / 100)} ₽`);
@@ -2266,7 +2264,7 @@ const DB = {
 
     const displayWidth = isWidthCustom ? (Number(state.trimWidthFree) || 0) : (item.width || 0);
     const pseudoModel = { name: item.name + (isWidthCustom ? ` (ширина по заказу ${displayWidth} мм)` : "") };
-    const result = finishOrder(pseudoModel, perUnit, rows, "шт");
+    const result = finishOrder(pseudoModel, perUnit, rows);
     return {
       ...result,
       standard: !isWidthCustom,
@@ -2302,7 +2300,7 @@ const DB = {
       rows.push(`Полотно: ${model.basePrice} ₽`);
       const promo = promoActive();
       const perUnit = applyPromo(model.basePrice, rows);
-      const result = finishOrder(model, perUnit, rows, undefined, promo);
+      const result = finishOrder(model, perUnit, rows, promo);
       return {
         ...result,
         standard: true,
@@ -2334,7 +2332,7 @@ const DB = {
     if (glassPrice) rows.push(`Стекло (${glass.name}): +${glassPrice} ₽`);
 
     const perUnit = leafPrice + optionsSum + glassPrice;
-    const result = finishOrder(model, perUnit, rows, undefined, promo);
+    const result = finishOrder(model, perUnit, rows, promo);
     return {
       ...result,
       standard,
