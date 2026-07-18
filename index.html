@@ -16,6 +16,8 @@
   --ok-bg: #e6f4ea;
   --warn: #b54708;
   --warn-bg: #fff4e5;
+  --danger: #c81e1e;
+  --danger-bg: #fde8e8;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -30,6 +32,8 @@
     --ok-bg: #163420;
     --warn: #f2a44b;
     --warn-bg: #3a2a12;
+    --danger: #f26161;
+    --danger-bg: #3a1414;
   }
 }
 
@@ -380,15 +384,16 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 
 .edit-banner, .spec-editing-banner {
   display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
-  background: var(--warn-bg); color: var(--warn); font-size: 13px; font-weight: 600;
+  background: var(--danger-bg); color: var(--danger); font-size: 13px; font-weight: 600;
   padding: 10px 12px; border-radius: 8px; margin-bottom: 14px;
+  border: 1px solid var(--danger);
 }
 .edit-banner span { flex: 1 1 auto; }
 .edit-banner button {
-  flex: 0 0 auto; padding: 6px 10px; border-radius: 6px; border: 1px solid var(--warn);
-  background: none; color: var(--warn); font-size: 12px; font-weight: 600; cursor: pointer;
+  flex: 0 0 auto; padding: 6px 10px; border-radius: 6px; border: 1px solid var(--danger);
+  background: none; color: var(--danger); font-size: 12px; font-weight: 600; cursor: pointer;
 }
-.edit-banner button:hover { background: var(--warn); color: #fff; }
+.edit-banner button:hover { background: var(--danger); color: #fff; }
 
 .order-item-title-link { cursor: pointer; }
 .order-item-title-link:hover { text-decoration: underline; }
@@ -2585,6 +2590,14 @@ const DB = {
     const idx = specHistory.findIndex((e) => e.number === entry.number);
     if (idx >= 0) specHistory[idx] = entry; else specHistory.unshift(entry);
     saveSpecHistory();
+    // Сохранённая спецификация целиком переезжает в историю — черновик и
+    // страница «Спецификация» очищаются сразу, чтобы не было неясности,
+    // сохранено уже или нет: страница свободна для следующего заказа.
+    // Найти и доредактировать эту же спецификацию позже можно через
+    // «Сохранённые спецификации» → «Вернуть для изменения».
+    orderItems = [];
+    orderMeta = { number: null, date: null };
+    orderCustomer = { lastName: "", firstName: "", phone: "" };
     saveOrderItems();
     renderOrderPage();
     flashSaved(el.saveSpecBtn, "✓ Спецификация сохранена");
