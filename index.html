@@ -557,6 +557,11 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
       <select id="material"></select>
     </div>
 
+    <div class="field" id="patinaField">
+      <label for="patina">Патина</label>
+      <select id="patina"></select>
+    </div>
+
     <div class="field" id="colorField">
       <label for="color">Цвет</label>
       <select id="color"></select>
@@ -1052,6 +1057,15 @@ const DEFAULT_GLASSES = [
   { id: "sumgait", name: "Сумгаит", price: 0 }
 ];
 
+// Патина — только у моделей «Щитовые» и только при материале «Эмаль» (см.
+// applySectionUI/populatePatina); ровно два фиксированных цвета (не
+// открытый каталог, как стекло) — «Добавить» не нужен, только цена и
+// безопасное удаление на каждую модель (см. DB.models[i].patina).
+const DEFAULT_PATINA = [
+  { id: "gold", name: "Золото", price: 0 },
+  { id: "silver", name: "Серебро", price: 0 }
+];
+
 const DB = {
   models: [
     "LX2", "Модерн LX2", "L-1", "Модерн 13", "Линия", "Соренто 2 ПГ", "Соренто 1",
@@ -1075,7 +1089,10 @@ const DB = {
     pvhOnly: PVH_ONLY_MODELS.has(name),
     // Своё стекло на модель (id/название/цена, редактируется в редакторе
     // цен) — см. DEFAULT_GLASSES выше и populateGlass/computeOrder ниже.
-    glasses: DEFAULT_GLASSES.map((g) => ({ ...g }))
+    glasses: DEFAULT_GLASSES.map((g) => ({ ...g })),
+    // Патина — только у «Щитовые» (PVH_ONLY_MODELS.has(name) === true как
+    // раз означает «Сборные», см. type выше), см. DEFAULT_PATINA.
+    patina: PVH_ONLY_MODELS.has(name) ? undefined : DEFAULT_PATINA.map((p) => ({ ...p }))
   })).concat(MATRIX_MODELS),
 
   colors: {
@@ -1191,6 +1208,7 @@ const DB = {
     material: "пвх",
     color: null,
     glassId: "none",
+    patinaId: "none",
     height: DB.standard.height,
     width: DB.standard.widths[3],
     thickness: DB.standard.thickness,
@@ -1245,6 +1263,7 @@ const DB = {
     promoField: document.getElementById("promoField"),
     promo: document.getElementById("promo"),
     materialField: document.getElementById("materialField"),
+    patinaField: document.getElementById("patinaField"),
     colorField: document.getElementById("colorField"),
     glassField: document.getElementById("glassField"),
     optionsField: document.getElementById("optionsField"),
@@ -1254,6 +1273,7 @@ const DB = {
     sizeMatrixRow: document.getElementById("sizeMatrixRow"),
     widthMatrix: document.getElementById("widthMatrix"),
     material: document.getElementById("material"),
+    patina: document.getElementById("patina"),
     color: document.getElementById("color"),
     glass: document.getElementById("glass"),
     trimVidField: document.getElementById("trimVidField"),
@@ -1433,6 +1453,7 @@ const DB = {
     el.trimVidField.hidden = !isTrim;
     el.promoField.hidden = isTrim;
     el.materialField.hidden = isMatrix;
+    updatePatinaVisibility();
     el.colorField.hidden = isMatrix;
     el.glassField.hidden = isMatrix || isTrim;
     el.optionsField.hidden = isMatrix || isTrim;
@@ -1651,6 +1672,29 @@ const DB = {
       state.glassId = "none";
     }
     el.glass.value = state.glassId;
+  }
+
+  // Патина — только у «Щитовые» и только при материале «Эмаль» (см.
+  // updatePatinaVisibility); список — своя цена на каждую модель
+  // (DB.models[i].patina), «Без патины» — всегда доступный первый вариант.
+  function modelPatina(model) {
+    return (model && Array.isArray(model.patina)) ? model.patina : [];
+  }
+
+  function updatePatinaVisibility() {
+    el.patinaField.hidden = !(state.section === "щитовое" && state.material === "эмаль");
+  }
+
+  function populatePatina() {
+    const patina = modelPatina(getModel(state.modelId));
+    const options = [{ id: "none", name: "Без патины" }].concat(patina);
+    el.patina.innerHTML = options
+      .map((p) => `<option value="${p.id}">${p.name}</option>`)
+      .join("");
+    if (!options.some((p) => p.id === state.patinaId)) {
+      state.patinaId = "none";
+    }
+    el.patina.value = state.patinaId;
   }
 
   function populateOptions() {
@@ -2358,7 +2402,15 @@ const DB = {
     // отметка «ПО» приписываются к наименованию модели (см. leafDisplayName),
     // а стоимость по-прежнему учитывается в perUnit ниже без изменений.
 
-    const perUnit = leafPrice + optionsSum + glassPrice;
+    // Патина — только «Щитовые» + материал «Эмаль» (см. updatePatinaVisibility);
+    // в отличие от стекла показывается отдельной строкой с ценой, как опции.
+    const patinaEligible = state.section === "щитовое" && state.material === "эмаль";
+    const patina = (patinaEligible && state.patinaId !== "none")
+      ? modelPatina(model).find((p) => p.id === state.patinaId) : null;
+    const patinaPrice = patina ? patina.price : 0;
+    if (patina) rows.push(`Патина (${patina.name}): +${patinaPrice} ₽`);
+
+    const perUnit = leafPrice + optionsSum + glassPrice + patinaPrice;
     const result = finishOrder(model, perUnit, rows, promo);
     return {
       ...result,
@@ -2366,6 +2418,7 @@ const DB = {
       materialLabel: state.material === "пвх" ? "Пленка ПВХ" : "Эмаль",
       color: state.color,
       glassName: glass ? glass.name : "",
+      patinaName: patina ? patina.name : "",
       height: state.height, width: state.width, thickness: state.thickness,
       section: state.section
     };
@@ -2516,7 +2569,7 @@ const DB = {
   // цены» и отредактировать (а не просто посмотреть готовую цену) —
   // см. captureCalcState/restoreCalcState и editingItemId ниже.
   const CALC_STATE_FIELDS = [
-    "section", "sizeMode", "modelId", "material", "color", "glassId",
+    "section", "sizeMode", "modelId", "material", "color", "glassId", "patinaId",
     "height", "width", "thickness", "discount", "promo", "quantity",
     "trimVid", "trimLength", "trimThickness", "trimDoor42", "trimTenon",
     "trimVariant", "trimWidthMode", "trimWidthStd", "trimWidthFree"
@@ -2560,6 +2613,7 @@ const DB = {
     populateMaterial();
     populateColors();
     populateGlass();
+    populatePatina();
     populateOptions();
     restoreOptionsSelection(snapshot.options);
     populateTrimAll();
@@ -2626,6 +2680,7 @@ const DB = {
       material: o.materialLabel,
       color: o.color,
       glassName: o.glassName,
+      patinaName: o.patinaName,
       height: o.height,
       width: o.width,
       thickness: o.thickness,
@@ -2953,6 +3008,7 @@ const DB = {
       populateMaterial();
       populateColors();
       populateGlass();
+      populatePatina();
       populateOptions();
       populateTrimAll();
       render();
@@ -2962,6 +3018,7 @@ const DB = {
       populateMaterial();
       populateColors();
       populateGlass();
+      populatePatina();
       populateOptions();
       render();
     });
@@ -2975,9 +3032,15 @@ const DB = {
     });
     el.material.addEventListener("change", () => {
       state.material = el.material.value;
+      updatePatinaVisibility();
       populateColors();
+      populatePatina();
       populateOptions();
       populateTrimAll();
+      render();
+    });
+    el.patina.addEventListener("change", () => {
+      state.patinaId = el.patina.value;
       render();
     });
     el.color.addEventListener("change", () => {
@@ -3216,7 +3279,8 @@ const DB = {
       v: 2,
       models: DB.models.map((m) => ({
         id: m.id, name: m.name, type: m.type, basePrice: m.basePrice, pvhOnly: !!m.pvhOnly,
-        glasses: Array.isArray(m.glasses) ? m.glasses.map((g) => ({ ...g })) : undefined
+        glasses: Array.isArray(m.glasses) ? m.glasses.map((g) => ({ ...g })) : undefined,
+        patina: Array.isArray(m.patina) ? m.patina.map((p) => ({ ...p })) : undefined
       })),
       colors: DB.colors,
       categorySurcharge: DB.categorySurcharge,
@@ -3230,14 +3294,18 @@ const DB = {
   function applyPrices(s) {
     if (!s || typeof s !== "object") return;
     if (Array.isArray(s.models)) {
-      // Снимок мог быть сохранён до появления своего стекла на модель —
-      // тогда у моделей нет m.glasses, подставляем стартовый каталог
-      // (кроме «Матрицы» — у неё стекло не выбирается).
+      // Снимок мог быть сохранён до появления своего стекла/патины на модель —
+      // тогда у моделей нет m.glasses/m.patina, подставляем стартовый каталог
+      // (кроме «Матрицы» — у неё нет ни стекла, ни патины; патина — только
+      // у «Щитовые», см. applySectionUI/updatePatinaVisibility).
       DB.models = s.models.map((m) => ({
         ...m,
         glasses: Array.isArray(m.glasses)
           ? m.glasses.map((g) => ({ ...g }))
-          : (m.type !== "матрица" ? DEFAULT_GLASSES.map((g) => ({ ...g })) : undefined)
+          : (m.type !== "матрица" ? DEFAULT_GLASSES.map((g) => ({ ...g })) : undefined),
+        patina: Array.isArray(m.patina)
+          ? m.patina.map((p) => ({ ...p }))
+          : (m.type === "щитовое" ? DEFAULT_PATINA.map((p) => ({ ...p })) : undefined)
       }));
       // Снимок мог быть сохранён до появления раздела «Матрица» — тогда в
       // нём нет ни одной модели этого типа. Без этой подстраховки список
@@ -3377,6 +3445,22 @@ const DB = {
     </div>`;
   }
 
+  // Строка патины внутри конкретной модели «Щитовые» (см.
+  // DB.models[i].patina/populatePatina). Ровно два фиксированных цвета —
+  // без кнопки добавления, только цена и безопасное удаление.
+  function modelPatinaRow(modelId, p) {
+    const a = dataAttrs("modelPatina", { model: modelId, id: p.id });
+    return `<div class="choice-row">
+      <input type="text" class="edit-name" value="${esc(p.name)}" data-field="name" ${a}>
+      <span class="price-input-wrap"><input type="number" step="10" min="0" value="${p.price}" data-field="price" ${a}></span>
+      <div class="pitem-del">
+        <label class="switch"><input type="checkbox" class="arm-del"><span class="switch-track"></span></label>
+        <span class="switch-label">Разрешить удаление</span>
+        <button type="button" class="row-del" data-field="del" ${a} disabled>Удалить</button>
+      </div>
+    </div>`;
+  }
+
   function addBtn(add, ids, label) {
     const a = `data-add="${add}" ` +
       Object.keys(ids).map((k) => `data-${k}="${esc(ids[k])}"`).join(" ");
@@ -3500,6 +3584,14 @@ const DB = {
             glassHtml += addBtn("modelGlass", { model: m.id }, "Добавить стекло");
             extraBody = glassHtml;
           }
+          // Патина — только «Щитовые», ровно два фиксированных цвета
+          // (Золото/Серебро), без кнопки добавления — только цена и
+          // безопасное удаление на каждую модель (см. DEFAULT_PATINA).
+          if (g.type === "щитовое") {
+            let patinaHtml = `<div class="choice-head">Патина</div>`;
+            modelPatina(m).forEach((p) => { patinaHtml += modelPatinaRow(m.id, p); });
+            extraBody += patinaHtml;
+          }
           return editItem("model", { id: m.id }, m.name, m.basePrice, { search: true, isOpen, extraBody });
         })
         .join("");
@@ -3607,6 +3699,12 @@ const DB = {
         if (isName) g.name = val; else g.price = val;
         refresh = populateGlass; break;
       }
+      case "modelPatina": {
+        const m = DB.models.find((x) => x.id === d.model); if (!m) break;
+        const p = (m.patina || []).find((x) => x.id === d.id); if (!p) break;
+        if (isName) p.name = val; else p.price = val;
+        refresh = populatePatina; break;
+      }
       case "option": {
         const opt = DB.options[d.material].find((x) => x.id === d.opt); if (!opt) break;
         if (isName) opt.name = val; else opt.price = val;
@@ -3667,6 +3765,11 @@ const DB = {
           if (m && Array.isArray(m.glasses)) m.glasses = m.glasses.filter((g) => g.id !== d.id);
           populateGlass(); break;
         }
+        case "modelPatina": {
+          const m = DB.models.find((x) => x.id === d.model);
+          if (m && Array.isArray(m.patina)) m.patina = m.patina.filter((p) => p.id !== d.id);
+          populatePatina(); break;
+        }
         // "optionName" (удаление радио-опции целиком, например «Кромка») нет
         // намеренно — см. editItem(..., { noDelete: true }) выше: одна
         // кнопка стирала бы разом все варианты этой опции.
@@ -3705,7 +3808,8 @@ const DB = {
           const type = d.type === "матрица" ? "матрица" : d.type === "сборное" ? "сборное" : "щитовое";
           DB.models.push({
             id: uid("m"), name: "Новая модель", type, basePrice: 0, pvhOnly: type !== "щитовое",
-            glasses: type !== "матрица" ? [] : undefined
+            glasses: type !== "матрица" ? [] : undefined,
+            patina: type === "щитовое" ? DEFAULT_PATINA.map((p) => ({ ...p })) : undefined
           });
           populateModels(); break;
         }
@@ -3780,6 +3884,7 @@ const DB = {
     populateMaterial();
     populateColors();
     populateGlass();
+    populatePatina();
     populateOptions();
     populateTrimAll();
     el.height.value = state.height;
