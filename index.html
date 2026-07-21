@@ -566,6 +566,11 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
       <select id="furnitureItem"></select>
     </div>
 
+    <div class="field" id="furnitureColorField">
+      <label for="furnitureColor">Цвет</label>
+      <select id="furnitureColor"></select>
+    </div>
+
     <div class="field" id="promoField">
       <label for="promo">Акция, %</label>
       <input type="number" id="promo" step="0.1" min="0" max="100" value="0">
@@ -1109,8 +1114,13 @@ const FURNITURE_TYPES = [
   { id: "latchSilent", name: "Защёлки бесшумные" },
   { id: "bolt", name: "Задвижки" }
 ];
+// Цена больше не на самой позиции — она у каждого цвета/расцветки этой
+// позиции (см. DB.furniture.items[i].colors, populateFurnitureColor,
+// computeFurnitureOrder). Один стартовый цвет-заглушка, чтобы раздел не
+// оставался без единой цены — переименуйте/добавьте реальные цвета в
+// «Изменение цен» → «Фурнитура».
 function furnitureItem(vid, name) {
-  return { vid, name, price: 0 };
+  return { vid, name, colors: [{ id: "c0", name: "Цвет 1 (уточните по каталогу)", price: 0 }] };
 }
 const FURNITURE_ITEMS_RAW = [
   furnitureItem("handle", "Ручка раздельная POLO JK"),
@@ -1302,7 +1312,8 @@ const DB = {
 
     // --- Фурнитура (см. computeOrder/applySectionUI) ---
     furnitureVid: "handle",
-    furnitureItemId: null
+    furnitureItemId: null,
+    furnitureColorId: null
   };
 
   // Пресеты цвета стены для быстрого выбора (можно задать и свой через
@@ -1372,6 +1383,8 @@ const DB = {
     furnitureVid: document.getElementById("furnitureVid"),
     furnitureItemField: document.getElementById("furnitureItemField"),
     furnitureItem: document.getElementById("furnitureItem"),
+    furnitureColorField: document.getElementById("furnitureColorField"),
+    furnitureColor: document.getElementById("furnitureColor"),
     height: document.getElementById("height"),
     width: document.getElementById("width"),
     thickness: document.getElementById("thickness"),
@@ -1531,6 +1544,7 @@ const DB = {
     el.trimVidField.hidden = !isTrim;
     el.furnitureVidField.hidden = !isFurniture;
     el.furnitureItemField.hidden = !isFurniture;
+    el.furnitureColorField.hidden = !isFurniture;
     el.promoField.hidden = isTrim || isFurniture;
     el.materialField.hidden = isMatrix || isFurniture;
     updatePatinaVisibility();
@@ -1712,6 +1726,24 @@ const DB = {
       state.furnitureItemId = items.length ? items[0].id : null;
     }
     if (state.furnitureItemId) el.furnitureItem.value = state.furnitureItemId;
+    populateFurnitureColor();
+  }
+
+  // Цвет/расцветка выбранной позиции фурнитуры — своя цена на каждый цвет
+  // (см. DB.furniture.items[i].colors), без нейтрального «без цвета»: цена
+  // позиции целиком определяется выбранным цветом, поэтому цвет всегда
+  // выбран, если у позиции вообще есть хоть один (редактируется в
+  // «Изменение цен» → «Фурнитура»).
+  function populateFurnitureColor() {
+    const item = DB.furniture.items.find((it) => it.id === state.furnitureItemId);
+    const colors = (item && Array.isArray(item.colors)) ? item.colors : [];
+    el.furnitureColor.innerHTML = colors
+      .map((c) => `<option value="${c.id}">${c.name}</option>`)
+      .join("");
+    if (!colors.some((c) => c.id === state.furnitureColorId)) {
+      state.furnitureColorId = colors.length ? colors[0].id : null;
+    }
+    if (state.furnitureColorId) el.furnitureColor.value = state.furnitureColorId;
   }
 
   // Ближайшая по ширине каталожная позиция — используется как база для
@@ -2465,16 +2497,30 @@ const DB = {
       };
     }
 
+    const colors = Array.isArray(item.colors) ? item.colors : [];
+    const color = colors.find((c) => c.id === state.furnitureColorId);
+    if (!color) {
+      rows.push("Нет доступных цветов у этой позиции");
+      return {
+        model: { name: item.name }, quantity: 1, perUnit: 0, lineSubtotal: 0, discount: 0, total: 0, rows,
+        standard: true, materialLabel: "", color: "", glassName: "", patinaName: "",
+        height: 0, width: 0, thickness: 0, section: state.section
+      };
+    }
+
     // Название позиции уже вынесено отдельным крупным заголовком (см.
-    // orderItemTitle) — здесь не повторяем его, только вид и цена.
-    rows.push(`${vidLabel}: ${item.price} ₽`);
+    // orderItemTitle) — здесь не повторяем его, только вид и цена. Цвет —
+    // не в заголовке (в отличие от стекла у дверного полотна), а в
+    // компактной сводке позиции, как материал/цвет у Погонажа —
+    // см. orderItemSummaryLine.
+    rows.push(`${vidLabel}: ${color.price} ₽`);
 
     const pseudoModel = { name: item.name };
-    const result = finishOrder(pseudoModel, item.price, rows);
+    const result = finishOrder(pseudoModel, color.price, rows);
     return {
       ...result,
       standard: true,
-      materialLabel: "", color: "", glassName: "", patinaName: "",
+      materialLabel: "", color: color.name, glassName: "", patinaName: "",
       height: 0, width: 0, thickness: 0,
       section: state.section
     };
@@ -2711,7 +2757,7 @@ const DB = {
     "height", "width", "thickness", "discount", "promo", "quantity",
     "trimVid", "trimLength", "trimThickness", "trimDoor42", "trimTenon",
     "trimVariant", "trimWidthMode", "trimWidthStd", "trimWidthFree",
-    "furnitureVid", "furnitureItemId"
+    "furnitureVid", "furnitureItemId", "furnitureColorId"
   ];
 
   function captureCalcState() {
@@ -2853,7 +2899,7 @@ const DB = {
   function orderItemSummaryLine(it) {
     if (it.section === "матрица") return `Матрица · ${it.quantity} шт.`;
     if (it.section === "погонаж") return `${it.material} · ${it.color || ""} · ${it.quantity} шт.`;
-    if (it.section === "фурнитура") return `Фурнитура · ${it.quantity} шт.`;
+    if (it.section === "фурнитура") return `Фурнитура · ${it.color || ""} · ${it.quantity} шт.`;
     // Стекло сюда не дублируется — «ПО»/название стекла уже в заголовке
     // позиции (модель), см. leafDisplayName/orderItemTitle.
     const dims = `${it.height}×${it.width}×${it.thickness} мм, ${it.standard ? "стандарт" : "нестандарт"}`;
@@ -3201,6 +3247,11 @@ const DB = {
     });
     el.furnitureItem.addEventListener("change", () => {
       state.furnitureItemId = el.furnitureItem.value;
+      populateFurnitureColor();
+      render();
+    });
+    el.furnitureColor.addEventListener("change", () => {
+      state.furnitureColorId = el.furnitureColor.value;
       render();
     });
     el.trimLength.addEventListener("change", () => {
@@ -3439,7 +3490,10 @@ const DB = {
       options: DB.options,
       nonStandardPercent: DB.nonStandardPercent,
       trim: DB.trim.items.map((it) => ({ ...it, prices: { ...it.prices } })),
-      furniture: DB.furniture.items.map((it) => ({ ...it }))
+      furniture: DB.furniture.items.map((it) => ({
+        id: it.id, vid: it.vid, name: it.name,
+        colors: Array.isArray(it.colors) ? it.colors.map((c) => ({ ...c })) : []
+      }))
     };
   }
 
@@ -3479,8 +3533,16 @@ const DB = {
     }
     // Снимок мог быть сохранён до появления «Фурнитуры» — тогда s.furniture
     // нет, и DB.furniture.items остаётся со значениями по умолчанию (см. выше).
+    // Снимок мог быть сохранён и до появления цвета на позицию (когда цена
+    // была одна на всю позицию, поле it.price) — переносим её в единственный
+    // цвет-заглушку, чтобы уже введённые цены не потерялись.
     if (Array.isArray(s.furniture) && s.furniture.length) {
-      DB.furniture.items = s.furniture.map((it) => ({ ...it }));
+      DB.furniture.items = s.furniture.map((it) => ({
+        id: it.id, vid: it.vid, name: it.name,
+        colors: (Array.isArray(it.colors) && it.colors.length)
+          ? it.colors.map((c) => ({ ...c }))
+          : [{ id: uid("frc"), name: "Цвет 1", price: typeof it.price === "number" ? it.price : 0 }]
+      }));
     }
   }
 
@@ -3610,6 +3672,22 @@ const DB = {
     return `<div class="choice-row">
       <input type="text" class="edit-name" value="${esc(p.name)}" data-field="name" ${a}>
       <span class="price-input-wrap"><input type="number" step="10" min="0" value="${p.price}" data-field="price" ${a}></span>
+      <div class="pitem-del">
+        <label class="switch"><input type="checkbox" class="arm-del"><span class="switch-track"></span></label>
+        <span class="switch-label">Разрешить удаление</span>
+        <button type="button" class="row-del" data-field="del" ${a} disabled>Удалить</button>
+      </div>
+    </div>`;
+  }
+
+  // Строка цвета внутри конкретной позиции фурнитуры (см.
+  // DB.furniture.items[i].colors/populateFurnitureColor) — своя цена на
+  // каждый цвет, безопасное удаление, как у стекла/патины на модель.
+  function furnitureColorRow(itemId, c) {
+    const a = dataAttrs("furnitureColor", { item: itemId, id: c.id });
+    return `<div class="choice-row">
+      <input type="text" class="edit-name" value="${esc(c.name)}" data-field="name" ${a}>
+      <span class="price-input-wrap"><input type="number" step="10" min="0" value="${c.price}" data-field="price" ${a}></span>
       <div class="pitem-del">
         <label class="switch"><input type="checkbox" class="arm-del"><span class="switch-track"></span></label>
         <span class="switch-label">Разрешить удаление</span>
@@ -3811,7 +3889,10 @@ const DB = {
         .sort((a, b) => RU_COLLATOR.compare(a.name, b.name));
       let group = `<div class="price-subhead">${t.name}</div>`;
       items.forEach((it) => {
-        group += editItem("furniture", { id: it.id }, it.name, it.price, { isOpen, search: true });
+        let colorHtml = `<div class="choice-head">Цвет</div>`;
+        (Array.isArray(it.colors) ? it.colors : []).forEach((c) => { colorHtml += furnitureColorRow(it.id, c); });
+        colorHtml += addBtn("furnitureColor", { item: it.id }, "Добавить цвет");
+        group += editItem("furniture", { id: it.id }, it.name, 0, { noPrice: true, extraBody: colorHtml, isOpen, search: true });
       });
       group += addBtn("furniture", { vid: t.id }, "Добавить позицию");
       furnitureRows += `<div class="model-group" data-group="furniture-${t.id}">${group}</div>`;
@@ -3920,8 +4001,14 @@ const DB = {
       }
       case "furniture": {
         const it = DB.furniture.items.find((x) => x.id === d.id); if (!it) break;
-        if (isName) it.name = val; else it.price = val;
+        if (isName) it.name = val;
         refresh = populateFurnitureItem; break;
+      }
+      case "furnitureColor": {
+        const it = DB.furniture.items.find((x) => x.id === d.item); if (!it) break;
+        const c = (it.colors || []).find((x) => x.id === d.id); if (!c) break;
+        if (isName) c.name = val; else c.price = val;
+        refresh = populateFurnitureColor; break;
       }
       default: return;
     }
@@ -3976,6 +4063,11 @@ const DB = {
         case "furniture":
           DB.furniture.items = DB.furniture.items.filter((it) => it.id !== d.id);
           populateFurnitureItem(); break;
+        case "furnitureColor": {
+          const it = DB.furniture.items.find((x) => x.id === d.item);
+          if (it && Array.isArray(it.colors)) it.colors = it.colors.filter((c) => c.id !== d.id);
+          populateFurnitureColor(); break;
+        }
         default: return;
       }
     } else {
@@ -4024,8 +4116,13 @@ const DB = {
           populateTrimAll(); break;
         }
         case "furniture": {
-          DB.furniture.items.push({ id: uid("fr"), vid: d.vid, name: "Новая позиция", price: 0 });
+          DB.furniture.items.push({ id: uid("fr"), vid: d.vid, name: "Новая позиция", colors: [] });
           populateFurnitureItem(); break;
+        }
+        case "furnitureColor": {
+          const it = DB.furniture.items.find((x) => x.id === d.item);
+          if (it) (it.colors = it.colors || []).push({ id: uid("frc"), name: "Новый цвет", price: 0 });
+          populateFurnitureColor(); break;
         }
         default: return;
       }
