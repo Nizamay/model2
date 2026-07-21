@@ -558,6 +558,7 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
         <option value="latchMagnet">Защёлки магнитные</option>
         <option value="latchSilent">Защёлки бесшумные</option>
         <option value="bolt">Задвижки</option>
+        <option value="lockBody">Корпус замка</option>
       </select>
     </div>
 
@@ -1112,7 +1113,8 @@ const FURNITURE_TYPES = [
   { id: "hinge", name: "Петли-бабочки" },
   { id: "latchMagnet", name: "Защёлки магнитные" },
   { id: "latchSilent", name: "Защёлки бесшумные" },
-  { id: "bolt", name: "Задвижки" }
+  { id: "bolt", name: "Задвижки" },
+  { id: "lockBody", name: "Корпус замка" }
 ];
 // Цена больше не на самой позиции — она у каждого цвета/расцветки этой
 // позиции (см. DB.furniture.items[i].colors, populateFurnitureColor,
@@ -1137,7 +1139,9 @@ const FURNITURE_ITEMS_RAW = [
   furnitureItem("hinge", "Петля-бабочка — модель 2 (заполните по каталогу)"),
   furnitureItem("latchMagnet", "Защёлка магнитная — модель 1 (заполните по каталогу)"),
   furnitureItem("latchSilent", "Защёлка бесшумная — модель 1 (заполните по каталогу)"),
-  furnitureItem("bolt", "Задвижка — модель 1 (заполните по каталогу)")
+  furnitureItem("bolt", "Задвижка — модель 1 (заполните по каталогу)"),
+  furnitureItem("lockBody", "Корпус замка — модель 1 (заполните по каталогу)"),
+  furnitureItem("lockBody", "Корпус замка — модель 2 (заполните по каталогу)")
 ];
 
 const DB = {
@@ -3898,7 +3902,7 @@ const DB = {
       furnitureRows += `<div class="model-group" data-group="furniture-${t.id}">${group}</div>`;
     });
     parts.push(`<details class="price-group" data-key="furniture"${isOpen("furniture", false) ? " open" : ""}>
-      <summary>Фурнитура (ручки JK / завёртки JK / накладки JK / петли-бабочки / защёлки / задвижки)</summary>
+      <summary>Фурнитура (ручки JK / завёртки JK / накладки JK / петли-бабочки / защёлки / задвижки / корпус замка)</summary>
       <div class="price-body">
         <input type="search" class="price-search" placeholder="Поиск позиции…" id="furnitureSearch">
         <div id="furniturePriceRows">${furnitureRows}</div>
