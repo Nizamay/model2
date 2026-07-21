@@ -1814,7 +1814,7 @@ const DB = {
   // (state.furnitureVid), без материала/цвета/размера (см. DB.furniture.items
   // /computeOrder). Список редактируется в «Изменение цен» → «Фурнитура».
   // Виды фурнитуры — редактируемый список (см. DB.furniture.types и группу
-  // «Фурнитура» в редакторе цен: «Добавить вид фурнитуры»/переименование/
+  // «Фурнитура» в редакторе цен: «Добавить новую фурнитуру»/переименование/
   // безопасное удаление), поэтому select собирается заново, а не статичный
   // HTML.
   function populateFurnitureVid() {
@@ -4135,7 +4135,7 @@ const DB = {
       itemsHtml += addBtn("furniture", { vid: t.id }, "Добавить позицию");
       return editItem("furnitureType", { id: t.id }, t.name, 0, { noPrice: true, extraBody: itemsHtml, isOpen });
     }).join("");
-    furnitureRows += addBtn("furnitureType", {}, "Добавить вид фурнитуры");
+    furnitureRows += addBtn("furnitureType", {}, "Добавить новую фурнитуру");
     parts.push(`<details class="price-group" data-key="furniture"${isOpen("furniture", false) ? " open" : ""}>
       <summary>Фурнитура (ручки JK / завёртки JK / накладки JK / петли-бабочки / защёлки / задвижки / корпус замка)</summary>
       <div class="price-body">
