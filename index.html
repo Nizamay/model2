@@ -497,8 +497,10 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 
 /* Двойная рамка-окантовка вокруг всего ценника — border-style: double даёт
    ровно две параллельные линии с зазором средствами одного border, без
-   лишней разметки. Углы прямые (без border-radius), по образцу. */
-.tag-doc { border: 7px double #1c1f26; overflow: hidden; }
+   лишней разметки. Углы прямые (без border-radius), по образцу. Ширина
+   поменьше — на узких телефонных экранах толстая рамка съедала слишком
+   много места под контент (см. отчёт со скриншотом реального устройства). */
+.tag-doc { border: 5px double #1c1f26; overflow: hidden; container-type: inline-size; }
 
 /* Логотип «Двери 1ый Сорт Окна» — воссоздан на CSS (SVG-подобная разметка,
    печатается чётко в любом масштабе, в отличие от растрового скриншота).
@@ -511,41 +513,61 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
   -webkit-print-color-adjust: exact; print-color-adjust: exact;
 }
 .tag-logo-side {
-  flex: 1 1 0; color: #fff; display: flex; align-items: center;
+  flex: 1 1 0; min-width: 0; color: #fff; display: flex; align-items: center;
   /* -webkit-text-stroke утолщает буквы поверх жирного начертания — обычные
      системные шрифты с кириллицей (Roboto/Segoe UI) не имеют настолько
      плотного «чёрного» начертания сами по себе, а шрифты вроде Impact/
-     Arial Black кириллицу зачастую не поддерживают вовсе. */
-  font-size: 29px; font-weight: 900; letter-spacing: 0;
+     Arial Black кириллицу зачастую не поддерживают вовсе.
+     Размер — в единицах контейнера (cqw, см. container-type на .tag-doc):
+     считается от реальной ширины карточки, а не всего экрана, поэтому не
+     обрезается даже с учётом отступов/рамки/бейджа. vw — запасной вариант
+     для браузеров без поддержки container queries. */
+  font-size: clamp(11px, 4.5vw, 29px); font-size: clamp(11px, 8cqw, 29px);
+  font-weight: 900; letter-spacing: 0;
   -webkit-text-stroke: .6px rgba(255, 255, 255, .9);
   text-shadow: 1px 1px 0 rgba(0, 0, 0, .35), -.5px -.5px 0 rgba(0, 0, 0, .15);
 }
-.tag-logo-side.left { justify-content: flex-end; padding-right: 14px; }
-.tag-logo-side.right { justify-content: flex-start; padding-left: 14px; }
+.tag-logo-side.left { justify-content: flex-end; padding-right: 6px; }
+.tag-logo-side.right { justify-content: flex-start; padding-left: 6px; }
 .tag-logo-badge {
-  flex: 0 0 auto; background: #fff; border-radius: 8px; box-shadow: 0 1px 4px rgba(0, 0, 0, .25);
-  display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 6px 18px;
+  /* max-width ограничивает бейдж, чтобы длинная подпись «ФИРМЕННЫЙ
+     МАГАЗИН» переносилась на 2 строки вместо того, чтобы раздувать
+     бейдж вширь и вытеснять «ДВЕРИ»/«ОКНА» за края карточки. */
+  flex: 0 0 auto; min-width: 0; max-width: 42cqw;
+  background: #fff; border-radius: 8px; box-shadow: 0 1px 4px rgba(0, 0, 0, .25);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 5px 8px;
 }
-.tag-logo-badge-top { display: flex; align-items: center; gap: 5px; }
+.tag-logo-badge-top { display: flex; align-items: center; gap: 4px; }
 .tag-logo-badge-num {
-  width: 24px; height: 24px; background: #1c1f26; color: #fff; font-size: 16px; font-weight: 900;
-  display: flex; align-items: center; justify-content: center; border-radius: 4px;
+  width: 18px; height: 18px; flex: 0 0 auto; background: #1c1f26; color: #fff; font-size: 12px; font-weight: 900;
+  display: flex; align-items: center; justify-content: center; border-radius: 3px;
 }
-.tag-logo-badge-text { font-size: 23px; font-weight: 900; color: #1c1f26; letter-spacing: .01em; }
-.tag-logo-badge-sub { font-size: 9px; font-weight: 700; color: var(--muted); letter-spacing: .08em; margin-top: 2px; }
+.tag-logo-badge-text {
+  font-size: clamp(11px, 3.5vw, 23px); font-size: clamp(11px, 6cqw, 23px);
+  font-weight: 900; color: #1c1f26; letter-spacing: .01em; white-space: nowrap;
+}
+/* Без white-space:nowrap — на узких экранах строка длиннее «1 СОРТ» и
+   именно она раздувала бейдж вширь, вытесняя «ДВЕРИ»/«ОКНА» за края. */
+.tag-logo-badge-sub { font-size: 8px; font-weight: 700; color: var(--muted); letter-spacing: .04em; margin-top: 2px; text-align: center; }
 
-.tag-header-sub { text-align: center; font-size: 13px; color: var(--muted); padding: 12px 16px 0; line-height: 1.6; }
-.tag-doc-items { padding: 20px 18px; display: flex; flex-direction: column; gap: 20px; }
+.tag-header-sub { text-align: center; font-size: 13px; color: var(--muted); padding: 12px 14px 0; line-height: 1.6; }
+.tag-doc-items { padding: 20px 14px; display: flex; flex-direction: column; gap: 20px; }
 .tag-item { display: flex; flex-direction: column; gap: 10px; }
 .tag-item + .tag-item { border-top: 1px dashed var(--border); padding-top: 20px; }
-/* Название/атрибуты — слева, сумма — справа на той же строке. */
-.tag-item-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; }
-.tag-item-info { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
-.tag-item-title { font-weight: 800; font-size: 20px; }
-.tag-item-line { font-size: 15px; color: var(--text); }
-.tag-item-price { flex: 0 0 auto; text-align: right; font-weight: 800; font-size: 18px; white-space: nowrap; }
-.tag-doc-footer { padding: 20px 18px; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 14px; }
-.tag-grand-total { display: flex; justify-content: space-between; align-items: baseline; font-weight: 800; font-size: 26px; }
+/* Название/атрибуты — слева, сумма — справа на той же строке; на узких
+   экранах, если вместе не помещаются, сумма переносится на свою строку
+   (flex-wrap), но остаётся прижатой к правому краю (margin-left: auto) —
+   а не наезжает на название, как было при жёстком «в одну строку». */
+.tag-item-row { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 4px 14px; }
+.tag-item-info { flex: 1 1 200px; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.tag-item-title { font-weight: 800; font-size: clamp(16px, 5vw, 20px); }
+.tag-item-line { font-size: clamp(13px, 4vw, 15px); color: var(--text); }
+.tag-item-price {
+  flex: 0 0 auto; margin-left: auto; text-align: right;
+  font-weight: 800; font-size: clamp(15px, 4.5vw, 18px); white-space: nowrap;
+}
+.tag-doc-footer { padding: 20px 14px; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 14px; }
+.tag-grand-total { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 4px 14px; font-weight: 800; font-size: clamp(19px, 6vw, 26px); }
 /* Дата и подпись — в одну строку. */
 .tag-meta-line { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
 .tag-date-row { display: flex; align-items: center; gap: 10px; font-size: 15px; flex: 0 0 auto; }
@@ -3932,33 +3954,33 @@ const DB = {
     const view = currentTagView();
     const itemsHtml = view.items.map((it) => `
       <div style="border-top:1px dashed #ddd;padding-top:10px;margin-top:10px;">
-        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:14px;">
-          <div style="flex:1 1 auto;min-width:0;">
+        <div style="display:flex;flex-wrap:wrap;align-items:flex-start;gap:4px 14px;">
+          <div style="flex:1 1 200px;min-width:0;">
             <div style="font-weight:800;font-size:15px;">${esc(it.label)}</div>
             <div style="font-size:13px;color:#444;">${tagItemLinesHtml(it)}</div>
           </div>
-          <div style="flex:0 0 auto;text-align:right;font-weight:800;font-size:14px;white-space:nowrap;">${esc(tagItemPriceLine(it))}</div>
+          <div style="flex:0 0 auto;margin-left:auto;text-align:right;font-weight:800;font-size:14px;white-space:nowrap;">${esc(tagItemPriceLine(it))}</div>
         </div>
       </div>`).join("");
     const html = `<!doctype html><html lang="ru"><head><meta charset="UTF-8"><title>Ценник</title>
 <style>@page { size: A5 landscape; margin: 10mm; }</style></head>
 <body style="font-family:-apple-system,'Segoe UI',Roboto,Arial,sans-serif;max-width:520px;margin:24px auto;padding:0 16px;color:#1c1f26;">
-  <div style="border:7px double #1c1f26;border-radius:12px;overflow:hidden;">
+  <div style="border:5px double #1c1f26;overflow:hidden;">
   <div style="display:flex;align-items:stretch;min-height:68px;padding:6px;background:#c81e1e;-webkit-print-color-adjust:exact;print-color-adjust:exact;">
-    <div style="flex:1;color:#fff;display:flex;align-items:center;justify-content:flex-end;padding-right:14px;font-size:27px;font-weight:900;letter-spacing:.01em;text-shadow:1px 1px 0 rgba(0,0,0,.28);">ДВЕРИ</div>
-    <div style="flex:0 0 auto;background:#fff;border-radius:8px;box-shadow:0 1px 4px rgba(0,0,0,.25);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:6px 18px;">
+    <div style="flex:1;min-width:0;color:#fff;display:flex;align-items:center;justify-content:flex-end;padding-right:10px;font-size:clamp(15px,6vw,27px);font-weight:900;letter-spacing:0;text-shadow:1px 1px 0 rgba(0,0,0,.28);">ДВЕРИ</div>
+    <div style="flex:0 0 auto;background:#fff;border-radius:8px;box-shadow:0 1px 4px rgba(0,0,0,.25);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:6px 12px;">
       <div style="display:flex;align-items:center;gap:5px;">
-        <span style="width:24px;height:24px;background:#1c1f26;color:#fff;font-size:16px;font-weight:900;display:flex;align-items:center;justify-content:center;border-radius:4px;">1</span>
-        <span style="font-size:23px;font-weight:900;color:#1c1f26;letter-spacing:.01em;">СОРТ</span>
+        <span style="width:24px;height:24px;flex:0 0 auto;background:#1c1f26;color:#fff;font-size:16px;font-weight:900;display:flex;align-items:center;justify-content:center;border-radius:4px;">1</span>
+        <span style="font-size:clamp(14px,5vw,23px);font-weight:900;color:#1c1f26;letter-spacing:.01em;white-space:nowrap;">СОРТ</span>
       </div>
-      <div style="font-size:9px;font-weight:700;color:#666;letter-spacing:.08em;margin-top:2px;">ФИРМЕННЫЙ МАГАЗИН</div>
+      <div style="font-size:9px;font-weight:700;color:#666;letter-spacing:.06em;margin-top:2px;white-space:nowrap;">ФИРМЕННЫЙ МАГАЗИН</div>
     </div>
-    <div style="flex:1;color:#fff;display:flex;align-items:center;justify-content:flex-start;padding-left:14px;font-size:27px;font-weight:900;letter-spacing:.01em;text-shadow:1px 1px 0 rgba(0,0,0,.28);">ОКНА</div>
+    <div style="flex:1;min-width:0;color:#fff;display:flex;align-items:center;justify-content:flex-start;padding-left:10px;font-size:clamp(15px,6vw,27px);font-weight:900;letter-spacing:0;text-shadow:1px 1px 0 rgba(0,0,0,.28);">ОКНА</div>
   </div>
-  <div style="padding:0 16px;">
+  <div style="padding:0 14px;">
   <div style="text-align:center;font-size:12px;color:#666;padding:12px 0 0;line-height:1.6;">${TAG_HEADER_SUB_LINES.map(esc).join("<br>")}</div>
   ${itemsHtml || "<p>Пусто.</p>"}
-  <div style="display:flex;justify-content:space-between;font-weight:800;font-size:18px;border-top:2px solid #1c1f26;padding-top:12px;margin-top:12px;">
+  <div style="display:flex;flex-wrap:wrap;justify-content:space-between;gap:4px 14px;font-weight:800;font-size:18px;border-top:2px solid #1c1f26;padding-top:12px;margin-top:12px;">
     <span>Итого</span><span>${esc(tagMoney(tagGrandTotal(view.items)))}</span>
   </div>
   <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-top:10px;padding-bottom:16px;font-size:13px;">
