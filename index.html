@@ -108,7 +108,7 @@ h1 { font-size: 20px; margin: 0 0 4px; }
 .price-body { padding: 8px 14px 14px; display: flex; flex-direction: column; gap: 8px; }
 
 .price-row { display: flex; align-items: center; gap: 10px; }
-.price-row .price-label { flex: 1; font-size: 14px; color: var(--text); }
+.price-row .price-label { flex: 1; min-width: 0; font-size: 14px; color: var(--text); }
 .price-row .price-sub { font-size: 12px; color: var(--muted); }
 .price-input-wrap { position: relative; flex: 0 0 auto; }
 .price-row input[type="number"] {
@@ -125,17 +125,20 @@ h1 { font-size: 20px; margin: 0 0 4px; }
 
 /* Название пункта-аккордеона (вид/позиция/модель и т.п.) — то, что
    открывается модалкой для редактирования, см. openNameEditModal. */
-.pitem-summary { font-weight: 700; }
+.pitem-summary { font-weight: 700; line-height: 1.5; }
 
 /* Пункт-аккордеон: имя в заголовке видно целиком, внутри — поля и удаление */
 .pitem { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
 .pitem + .pitem { margin-top: 6px; }
 .pitem > summary {
   list-style: none; cursor: pointer; padding: 10px 12px; font-size: 14px;
-  color: var(--text); display: flex; align-items: center; gap: 8px;
+  color: var(--text); display: flex; align-items: flex-start; gap: 8px;
 }
 .pitem > summary::-webkit-details-marker { display: none; }
-.pitem > summary::before { content: "▸"; color: var(--muted); flex: 0 0 auto; }
+/* align-items: flex-start (выше) — чтобы маркер стоял у первой строки
+   заголовка, а не «плавал» посередине у длинных, переносящихся на
+   несколько строк названий (см. отчёт пользователя со скриншотом). */
+.pitem > summary::before { content: "▸"; color: var(--muted); flex: 0 0 auto; line-height: 1.5; }
 .pitem[open] > summary::before { content: "▾"; }
 .pitem-body { padding: 4px 12px 12px; display: flex; flex-direction: column; gap: 10px; }
 .pitem-field { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--muted); }
@@ -187,7 +190,7 @@ input.edit-name[readonly]:focus { outline: 2px solid var(--accent); outline-offs
 }
 .switch input:checked + .switch-track { background: var(--warn); }
 .switch input:checked + .switch-track::before { transform: translateX(18px); }
-.switch-label { font-size: 13px; color: var(--muted); flex: 1; }
+.switch-label { font-size: 13px; color: var(--muted); flex: 1; min-width: 0; }
 .pitem .row-del {
   flex: 0 0 auto; padding: 7px 14px; border-radius: 8px;
   border: 1px solid var(--warn); background: none; color: var(--warn);
