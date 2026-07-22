@@ -99,7 +99,7 @@ h1 { font-size: 20px; margin: 0 0 4px; }
 .price-group { border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
 .price-group > summary {
   list-style: none; cursor: pointer; padding: 12px 14px;
-  font-size: 14px; font-weight: 700; background: var(--bg);
+  font-size: 14px; font-weight: 700; background: var(--bg); color: var(--accent);
   display: flex; justify-content: space-between; align-items: center;
 }
 .price-group > summary::-webkit-details-marker { display: none; }
@@ -121,10 +121,11 @@ h1 { font-size: 20px; margin: 0 0 4px; }
 }
 .price-input-wrap.is-percent::after { content: "%"; }
 .price-search { width: 100%; margin-bottom: 4px; }
-.price-subhead { font-size: 13px; font-weight: 700; color: var(--muted); margin-top: 6px; }
-.price-subhead-sborno { color: var(--ok); }
-.price-subhead-shitovoe { color: var(--accent); }
-.price-subhead-matrix { color: #8b5cf6; }
+.price-subhead { font-size: 13px; font-weight: 700; color: var(--accent); margin-top: 6px; }
+
+/* Название пункта-аккордеона (вид/позиция/модель и т.п.) — то, что
+   открывается модалкой для редактирования, см. openNameEditModal. */
+.pitem-summary { font-weight: 700; }
 
 /* Пункт-аккордеон: имя в заголовке видно целиком, внутри — поля и удаление */
 .pitem { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
@@ -525,13 +526,7 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 
     <div class="field">
       <label for="section">Раздел</label>
-      <select id="section">
-        <option value="матрица">Матрица</option>
-        <option value="сборное">Сборные</option>
-        <option value="щитовое">Щитовые</option>
-        <option value="погонаж">Погонаж</option>
-        <option value="фурнитура">Фурнитура</option>
-      </select>
+      <select id="section"></select>
     </div>
 
     <div class="field" id="modelField">
@@ -1141,7 +1136,25 @@ const FURNITURE_ITEMS_RAW = [
   furnitureItem("lockBody", "Корпус замка — модель 2 (заполните по каталогу)")
 ];
 
+// Три встроенных типа двери — используются редактором цен для группировки
+// и подписей; в самом калькуляторе раздел выбирается через #section (см.
+// populateSection). Пользователь может добавить свой тип через «Изменение
+// цен» → «Модели» → «+ Добавить новый тип двери» (см. DB.modelGroups) —
+// такой тип получает ту же простую модель расчёта, что и «Матрица» (готовая
+// цена за полотно, без материала/цвета/стекла/патины/размера, см.
+// isSimpleModelSection).
+const MODEL_GROUPS = [
+  { type: "матрица", label: "Матрица" },
+  { type: "сборное", label: "Сборные" },
+  { type: "щитовое", label: "Щитовые" }
+];
+
 const DB = {
+  // Своя копия MODEL_GROUPS — редактируемая (добавление/переименование/
+  // безопасное удаление пользовательских типов, см. renderPriceEditor
+  // группу «Модели»), сам MODEL_GROUPS остаётся неизменным стартовым
+  // набором (в т.ч. для восстановления при сбросе, см. applyPrices).
+  modelGroups: MODEL_GROUPS.map((g) => ({ ...g })),
   models: [
     "LX2", "Модерн LX2", "L-1", "Модерн 13", "Линия", "Соренто 2 ПГ", "Соренто 1",
     "Урбан", "Галант 1", "Лувр", "Рим 3 ПГ", "Неоклассика 4", "Сидней 2", "Галант 2",
@@ -1266,6 +1279,13 @@ const DB = {
 
   // Отображаемые названия категорий цвета (для редактора). Ключ — номер категории.
   categoryNames: {},
+
+  // Отображаемые названия материалов (для редактора и калькулятора). Ключ —
+  // тот же, что и у DB.categorySurcharge/DB.colors/DB.options — материал
+  // определяется наличием ключа в них, здесь только подпись. «пвх»/«эмаль»
+  // встроены и не удаляются; новые добавляются через «Изменение цен» →
+  // «Пленка ПВХ и эмаль»/«Опции» → «Добавить материал» (см. onPriceClick).
+  materialNames: { "пвх": "Пленка ПВХ", "эмаль": "Эмаль" },
 
   // «Погонаж» — см. TRIM_ITEMS_RAW выше. types — копия TRIM_TYPES, но своя
   // и с возможностью добавить новый вид («Добавить вид погонажа» в
@@ -1493,14 +1513,28 @@ const DB = {
 
   const RU_COLLATOR = new Intl.Collator("ru");
 
-  // Три группы моделей (используется редактором цен для группировки и
-  // подписей; в самом калькуляторе раздел выбирается через el.section —
-  // список «Модель» показывает только модели текущего раздела, см. ниже).
-  const MODEL_GROUPS = [
-    { type: "матрица", label: "Матрица" },
-    { type: "сборное", label: "Сборные" },
-    { type: "щитовое", label: "Щитовые" }
-  ];
+  function isSimpleModelSection(section) {
+    if (section === "матрица") return true;
+    const g = DB.modelGroups.find((x) => x.type === section);
+    return !!(g && g.custom);
+  }
+
+  // «Раздел» — типы двери (DB.modelGroups, редактируемые) + фиксированные
+  // Погонаж/Фурнитура в конце. Пересобирается заново при каждом вызове
+  // applySectionUI, чтобы новый/переименованный/удалённый тип двери сразу
+  // отражался в select (см. «Изменение цен» → «Модели»).
+  function populateSection() {
+    const doorOptions = DB.modelGroups
+      .map((g) => `<option value="${g.type}">${g.label}</option>`)
+      .join("");
+    el.section.innerHTML = doorOptions +
+      `<option value="погонаж">Погонаж</option><option value="фурнитура">Фурнитура</option>`;
+    const validValues = DB.modelGroups.map((g) => g.type).concat(["погонаж", "фурнитура"]);
+    if (!validValues.includes(state.section)) {
+      state.section = DB.modelGroups.length ? DB.modelGroups[0].type : "погонаж";
+    }
+    el.section.value = state.section;
+  }
 
   // Список моделей — только текущего раздела калькулятора (state.section),
   // по алфавиту.
@@ -1552,7 +1586,8 @@ const DB = {
   }
 
   function applySectionUI() {
-    const isMatrix = state.section === "матрица";
+    populateSection();
+    const isMatrix = isSimpleModelSection(state.section);
     const isTrim = state.section === "погонаж";
     const isFurniture = state.section === "фурнитура";
     const isStdSize = isMatrix || state.sizeMode === "стандарт";
@@ -1670,8 +1705,11 @@ const DB = {
   }
 
   function availableMaterials(model) {
+    // «Сборные»/pvhOnly модели — только ПВХ, как раньше. Остальным доступны
+    // все материалы, включая пользовательские, добавленные в «Изменение
+    // цен» → «Пленка ПВХ и эмаль»/«Опции» → «Добавить материал».
     if (model.type === "сборное" || model.pvhOnly) return ["пвх"];
-    return ["пвх", "эмаль"];
+    return Object.keys(DB.categorySurcharge);
   }
 
   // Опции, доступные модели: у моделей из PVH_ONLY_MODELS нет ни кромки
@@ -1690,9 +1728,9 @@ const DB = {
     // modelId из другого раздела считаем модель отсутствующей и здесь.
     const noModelSection = state.section === "погонаж" || state.section === "фурнитура";
     const model = noModelSection ? null : getModel(state.modelId);
-    const materials = noModelSection ? ["пвх", "эмаль"] : availableMaterials(model);
+    const materials = noModelSection ? Object.keys(DB.categorySurcharge) : availableMaterials(model);
     el.material.innerHTML = materials
-      .map((m) => `<option value="${m}">${m === "пвх" ? "Пленка ПВХ" : "Эмаль"}</option>`)
+      .map((m) => `<option value="${m}">${DB.materialNames[m] || m}</option>`)
       .join("");
     if (!materials.includes(state.material)) state.material = materials[0];
     el.material.value = state.material;
@@ -2591,7 +2629,7 @@ const DB = {
     const rows = [];
     const vidInfo = DB.trim.types.find((t) => t.id === state.trimVid);
     const vidLabel = vidInfo ? vidInfo.name : state.trimVid;
-    const materialLabel = state.material === "пвх" ? "Пленка ПВХ" : "Эмаль";
+    const materialLabel = DB.materialNames[state.material] || state.material;
     const isWidthCustom = (state.trimVid === "наличник" || state.trimVid === "доборная") &&
       state.trimWidthMode === "нестандарт";
 
@@ -2702,8 +2740,9 @@ const DB = {
       };
     }
 
-    if (state.section === "матрица") {
-      // Готовая комплектация: категория цвета, стекло и опции не влияют —
+    if (isSimpleModelSection(state.section)) {
+      // «Матрица» и пользовательские типы двери (см. isSimpleModelSection):
+      // готовая цена за полотно, категория цвета/стекло/опции не влияют —
       // всё уже заложено в basePrice самой позиции. Название модели уже
       // вынесено отдельным крупным заголовком — здесь не повторяем его.
       rows.push(`Полотно: ${model.basePrice} ₽`);
@@ -2755,7 +2794,7 @@ const DB = {
     return {
       ...result,
       standard,
-      materialLabel: state.material === "пвх" ? "Пленка ПВХ" : "Эмаль",
+      materialLabel: DB.materialNames[state.material] || state.material,
       color: state.color,
       glassName: glass ? glass.name : "",
       patinaName: patina ? patina.name : "",
@@ -2947,7 +2986,9 @@ const DB = {
   function restoreCalcState(snapshot) {
     if (!snapshot) return;
     CALC_STATE_FIELDS.forEach((k) => { if (k in snapshot) state[k] = snapshot[k]; });
-    el.section.value = state.section;
+    // el.section заполняется динамически внутри applySectionUI (см.
+    // populateSection) — типы двери редактируемы, статичного набора опций
+    // больше нет.
     el.sizeMode.value = state.sizeMode;
     applySectionUI();
     populateWidthMatrix();
@@ -3054,7 +3095,10 @@ const DB = {
   // отправляемых формах, название модели/позиции в неё не входит (оно уже
   // крупным заголовком — см. orderItemTitle).
   function orderItemSummaryLine(it) {
-    if (it.section === "матрица") return `Матрица · ${it.quantity} шт.`;
+    if (isSimpleModelSection(it.section)) {
+      const group = DB.modelGroups.find((g) => g.type === it.section);
+      return `${group ? group.label : "Матрица"} · ${it.quantity} шт.`;
+    }
     if (it.section === "погонаж") {
       // У custom-вида (добавлен пользователем) материала нет вовсе —
       // material тогда пустой, показываем только цвет (как у Фурнитуры).
@@ -3650,6 +3694,7 @@ const DB = {
   function collectPrices() {
     return {
       v: 2,
+      modelGroups: DB.modelGroups.map((g) => ({ ...g })),
       models: DB.models.map((m) => ({
         id: m.id, name: m.name, type: m.type, basePrice: m.basePrice, pvhOnly: !!m.pvhOnly,
         glasses: Array.isArray(m.glasses) ? m.glasses.map((g) => ({ ...g })) : undefined,
@@ -3658,6 +3703,7 @@ const DB = {
       colors: DB.colors,
       categorySurcharge: DB.categorySurcharge,
       categoryNames: DB.categoryNames,
+      materialNames: DB.materialNames,
       options: DB.options,
       nonStandardPercent: DB.nonStandardPercent,
       trimTypes: DB.trim.types.map((t) => ({ ...t })),
@@ -3676,6 +3722,12 @@ const DB = {
 
   function applyPrices(s) {
     if (!s || typeof s !== "object") return;
+    // Снимок мог быть сохранён до появления редактируемых типов двери —
+    // тогда s.modelGroups нет, подставляем тот же стартовый набор (три
+    // встроенных типа, без custom).
+    DB.modelGroups = (Array.isArray(s.modelGroups) && s.modelGroups.length)
+      ? s.modelGroups.map((g) => ({ ...g }))
+      : MODEL_GROUPS.map((g) => ({ ...g }));
     if (Array.isArray(s.models)) {
       // Снимок мог быть сохранён до появления своего стекла/патины на модель —
       // тогда у моделей нет m.glasses/m.patina, подставляем стартовый каталог
@@ -3701,6 +3753,10 @@ const DB = {
     if (s.colors) DB.colors = s.colors;
     if (s.categorySurcharge) DB.categorySurcharge = s.categorySurcharge;
     if (s.categoryNames) DB.categoryNames = s.categoryNames;
+    // Снимок мог быть сохранён до появления пользовательских материалов —
+    // тогда s.materialNames нет, DB.materialNames остаётся со стартовыми
+    // подписями «пвх»/«эмаль» (см. выше).
+    if (s.materialNames) DB.materialNames = s.materialNames;
     if (s.options) DB.options = s.options;
     if (typeof s.nonStandardPercent === "number") DB.nonStandardPercent = s.nonStandardPercent;
     // Снимок мог быть сохранён до появления редактируемых видов погонажа —
@@ -3755,8 +3811,6 @@ const DB = {
   }
 
   // --- Редактор цен ----------------------------------------------------
-
-  const MATERIAL_LABEL = { "пвх": "Пленка ПВХ", "эмаль": "Эмаль" };
 
   function esc(s) {
     return String(s).replace(/[&<>"]/g, (c) =>
@@ -3956,7 +4010,7 @@ const DB = {
     const parts = [];
 
     // Нестандарт (одно значение, без добавления типов) — проценты, без ₽
-    parts.push(`<details class="price-group" data-key="ns"${isOpen("ns", true) ? " open" : ""}>
+    parts.push(`<details class="price-group" data-key="ns"${isOpen("ns", false) ? " open" : ""}>
       <summary>Наценка за нестандартный размер</summary>
       <div class="price-body">
         <div class="price-row">
@@ -3966,10 +4020,12 @@ const DB = {
       </div></details>`);
 
     // Плёнка ПВХ и эмаль (цвета и категории) — наценка за категорию + сам
-    // список цветов/плёнок, которые в неё входят.
-    let colorRows = "";
-    Object.keys(DB.categorySurcharge).forEach((mat) => {
-      colorRows += `<div class="price-subhead">${MATERIAL_LABEL[mat] || mat}</div>`;
+    // список цветов/плёнок, которые в неё входят. Материал — тоже
+    // редактируемая позиция («Добавить материал»); встроенные «пвх»/«эмаль»
+    // не удаляются целиком (noDelete — задействованы по всему приложению),
+    // только переименовываются.
+    let colorRows = Object.keys(DB.categorySurcharge).map((mat) => {
+      let catsHtml = "";
       Object.keys(DB.categorySurcharge[mat]).sort((a, b) => a - b).forEach((cat) => {
         const colors = (DB.colors[mat] && DB.colors[mat][cat]) || [];
         let colorsHtml = `<div class="choice-head">Цвета в категории</div>`;
@@ -3978,24 +4034,28 @@ const DB = {
         // noDelete: удаление категории целиком стирало бы разом все цвета
         // внутри — слишком опасно одной случайной кнопкой. Отдельные цвета
         // по-прежнему удаляются каждый своим тумблером (см. colorRow).
-        colorRows += editItem(
+        catsHtml += editItem(
           "surcharge", { material: mat, cat: cat }, catName(mat, cat), DB.categorySurcharge[mat][cat],
           { extraBody: colorsHtml, isOpen, noDelete: true }
         );
       });
-      colorRows += addBtn("category", { material: mat }, "Добавить категорию");
-    });
+      catsHtml += addBtn("category", { material: mat }, "Добавить категорию");
+      const isBuiltinMat = mat === "пвх" || mat === "эмаль";
+      return editItem("materialGroupColor", { material: mat }, DB.materialNames[mat] || mat, 0, { noPrice: true, extraBody: catsHtml, isOpen, noDelete: isBuiltinMat });
+    }).join("");
+    colorRows += addBtn("material", {}, "Добавить материал");
     parts.push(`<details class="price-group" data-key="color"${isOpen("color", false) ? " open" : ""}>
       <summary>Пленка ПВХ и эмаль (цвета и категории)</summary>
       <div class="price-body">${colorRows}</div></details>`);
 
-    // Опции
-    let optRows = "";
-    Object.keys(DB.options).forEach((mat) => {
-      optRows += `<div class="price-subhead">${MATERIAL_LABEL[mat] || mat}</div>`;
+    // Опции — та же логика материала, что и у цветов (см. выше), только
+    // ключ editItem другой (materialGroupOpt), чтобы состояние открыт/
+    // закрыт не путалось с одноимённым материалом в группе цветов.
+    let optRows = Object.keys(DB.options).map((mat) => {
+      let matOptHtml = "";
       DB.options[mat].forEach((opt) => {
         if (opt.kind === "checkbox") {
-          optRows += editItem("option", { material: mat, opt: opt.id }, opt.name, opt.price, { isOpen });
+          matOptHtml += editItem("option", { material: mat, opt: opt.id }, opt.name, opt.price, { isOpen });
         } else {
           // радио-опция (например, «Кромка»): аккордеон с названием, внутри —
           // варианты, каждый со своим удалением. Удаление самой опции убрано
@@ -4004,29 +4064,37 @@ const DB = {
           let choices = `<div class="choice-head">Варианты</div>`;
           opt.choices.forEach((c, i) => { choices += choiceRow(mat, opt.id, i, c.label, c.price); });
           choices += addBtn("choice", { material: mat, opt: opt.id }, "Добавить вариант");
-          optRows += editItem("optionName", { material: mat, opt: opt.id }, opt.name, 0, { noPrice: true, extraBody: choices, isOpen, noDelete: true });
+          matOptHtml += editItem("optionName", { material: mat, opt: opt.id }, opt.name, 0, { noPrice: true, extraBody: choices, isOpen, noDelete: true });
         }
       });
-      optRows += addBtn("option", { material: mat }, "Добавить опцию");
-    });
+      matOptHtml += addBtn("option", { material: mat }, "Добавить опцию");
+      const isBuiltinMat = mat === "пвх" || mat === "эмаль";
+      return editItem("materialGroupOpt", { material: mat }, DB.materialNames[mat] || mat, 0, { noPrice: true, extraBody: matOptHtml, isOpen, noDelete: isBuiltinMat });
+    }).join("");
+    optRows += addBtn("material", {}, "Добавить материал");
     parts.push(`<details class="price-group" data-key="opt"${isOpen("opt", false) ? " open" : ""}>
       <summary>Опции</summary>
       <div class="price-body">${optRows}</div></details>`);
 
-    // Модели — сгруппированы «Матрица»/«Сборные»/«Щитовые» (см. MODEL_GROUPS),
-    // по алфавиту внутри группы; у каждой группы своя кнопка добавления
-    // (новая модель наследует тип группы).
-    let modelRows = MODEL_GROUPS.map((g) => {
+    // Тип двери — тоже редактируемая позиция: у встроенных трёх (Матрица/
+    // Сборные/Щитовые) поведение расчёта не меняется, они не удаляются
+    // целиком (noDelete — слишком много завязанной на их type-id логики),
+    // только модели внутри можно добавлять/переименовывать/удалять, как
+    // раньше. Новые типы, добавленные пользователем, — простая модель
+    // расчёта, как у «Матрицы» (см. isSimpleModelSection): без стекла/
+    // патины у моделей внутри.
+    let modelRows = DB.modelGroups.map((g) => {
       const items = DB.models
         .filter((m) => m.type === g.type)
         .sort((a, b) => RU_COLLATOR.compare(a.name, b.name));
-      // «Матрица» — готовая комплектация, своего стекла у неё нет (см.
-      // computeOrder/applySectionUI). У «Сборные»/«Щитовые» — своё стекло на
-      // каждую модель, редактируется прямо внутри неё (ниже «Название»).
-      const rows = items
+      // «Матрица» и пользовательские типы — готовая комплектация, своего
+      // стекла нет (см. computeOrder/isSimpleModelSection). У «Сборные»/
+      // «Щитовые» — своё стекло на каждую модель, редактируется прямо
+      // внутри неё (ниже «Название»).
+      const itemsHtml = items
         .map((m) => {
           let extraBody = "";
-          if (g.type !== "матрица") {
+          if (!isSimpleModelSection(g.type)) {
             let glassHtml = `<div class="choice-head">Стекло</div>`;
             modelGlasses(m).forEach((gl) => { glassHtml += modelGlassRow(m.id, gl); });
             glassHtml += addBtn("modelGlass", { model: m.id }, "Добавить стекло");
@@ -4042,14 +4110,10 @@ const DB = {
           }
           return editItem("model", { id: m.id }, m.name, m.basePrice, { search: true, isOpen, extraBody });
         })
-        .join("");
-      const cls = g.type === "матрица" ? "price-subhead-matrix" : g.type === "сборное" ? "price-subhead-sborno" : "price-subhead-shitovoe";
-      return `<div class="model-group" data-group="${g.type}">
-        <div class="price-subhead ${cls}">${g.label}</div>
-        ${rows}
-        ${addBtn("model", { type: g.type }, "Добавить модель")}
-      </div>`;
+        .join("") + addBtn("model", { type: g.type }, "Добавить модель");
+      return editItem("modelGroup", { type: g.type }, g.label, 0, { noPrice: true, extraBody: itemsHtml, isOpen, noDelete: !g.custom });
     }).join("");
+    modelRows += addBtn("modelGroup", {}, "Добавить новый тип двери");
     parts.push(`<details class="price-group" data-key="model"${isOpen("model", false) ? " open" : ""}>
       <summary>Модели (базовая цена полотна)</summary>
       <div class="price-body">
@@ -4087,7 +4151,7 @@ const DB = {
             .filter((it) => it.vid === t.id && it.material === mat)
             .sort((a, b) => RU_COLLATOR.compare(a.name, b.name));
           if (!items.length) return;
-          itemsHtml += `<div class="price-subhead">${t.name} — ${MATERIAL_LABEL[mat] || mat}</div>`;
+          itemsHtml += `<div class="price-subhead">${t.name} — ${DB.materialNames[mat] || mat}</div>`;
           items.forEach((it) => {
             const cats = it.material === "пвх" ? [0, 1, 2, 3, 4] : [1, 2];
             let priceHtml = `<div class="choice-head">Цена по категориям цвета</div>`;
@@ -4108,7 +4172,7 @@ const DB = {
     }).join("");
     trimRows += addBtn("trimType", {}, "Добавить вид погонажа");
     parts.push(`<details class="price-group" data-key="trim"${isOpen("trim", false) ? " open" : ""}>
-      <summary>Погонаж (Коробка / Наличник / Доборная доска / свои виды)</summary>
+      <summary>Погонаж</summary>
       <div class="price-body">
         <input type="search" class="price-search" placeholder="Поиск позиции…" id="trimSearch">
         <div id="trimPriceRows">${trimRows}</div>
@@ -4137,7 +4201,7 @@ const DB = {
     }).join("");
     furnitureRows += addBtn("furnitureType", {}, "Добавить новую фурнитуру");
     parts.push(`<details class="price-group" data-key="furniture"${isOpen("furniture", false) ? " open" : ""}>
-      <summary>Фурнитура (ручки JK / завёртки JK / накладки JK / петли-бабочки / защёлки / задвижки / корпус замка)</summary>
+      <summary>Фурнитура</summary>
       <div class="price-body">
         <input type="search" class="price-search" placeholder="Поиск позиции…" id="furnitureSearch">
         <div id="furniturePriceRows">${furnitureRows}</div>
@@ -4183,10 +4247,19 @@ const DB = {
     let refresh = null;
     switch (d.kind) {
       case "nonstandard": DB.nonStandardPercent = val; break;
+      case "materialGroupColor":
+      case "materialGroupOpt":
+        if (isName) DB.materialNames[d.material] = val;
+        refresh = populateMaterial; break;
       case "surcharge":
         if (isName) { (DB.categoryNames[d.material] = DB.categoryNames[d.material] || {})[d.cat] = val; }
         else DB.categorySurcharge[d.material][d.cat] = val;
         break;
+      case "modelGroup": {
+        const g = DB.modelGroups.find((x) => x.type === d.type); if (!g) break;
+        if (isName) g.label = val;
+        refresh = populateSection; break;
+      }
       case "model": {
         const m = DB.models.find((x) => x.id === d.id); if (!m) break;
         if (isName) m.name = val; else m.basePrice = val;
@@ -4289,6 +4362,23 @@ const DB = {
         // "surcharge" (удаление категории целиком) намеренно нет — см.
         // editItem(..., { noDelete: true }) в renderPriceEditor: одна кнопка
         // стирала бы разом все цвета/плёнки внутри категории.
+        case "materialGroupColor":
+        case "materialGroupOpt":
+          // Только пользовательские материалы (noDelete у «пвх»/«эмаль» —
+          // см. renderPriceEditor). Убираем материал отовсюду разом —
+          // цвета/категории и опции завязаны на один и тот же ключ.
+          delete DB.categorySurcharge[d.material];
+          delete DB.colors[d.material];
+          delete DB.categoryNames[d.material];
+          delete DB.options[d.material];
+          delete DB.materialNames[d.material];
+          populateMaterial(); populateColors(); populateOptions(); break;
+        case "modelGroup":
+          // Только пользовательские типы (noDelete у встроенных трёх — см.
+          // renderPriceEditor, кнопка удаления там всегда неактивна).
+          DB.modelGroups = DB.modelGroups.filter((g) => g.type !== d.type);
+          DB.models = DB.models.filter((m) => m.type !== d.type);
+          populateSection(); populateModels(); break;
         case "model":
           DB.models = DB.models.filter((m) => m.id !== d.id); populateModels(); break;
         case "modelGlass": {
@@ -4363,11 +4453,28 @@ const DB = {
         case "color":
           (DB.colors[d.material][d.cat] = DB.colors[d.material][d.cat] || []).push("Новый цвет");
           populateColors(); break;
+        case "material": {
+          // Материал определяется наличием ключа сразу в четырёх словарях —
+          // заводим все разом, чтобы «Материал» на калькуляторе, «Пленка ПВХ
+          // и эмаль» и «Опции» сразу видели новый материал согласованно.
+          const mat = uid("mat");
+          DB.categorySurcharge[mat] = {};
+          DB.colors[mat] = {};
+          DB.categoryNames[mat] = {};
+          DB.options[mat] = [];
+          DB.materialNames[mat] = "Новый материал";
+          populateMaterial(); populateColors(); populateOptions(); break;
+        }
+        case "modelGroup": {
+          DB.modelGroups.push({ type: uid("mg"), label: "Новый тип двери", custom: true });
+          populateSection(); populateModels(); break;
+        }
         case "model": {
-          const type = d.type === "матрица" ? "матрица" : d.type === "сборное" ? "сборное" : "щитовое";
+          const type = d.type;
+          const simple = isSimpleModelSection(type);
           DB.models.push({
-            id: uid("m"), name: "Новая модель", type, basePrice: 0, pvhOnly: type !== "щитовое",
-            glasses: type !== "матрица" ? [] : undefined,
+            id: uid("m"), name: "Новая модель", type, basePrice: 0, pvhOnly: type === "сборное",
+            glasses: simple ? undefined : [],
             patina: type === "щитовое" ? DEFAULT_PATINA.map((p) => ({ ...p })) : undefined
           });
           populateModels(); break;
@@ -4429,17 +4536,20 @@ const DB = {
     render();
   }
 
+  // Тип двери — верхнеуровневый .pitem без data-name; модели внутри —
+  // вложенные .pitem с data-name (search: true). Ищем только по моделям,
+  // тип скрываем целиком, если внутри него не осталось видимых моделей.
   function onModelSearch(e) {
     if (e.target.id !== "modelSearch") return;
     const q = e.target.value.trim().toLowerCase();
-    el.priceEditor.querySelectorAll("#modelPriceRows .model-group").forEach((group) => {
+    el.priceEditor.querySelectorAll("#modelPriceRows > .pitem").forEach((typeRow) => {
       let anyVisible = false;
-      group.querySelectorAll(".pitem").forEach((row) => {
+      typeRow.querySelectorAll(".pitem[data-name]").forEach((row) => {
         const visible = !q || (row.dataset.name || "").includes(q);
         row.style.display = visible ? "" : "none";
         if (visible) anyVisible = true;
       });
-      group.style.display = anyVisible ? "" : "none";
+      typeRow.style.display = anyVisible ? "" : "none";
     });
   }
 
@@ -4483,7 +4593,6 @@ const DB = {
     loadPrices();
     loadOrderItems();
     loadSpecHistory();
-    el.section.value = state.section;
     el.sizeMode.value = state.sizeMode;
     applySectionUI();
     populateWidthMatrix();
