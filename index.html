@@ -531,18 +531,23 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 
 .tag-header-sub { text-align: center; font-size: 13px; color: var(--muted); padding: 12px 16px 0; line-height: 1.6; }
 .tag-doc-items { padding: 20px 18px; display: flex; flex-direction: column; gap: 20px; }
-.tag-item { display: flex; flex-direction: column; gap: 4px; }
+.tag-item { display: flex; flex-direction: column; gap: 10px; }
 .tag-item + .tag-item { border-top: 1px dashed var(--border); padding-top: 20px; }
+/* Название/атрибуты — слева, сумма — справа на той же строке. */
+.tag-item-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; }
+.tag-item-info { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
 .tag-item-title { font-weight: 800; font-size: 20px; }
 .tag-item-line { font-size: 15px; color: var(--text); }
-.tag-item-price { font-weight: 800; font-size: 18px; margin-top: 4px; }
+.tag-item-price { flex: 0 0 auto; text-align: right; font-weight: 800; font-size: 18px; white-space: nowrap; }
 .tag-doc-footer { padding: 20px 18px; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 14px; }
 .tag-grand-total { display: flex; justify-content: space-between; align-items: baseline; font-weight: 800; font-size: 26px; }
-.tag-date-row { display: flex; align-items: center; gap: 10px; font-size: 15px; }
+/* Дата и подпись — в одну строку. */
+.tag-meta-line { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.tag-date-row { display: flex; align-items: center; gap: 10px; font-size: 15px; flex: 0 0 auto; }
 .tag-date-row label { flex: 0 0 auto; color: var(--muted); }
-.tag-date-row input { flex: 0 0 auto; width: 150px; font-size: 15px; }
+.tag-date-row input { flex: 0 0 auto; width: 140px; font-size: 15px; }
 .tag-meta-static { flex: 0 0 auto; }
-.tag-sign-row { font-size: 15px; color: var(--text); }
+.tag-sign-row { font-size: 15px; color: var(--text); flex: 1 1 auto; text-align: right; white-space: nowrap; }
 
 @media print {
   body * { visibility: hidden; }
@@ -3801,9 +3806,13 @@ const DB = {
   function tagDocHtml(view) {
     const itemsHtml = view.items.length
       ? view.items.map((it) => `<div class="tag-item">
-          <div class="tag-item-title">${esc(it.label)}</div>
-          ${tagItemLinesHtml(it)}
-          <div class="tag-item-price">${esc(tagItemPriceLine(it))}</div>
+          <div class="tag-item-row">
+            <div class="tag-item-info">
+              <div class="tag-item-title">${esc(it.label)}</div>
+              ${tagItemLinesHtml(it)}
+            </div>
+            <div class="tag-item-price">${esc(tagItemPriceLine(it))}</div>
+          </div>
           ${view.readOnly || !it.calcState ? "" : `
           <div class="item-actions">
             <button type="button" data-tag-item-edit="${esc(it.id)}">✏️ Изменить</button>
@@ -3822,8 +3831,10 @@ const DB = {
       <div class="tag-doc-items">${itemsHtml}</div>
       <div class="tag-doc-footer">
         <div class="tag-grand-total"><span>Итого</span><span>${esc(tagMoney(tagGrandTotal(view.items)))}</span></div>
-        <div class="tag-date-row"><label for="tagDateInput">Дата</label>${dateField}</div>
-        <div class="tag-sign-row">Подпись: _______________</div>
+        <div class="tag-meta-line">
+          <div class="tag-date-row"><label for="tagDateInput">Дата</label>${dateField}</div>
+          <div class="tag-sign-row">Подпись: _______________</div>
+        </div>
       </div>
     </div>`;
   }
@@ -3916,9 +3927,13 @@ const DB = {
     const view = currentTagView();
     const itemsHtml = view.items.map((it) => `
       <div style="border-top:1px dashed #ddd;padding-top:10px;margin-top:10px;">
-        <div style="font-weight:800;font-size:15px;">${esc(it.label)}</div>
-        <div style="font-size:13px;color:#444;">${tagItemLinesHtml(it)}</div>
-        <div style="font-weight:800;font-size:14px;margin-top:4px;">${esc(tagItemPriceLine(it))}</div>
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:14px;">
+          <div style="flex:1 1 auto;min-width:0;">
+            <div style="font-weight:800;font-size:15px;">${esc(it.label)}</div>
+            <div style="font-size:13px;color:#444;">${tagItemLinesHtml(it)}</div>
+          </div>
+          <div style="flex:0 0 auto;text-align:right;font-weight:800;font-size:14px;white-space:nowrap;">${esc(tagItemPriceLine(it))}</div>
+        </div>
       </div>`).join("");
     const html = `<!doctype html><html lang="ru"><head><meta charset="UTF-8"><title>Ценник</title>
 <style>@page { size: A5 landscape; margin: 10mm; }</style></head>
@@ -3941,8 +3956,10 @@ const DB = {
   <div style="display:flex;justify-content:space-between;font-weight:800;font-size:18px;border-top:2px solid #1c1f26;padding-top:12px;margin-top:12px;">
     <span>Итого</span><span>${esc(tagMoney(tagGrandTotal(view.items)))}</span>
   </div>
-  <div style="font-size:13px;margin-top:10px;padding-bottom:16px;">Дата: ${esc(view.tagDate || "")}</div>
-  <div style="font-size:13px;margin-top:6px;padding-bottom:16px;">Подпись: _______________</div>
+  <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-top:10px;padding-bottom:16px;font-size:13px;">
+    <span>Дата: ${esc(view.tagDate || "")}</span>
+    <span>Подпись: _______________</span>
+  </div>
   </div>
   </div>
 </body></html>`;
