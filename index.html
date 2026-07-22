@@ -495,29 +495,64 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 .tag-list-item > input[type="checkbox"] { margin-top: 14px; flex: 0 0 auto; width: 18px; height: 18px; }
 .tag-list-item > .order-item { flex: 1 1 auto; min-width: 0; }
 
-.tag-doc { border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
-.tag-header-band {
-  background: var(--danger); color: #fff; text-align: center;
-  padding: 14px 16px; font-size: 20px; font-weight: 800; letter-spacing: .02em;
-  /* без этого браузер по умолчанию не печатает фоновые цвета, пока
-     пользователь сам не включит «Фоновые цвета/изображения» в диалоге
-     печати — красная шапка иначе выходит бледным текстом без заливки. */
+/* Двойная рамка-окантовка вокруг всего ценника — border-style: double даёт
+   ровно две параллельные линии с зазором средствами одного border, без
+   лишней разметки. Углы прямые (без border-radius), по образцу. */
+.tag-doc { border: 7px double #1c1f26; overflow: hidden; }
+
+/* Логотип «Двери 1ый Сорт Окна» — воссоздан на CSS (SVG-подобная разметка,
+   печатается чётко в любом масштабе, в отличие от растрового скриншота).
+   -webkit-print-color-adjust/print-color-adjust — иначе браузер по
+   умолчанию не печатает фоновые цвета, пока пользователь сам не включит
+   «Фоновые цвета/изображения» в диалоге печати. */
+.tag-logo {
+  display: flex; align-items: stretch; min-height: 68px; padding: 6px;
+  background: var(--danger); gap: 0;
   -webkit-print-color-adjust: exact; print-color-adjust: exact;
 }
-.tag-header-sub { text-align: center; font-size: 12px; color: var(--muted); padding: 8px 16px 0; line-height: 1.5; }
-.tag-doc-items { padding: 14px 16px; display: flex; flex-direction: column; gap: 12px; }
-.tag-item { display: flex; flex-direction: column; gap: 3px; }
-.tag-item + .tag-item { border-top: 1px dashed var(--border); padding-top: 12px; }
-.tag-item-title { font-weight: 800; font-size: 16px; }
-.tag-item-line { font-size: 13px; color: var(--text); }
-.tag-item-price { font-weight: 800; font-size: 15px; margin-top: 2px; }
-.tag-doc-footer { padding: 14px 16px; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 10px; }
-.tag-grand-total { display: flex; justify-content: space-between; font-weight: 800; font-size: 18px; }
-.tag-date-row { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.tag-logo-side {
+  flex: 1 1 0; color: #fff; display: flex; align-items: center;
+  /* -webkit-text-stroke утолщает буквы поверх жирного начертания — обычные
+     системные шрифты с кириллицей (Roboto/Segoe UI) не имеют настолько
+     плотного «чёрного» начертания сами по себе, а шрифты вроде Impact/
+     Arial Black кириллицу зачастую не поддерживают вовсе. */
+  font-size: 29px; font-weight: 900; letter-spacing: 0;
+  -webkit-text-stroke: .6px rgba(255, 255, 255, .9);
+  text-shadow: 1px 1px 0 rgba(0, 0, 0, .35), -.5px -.5px 0 rgba(0, 0, 0, .15);
+}
+.tag-logo-side.left { justify-content: flex-end; padding-right: 14px; }
+.tag-logo-side.right { justify-content: flex-start; padding-left: 14px; }
+.tag-logo-badge {
+  flex: 0 0 auto; background: #fff; border-radius: 8px; box-shadow: 0 1px 4px rgba(0, 0, 0, .25);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 6px 18px;
+}
+.tag-logo-badge-top { display: flex; align-items: center; gap: 5px; }
+.tag-logo-badge-num {
+  width: 24px; height: 24px; background: #1c1f26; color: #fff; font-size: 16px; font-weight: 900;
+  display: flex; align-items: center; justify-content: center; border-radius: 4px;
+}
+.tag-logo-badge-text { font-size: 23px; font-weight: 900; color: #1c1f26; letter-spacing: .01em; }
+.tag-logo-badge-sub { font-size: 9px; font-weight: 700; color: var(--muted); letter-spacing: .08em; margin-top: 2px; }
+
+.tag-header-sub { text-align: center; font-size: 13px; color: var(--muted); padding: 12px 16px 0; line-height: 1.6; }
+.tag-doc-items { padding: 20px 18px; display: flex; flex-direction: column; gap: 20px; }
+.tag-item { display: flex; flex-direction: column; gap: 10px; }
+.tag-item + .tag-item { border-top: 1px dashed var(--border); padding-top: 20px; }
+/* Название/атрибуты — слева, сумма — справа на той же строке. */
+.tag-item-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; }
+.tag-item-info { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.tag-item-title { font-weight: 800; font-size: 20px; }
+.tag-item-line { font-size: 15px; color: var(--text); }
+.tag-item-price { flex: 0 0 auto; text-align: right; font-weight: 800; font-size: 18px; white-space: nowrap; }
+.tag-doc-footer { padding: 20px 18px; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 14px; }
+.tag-grand-total { display: flex; justify-content: space-between; align-items: baseline; font-weight: 800; font-size: 26px; }
+/* Дата и подпись — в одну строку. */
+.tag-meta-line { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.tag-date-row { display: flex; align-items: center; gap: 10px; font-size: 15px; flex: 0 0 auto; }
 .tag-date-row label { flex: 0 0 auto; color: var(--muted); }
-.tag-date-row input { flex: 0 0 auto; width: 140px; }
+.tag-date-row input { flex: 0 0 auto; width: 140px; font-size: 15px; }
 .tag-meta-static { flex: 0 0 auto; }
-.tag-sign-row { font-size: 13px; color: var(--text); }
+.tag-sign-row { font-size: 15px; color: var(--text); flex: 1 1 auto; text-align: right; white-space: nowrap; }
 
 @media print {
   body * { visibility: hidden; }
@@ -3529,11 +3564,25 @@ const DB = {
   const TAG_DRAFT_KEY = "doorcalc_tagdraft_v1";
   const TAG_HISTORY_KEY = "doorcalc_pricetags_v1";
 
-  // Красная шапка магазина — только у Ценника (не SPEC_COMPANY_LINES,
-  // используемых в «Спецификации»): по ТЗ у ценника другой вид шапки и без
-  // адреса.
-  const TAG_HEADER_TITLE = "Двери 1ый Сорт Окна";
+  // Логотип и шапка магазина — только у Ценника (не SPEC_COMPANY_LINES,
+  // используемых в «Спецификации»): по ТЗ у ценника фирменный знак вместо
+  // просто текста, и без адреса.
   const TAG_HEADER_SUB_LINES = ["ИП Ихсанов Азат Фаисович", "тел: 89173989190 (Азат), 89172744324 (Фанис)"];
+
+  // Логотип «Двери 1ый Сорт Окна» — воссоздан вёрсткой (см. .tag-logo* в
+  // <style>), а не растровым изображением, чтобы чётко печатался в любом
+  // масштабе. Используется и на живой странице (класс .tag-logo), и в
+  // скачиваемом файле (тот же макет, инлайновые стили — см. downloadTagFile).
+  function tagLogoHtml() {
+    return `<div class="tag-logo">
+      <div class="tag-logo-side left">ДВЕРИ</div>
+      <div class="tag-logo-badge">
+        <div class="tag-logo-badge-top"><span class="tag-logo-badge-num">1</span><span class="tag-logo-badge-text">СОРТ</span></div>
+        <div class="tag-logo-badge-sub">ФИРМЕННЫЙ МАГАЗИН</div>
+      </div>
+      <div class="tag-logo-side right">ОКНА</div>
+    </div>`;
+  }
 
   let tagItems = [];
   let tagDate = "";
@@ -3762,9 +3811,13 @@ const DB = {
   function tagDocHtml(view) {
     const itemsHtml = view.items.length
       ? view.items.map((it) => `<div class="tag-item">
-          <div class="tag-item-title">${esc(it.label)}</div>
-          ${tagItemLinesHtml(it)}
-          <div class="tag-item-price">${esc(tagItemPriceLine(it))}</div>
+          <div class="tag-item-row">
+            <div class="tag-item-info">
+              <div class="tag-item-title">${esc(it.label)}</div>
+              ${tagItemLinesHtml(it)}
+            </div>
+            <div class="tag-item-price">${esc(tagItemPriceLine(it))}</div>
+          </div>
           ${view.readOnly || !it.calcState ? "" : `
           <div class="item-actions">
             <button type="button" data-tag-item-edit="${esc(it.id)}">✏️ Изменить</button>
@@ -3778,13 +3831,15 @@ const DB = {
       : `<input type="text" id="tagDateInput" value="${esc(view.tagDate || "")}" placeholder="дд.мм.гггг">`;
 
     return `<div class="tag-doc">
-      <div class="tag-header-band">${esc(TAG_HEADER_TITLE)}</div>
+      ${tagLogoHtml()}
       <div class="tag-header-sub">${TAG_HEADER_SUB_LINES.map(esc).join("<br>")}</div>
       <div class="tag-doc-items">${itemsHtml}</div>
       <div class="tag-doc-footer">
         <div class="tag-grand-total"><span>Итого</span><span>${esc(tagMoney(tagGrandTotal(view.items)))}</span></div>
-        <div class="tag-date-row"><label for="tagDateInput">Дата</label>${dateField}</div>
-        <div class="tag-sign-row">Подпись: _______________</div>
+        <div class="tag-meta-line">
+          <div class="tag-date-row"><label for="tagDateInput">Дата</label>${dateField}</div>
+          <div class="tag-sign-row">Подпись: _______________</div>
+        </div>
       </div>
     </div>`;
   }
@@ -3877,21 +3932,41 @@ const DB = {
     const view = currentTagView();
     const itemsHtml = view.items.map((it) => `
       <div style="border-top:1px dashed #ddd;padding-top:10px;margin-top:10px;">
-        <div style="font-weight:800;font-size:15px;">${esc(it.label)}</div>
-        <div style="font-size:13px;color:#444;">${tagItemLinesHtml(it)}</div>
-        <div style="font-weight:800;font-size:14px;margin-top:4px;">${esc(tagItemPriceLine(it))}</div>
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:14px;">
+          <div style="flex:1 1 auto;min-width:0;">
+            <div style="font-weight:800;font-size:15px;">${esc(it.label)}</div>
+            <div style="font-size:13px;color:#444;">${tagItemLinesHtml(it)}</div>
+          </div>
+          <div style="flex:0 0 auto;text-align:right;font-weight:800;font-size:14px;white-space:nowrap;">${esc(tagItemPriceLine(it))}</div>
+        </div>
       </div>`).join("");
     const html = `<!doctype html><html lang="ru"><head><meta charset="UTF-8"><title>Ценник</title>
 <style>@page { size: A5 landscape; margin: 10mm; }</style></head>
 <body style="font-family:-apple-system,'Segoe UI',Roboto,Arial,sans-serif;max-width:520px;margin:24px auto;padding:0 16px;color:#1c1f26;">
-  <div style="background:#c81e1e;color:#fff;text-align:center;padding:14px 16px;font-size:20px;font-weight:800;border-radius:8px 8px 0 0;-webkit-print-color-adjust:exact;print-color-adjust:exact;">${esc(TAG_HEADER_TITLE)}</div>
-  <div style="text-align:center;font-size:12px;color:#666;padding:8px 0;line-height:1.5;">${TAG_HEADER_SUB_LINES.map(esc).join("<br>")}</div>
+  <div style="border:7px double #1c1f26;border-radius:12px;overflow:hidden;">
+  <div style="display:flex;align-items:stretch;min-height:68px;padding:6px;background:#c81e1e;-webkit-print-color-adjust:exact;print-color-adjust:exact;">
+    <div style="flex:1;color:#fff;display:flex;align-items:center;justify-content:flex-end;padding-right:14px;font-size:27px;font-weight:900;letter-spacing:.01em;text-shadow:1px 1px 0 rgba(0,0,0,.28);">ДВЕРИ</div>
+    <div style="flex:0 0 auto;background:#fff;border-radius:8px;box-shadow:0 1px 4px rgba(0,0,0,.25);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:6px 18px;">
+      <div style="display:flex;align-items:center;gap:5px;">
+        <span style="width:24px;height:24px;background:#1c1f26;color:#fff;font-size:16px;font-weight:900;display:flex;align-items:center;justify-content:center;border-radius:4px;">1</span>
+        <span style="font-size:23px;font-weight:900;color:#1c1f26;letter-spacing:.01em;">СОРТ</span>
+      </div>
+      <div style="font-size:9px;font-weight:700;color:#666;letter-spacing:.08em;margin-top:2px;">ФИРМЕННЫЙ МАГАЗИН</div>
+    </div>
+    <div style="flex:1;color:#fff;display:flex;align-items:center;justify-content:flex-start;padding-left:14px;font-size:27px;font-weight:900;letter-spacing:.01em;text-shadow:1px 1px 0 rgba(0,0,0,.28);">ОКНА</div>
+  </div>
+  <div style="padding:0 16px;">
+  <div style="text-align:center;font-size:12px;color:#666;padding:12px 0 0;line-height:1.6;">${TAG_HEADER_SUB_LINES.map(esc).join("<br>")}</div>
   ${itemsHtml || "<p>Пусто.</p>"}
   <div style="display:flex;justify-content:space-between;font-weight:800;font-size:18px;border-top:2px solid #1c1f26;padding-top:12px;margin-top:12px;">
     <span>Итого</span><span>${esc(tagMoney(tagGrandTotal(view.items)))}</span>
   </div>
-  <div style="font-size:13px;margin-top:10px;">Дата: ${esc(view.tagDate || "")}</div>
-  <div style="font-size:13px;margin-top:6px;">Подпись: _______________</div>
+  <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-top:10px;padding-bottom:16px;font-size:13px;">
+    <span>Дата: ${esc(view.tagDate || "")}</span>
+    <span>Подпись: _______________</span>
+  </div>
+  </div>
+  </div>
 </body></html>`;
     const blob = new Blob([html], { type: "text/html;charset=utf-8" });
     const url = URL.createObjectURL(blob);
