@@ -485,7 +485,7 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 
 .order-note { font-size: 12px; color: var(--muted); margin-top: 10px; }
 
-/* --- Ценник (печатная форма для торгового зала, формат А5) ------------ */
+/* --- Ценник (печатная форма для торгового зала, формат А5 альбомная) --- */
 .tag-list-toolbar {
   display: flex; align-items: center; justify-content: space-between;
   gap: 10px; margin-bottom: 14px; flex-wrap: wrap;
@@ -495,23 +495,25 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 .tag-list-item > input[type="checkbox"] { margin-top: 14px; flex: 0 0 auto; width: 18px; height: 18px; }
 .tag-list-item > .order-item { flex: 1 1 auto; min-width: 0; }
 
-.price-tag-card {
-  border: 1px solid var(--border); border-radius: 12px; padding: 18px;
-  display: flex; flex-direction: column; gap: 14px;
+.tag-doc { border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+.tag-header-band {
+  background: var(--danger); color: #fff; text-align: center;
+  padding: 14px 16px; font-size: 20px; font-weight: 800; letter-spacing: .02em;
 }
-.tag-company { font-size: 12px; color: var(--muted); line-height: 1.5; text-align: center; }
-.tag-model-name { font-size: 22px; font-weight: 800; text-align: center; line-height: 1.25; }
-.tag-attrs { display: flex; flex-direction: column; gap: 8px; }
-.tag-attr-row { display: flex; gap: 8px; align-items: baseline; font-size: 14px; }
-.tag-attr-check { color: var(--ok); flex: 0 0 auto; font-weight: 700; }
-.tag-attr-label { font-weight: 600; flex: 0 0 auto; }
-.tag-attr-value { color: var(--text); }
-.tag-price { text-align: center; font-size: 36px; font-weight: 800; padding: 10px 0; border-top: 1px dashed var(--border); border-bottom: 1px dashed var(--border); }
-.tag-meta { display: flex; flex-direction: column; gap: 10px; margin-top: 4px; }
-.tag-meta-row { display: flex; align-items: center; gap: 8px; font-size: 13px; }
-.tag-meta-row label { flex: 0 0 auto; color: var(--muted); }
-.tag-meta-row input[type="text"], .tag-meta-row input[type="date"] { flex: 1 1 auto; min-width: 0; }
-.tag-meta-static { flex: 1 1 auto; border-bottom: 1px solid var(--border); padding: 4px 0; min-height: 1.4em; }
+.tag-header-sub { text-align: center; font-size: 12px; color: var(--muted); padding: 8px 16px 0; line-height: 1.5; }
+.tag-doc-items { padding: 14px 16px; display: flex; flex-direction: column; gap: 12px; }
+.tag-item { display: flex; flex-direction: column; gap: 3px; }
+.tag-item + .tag-item { border-top: 1px dashed var(--border); padding-top: 12px; }
+.tag-item-title { font-weight: 800; font-size: 16px; }
+.tag-item-line { font-size: 13px; color: var(--text); }
+.tag-item-price { font-weight: 800; font-size: 15px; margin-top: 2px; }
+.tag-doc-footer { padding: 14px 16px; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 10px; }
+.tag-grand-total { display: flex; justify-content: space-between; font-weight: 800; font-size: 18px; }
+.tag-date-row { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.tag-date-row label { flex: 0 0 auto; color: var(--muted); }
+.tag-date-row input { flex: 0 0 auto; width: 140px; }
+.tag-meta-static { flex: 0 0 auto; }
+.tag-sign-row { font-size: 13px; color: var(--text); }
 
 @media print {
   body * { visibility: hidden; }
@@ -520,15 +522,16 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
   .order-toolbar, .order-note, .topbar, .item-actions, .result-actions, .spec-editing-banner, .edit-banner, #orderDiscountField { display: none !important; }
   .spec-customer input { border: none; background: none; padding: 0; font-size: 13px; outline: none; }
 
-  #viewPriceTag, #viewPriceTag * { visibility: visible; }
-  #viewPriceTag { position: absolute; left: 0; top: 0; width: 100%; padding: 0; }
-  #tagViewToolbar, #tagEditLeafBtn, #tagPrintBtn, #tagDeleteBtn, .topbar { display: none !important; }
-  .tag-meta-row input { border: none; background: none; padding: 0; font-size: 13px; outline: none; }
+  #viewTag, #viewTag * { visibility: visible; }
+  #viewTag { position: absolute; left: 0; top: 0; width: 100%; padding: 0; }
+  #viewTag .order-toolbar, #viewTag .result-actions, #viewTag .item-actions, #tagEditingBanner { display: none !important; }
+  #viewTag .tag-doc { border: none; }
+  #viewTag .tag-date-row input { border: none; background: none; padding: 0; font-size: 13px; outline: none; }
 
-  #priceTagPrintBatch, #priceTagPrintBatch * { visibility: visible; }
-  #priceTagPrintBatch { position: absolute; left: 0; top: 0; width: 100%; padding: 0; }
-  #priceTagPrintBatch .price-tag-card { page-break-after: always; border: none; }
-  #priceTagPrintBatch .price-tag-card:last-child { page-break-after: auto; }
+  #tagPrintBatch, #tagPrintBatch * { visibility: visible; }
+  #tagPrintBatch { position: absolute; left: 0; top: 0; width: 100%; padding: 0; }
+  #tagPrintBatch .tag-doc { page-break-after: always; border: none; }
+  #tagPrintBatch .tag-doc:last-child { page-break-after: auto; }
 }
 
 /* --- 3D комната с дверью --- */
@@ -558,7 +561,8 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
         <button type="button" class="menu-item" data-view="room3d">3D комната</button>
         <button type="button" class="menu-item" data-view="order">Спецификация</button>
         <button type="button" class="menu-item" data-view="history">Сохранённые спецификации</button>
-        <button type="button" class="menu-item" data-view="tagList">Ценник</button>
+        <button type="button" class="menu-item" data-view="tag">Ценник</button>
+        <button type="button" class="menu-item" data-view="tagList">Сохранённые ценники</button>
         <button type="button" class="menu-item" data-view="prices">Изменение цен</button>
       </nav>
     </div>
@@ -758,8 +762,8 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
         <button type="button" id="goToOrderBtn" class="btn-goto">Перейти в спецификацию →</button>
       </div>
       <div class="result-actions">
-        <button type="button" id="saveTagBtn" class="btn-save">🏷️ Создать ценник</button>
-        <button type="button" id="goToTagsBtn" class="btn-goto">Ценники →</button>
+        <button type="button" id="saveTagBtn" class="btn-save">🏷️ Сохранить в ценник</button>
+        <button type="button" id="goToTagsBtn" class="btn-goto">Перейти в ценник →</button>
       </div>
     </div>
     </div><!-- /viewCalc -->
@@ -881,16 +885,23 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
       <div id="specHistoryList"></div>
     </div>
 
-    <div id="viewPriceTag" hidden>
-      <div class="result-actions" id="tagViewToolbar">
-        <button type="button" id="tagBackBtn" class="btn-goto">← К списку ценников</button>
+    <div id="viewTag" hidden>
+      <div class="spec-editing-banner" id="tagEditingBanner" hidden>
+        ✏️ В изменении — этот ценник уже сохранён. Правки попадут в список только после повторного «Сохранить ценник».
       </div>
-      <div id="tagCardHolder"></div>
-      <div class="result-actions">
-        <button type="button" id="tagEditLeafBtn" class="btn-goto">✏️ Изменить полотно</button>
-        <button type="button" id="tagPrintBtn" class="btn-save">🖨️ Печать</button>
+      <div class="tag-doc" id="tagDocHolder"></div>
+      <div class="result-actions" id="tagDraftActions">
+        <button type="button" id="saveTagDocBtn" class="btn-save">💾 Сохранить ценник</button>
+        <button type="button" id="newTagBtn" class="btn-goto">🆕 Новый ценник</button>
       </div>
-      <button type="button" id="tagDeleteBtn" class="row-add order-item-del">✕ Удалить ценник</button>
+      <div class="result-actions" id="tagHistoryViewActions" hidden>
+        <button type="button" id="backToTagListBtn" class="btn-goto">← К списку сохранённых</button>
+        <button type="button" id="restoreTagBtn" class="btn-save">✏️ Вернуть для изменения</button>
+      </div>
+      <div class="order-toolbar">
+        <button type="button" id="tagPrintBtn">🖨️ Печать</button>
+        <button type="button" id="tagDownloadBtn">💾 Скачать файл</button>
+      </div>
     </div>
 
     <div id="viewTagList" hidden>
@@ -902,7 +913,7 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
     </div>
   </main>
 
-  <div id="priceTagPrintBatch" hidden></div>
+  <div id="tagPrintBatch" hidden></div>
 
   <div id="nameEditOverlay" class="modal-overlay" hidden>
     <div class="modal-box">
@@ -1556,19 +1567,23 @@ const DB = {
     nameEditTextarea: document.getElementById("nameEditTextarea"),
     nameEditCancelBtn: document.getElementById("nameEditCancelBtn"),
     nameEditSaveBtn: document.getElementById("nameEditSaveBtn"),
-    viewPriceTag: document.getElementById("viewPriceTag"),
-    tagViewToolbar: document.getElementById("tagViewToolbar"),
-    tagBackBtn: document.getElementById("tagBackBtn"),
-    tagCardHolder: document.getElementById("tagCardHolder"),
-    tagEditLeafBtn: document.getElementById("tagEditLeafBtn"),
+    viewTag: document.getElementById("viewTag"),
+    tagEditingBanner: document.getElementById("tagEditingBanner"),
+    tagDocHolder: document.getElementById("tagDocHolder"),
+    tagDraftActions: document.getElementById("tagDraftActions"),
+    saveTagDocBtn: document.getElementById("saveTagDocBtn"),
+    newTagBtn: document.getElementById("newTagBtn"),
+    tagHistoryViewActions: document.getElementById("tagHistoryViewActions"),
+    backToTagListBtn: document.getElementById("backToTagListBtn"),
+    restoreTagBtn: document.getElementById("restoreTagBtn"),
     tagPrintBtn: document.getElementById("tagPrintBtn"),
-    tagDeleteBtn: document.getElementById("tagDeleteBtn"),
+    tagDownloadBtn: document.getElementById("tagDownloadBtn"),
     viewTagList: document.getElementById("viewTagList"),
     tagListToolbar: document.getElementById("tagListToolbar"),
     tagSelectAll: document.getElementById("tagSelectAll"),
     tagPrintSelectedBtn: document.getElementById("tagPrintSelectedBtn"),
     tagListRows: document.getElementById("tagListRows"),
-    priceTagPrintBatch: document.getElementById("priceTagPrintBatch")
+    tagPrintBatch: document.getElementById("tagPrintBatch")
   };
 
   // Контексты рисования для двух SVG: превью в калькуляторе и картинка в
@@ -3107,28 +3122,29 @@ const DB = {
 
   // Id позиции спецификации, которая сейчас редактируется в калькуляторе
   // (не null между «Изменить»/клик по названию и следующим «Сохранить» —
-  // см. beginEditItem/addCurrentToOrder). editingTagId — то же самое, но для
-  // полотна ценника (см. beginEditTagLeaf/createOrUpdatePriceTagFromCalc,
-  // ниже в разделе «Ценник»); одновременно активен только один из них.
+  // см. beginEditItem/addCurrentToOrder). editingTagItemId — то же самое,
+  // но для позиции черновика ценника (см. beginEditTagItem/
+  // addCurrentToTagDraft, ниже в разделе «Ценник»); одновременно активен
+  // только один из них.
   let editingItemId = null;
-  let editingTagId = null;
+  let editingTagItemId = null;
 
   function updateEditBanner() {
     const editingOrder = editingItemId != null;
-    const editingTag = editingTagId != null;
+    const editingTag = editingTagItemId != null;
     el.editBanner.hidden = !editingOrder && !editingTag;
     el.editBannerText.textContent = editingTag
-      ? "✏️ Редактирование полотна ценника — после сохранения вернётесь в ценник."
+      ? "✏️ Редактирование позиции ценника — после сохранения вернётесь в ценник."
       : "✏️ Редактирование позиции спецификации — после сохранения вернётесь в спецификацию.";
     el.saveToOrderBtn.textContent = editingOrder ? "💾 Сохранить изменения" : "Сохранить в спецификацию";
-    el.saveTagBtn.textContent = editingTag ? "💾 Сохранить изменения ценника" : "🏷️ Создать ценник";
+    el.saveTagBtn.textContent = editingTag ? "💾 Сохранить изменения" : "🏷️ Сохранить в ценник";
   }
 
   function beginEditItem(id) {
     const item = orderItems.find((it) => it.id === id);
     if (!item || !item.calcState) return;
     editingItemId = id;
-    editingTagId = null;
+    editingTagItemId = null;
     restoreCalcState(item.calcState);
     updateEditBanner();
     setView("calc");
@@ -3136,7 +3152,7 @@ const DB = {
 
   function cancelEditItem() {
     editingItemId = null;
-    editingTagId = null;
+    editingTagItemId = null;
     updateEditBanner();
   }
 
@@ -3498,163 +3514,318 @@ const DB = {
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
-  // --- Ценник: печатная форма А5 для торгового зала ----------------------
-  // Каждый ценник — снимок ОДНОЙ позиции калькулятора (аналог одной позиции
-  // спецификации, см. addCurrentToOrder), но хранится отдельным списком —
-  // своя папка «Ценник», без черновика/номера, правится и печатается по
-  // отдельности. «Дата ценника»/«Заполнил» — поля самого ценника (не даты
-  // создания записи), их можно менять каждый раз перед печатью.
+  // --- Ценник: печатная форма А5 (альбомная) для торгового зала ----------
+  // Архитектура зеркалит «Спецификацию»: черновик из нескольких позиций
+  // (tagItems — аналог orderItems/addCurrentToOrder), сохранение целиком в
+  // список (tagHistory) с очисткой черновика (saveTagDocument — аналог
+  // saveSpecification), возврат для правки (restoreTagFromHistory — аналог
+  // restoreSpecFromHistory). У ценника нет отдельного номера/скидки на
+  // документ — только общая дата и место для подписи (см. tagDocHtml).
 
-  const PRICE_TAG_STORE_KEY = "doorcalc_pricetags_v1";
-  let priceTags = [];
-  // Не null, пока открыт просмотр конкретного ценника (страница «Ценник»).
+  const TAG_DRAFT_KEY = "doorcalc_tagdraft_v1";
+  const TAG_HISTORY_KEY = "doorcalc_pricetags_v1";
+
+  // Красная шапка магазина — только у Ценника (не SPEC_COMPANY_LINES,
+  // используемых в «Спецификации»): по ТЗ у ценника другой вид шапки и без
+  // адреса.
+  const TAG_HEADER_TITLE = "Двери 1ый Сорт Окна";
+  const TAG_HEADER_SUB_LINES = ["ИП Ихсанов Азат Фаисович", "тел: 89173989190 (Азат), 89172744324 (Фанис)"];
+
+  let tagItems = [];
+  let tagDate = "";
+  // Присваивается (id/дата создания) только при первом «Сохранить ценник» —
+  // как orderMeta.number у спецификации, см. saveTagDocument.
+  let tagDraftMeta = { id: null, createdAt: null };
+  let tagHistory = [];
+  // Не null, пока открыт просмотр конкретной сохранённой записи (страница
+  // «Ценник» тогда read-only) — аналог viewingHistoryNumber.
   let viewingTagId = null;
-  // Отмеченные чекбоксом ценники в папке «Ценник» — только для текущего
-  // визита на страницу списка, не сохраняется между переходами.
+  // Отмеченные чекбоксом ценники в папке «Сохранённые ценники» — только для
+  // текущего визита на страницу списка.
   let selectedTagIds = new Set();
 
-  function loadPriceTags() {
+  function loadTagDraft() {
     try {
-      const raw = localStorage.getItem(PRICE_TAG_STORE_KEY);
-      const parsed = raw ? JSON.parse(raw) : [];
-      priceTags = Array.isArray(parsed) ? parsed : [];
+      const raw = localStorage.getItem(TAG_DRAFT_KEY);
+      const parsed = raw ? JSON.parse(raw) : null;
+      if (parsed && typeof parsed === "object") {
+        tagItems = Array.isArray(parsed.items) ? parsed.items : [];
+        tagDate = typeof parsed.tagDate === "string" ? parsed.tagDate : "";
+        tagDraftMeta = (parsed.meta && typeof parsed.meta === "object") ? parsed.meta : { id: null, createdAt: null };
+      } else {
+        tagItems = []; tagDate = ""; tagDraftMeta = { id: null, createdAt: null };
+      }
     } catch (e) {
-      priceTags = [];
+      tagItems = []; tagDate = ""; tagDraftMeta = { id: null, createdAt: null };
     }
   }
 
-  function savePriceTags() {
-    try { localStorage.setItem(PRICE_TAG_STORE_KEY, JSON.stringify(priceTags)); } catch (e) {}
+  function saveTagDraft() {
+    try { localStorage.setItem(TAG_DRAFT_KEY, JSON.stringify({ items: tagItems, tagDate, meta: tagDraftMeta })); } catch (e) {}
   }
 
-  // Создаёт новый ценник из текущего расчёта либо (если открыт на
-  // редактирование полотна — см. beginEditTagLeaf) обновляет существующий,
-  // не трогая его «Дата ценника»/«Заполнил».
-  function createOrUpdatePriceTagFromCalc() {
+  function loadTagHistory() {
+    try {
+      const raw = localStorage.getItem(TAG_HISTORY_KEY);
+      const parsed = raw ? JSON.parse(raw) : [];
+      // Старый формат (одна позиция на запись, до пересборки под несколько
+      // позиций в одном документе) не совместим — эта функция ещё не
+      // выпускалась пользователям, просто отбрасываем несовместимые записи.
+      tagHistory = Array.isArray(parsed) ? parsed.filter((e) => Array.isArray(e.items)) : [];
+    } catch (e) {
+      tagHistory = [];
+    }
+  }
+
+  function saveTagHistory() {
+    try { localStorage.setItem(TAG_HISTORY_KEY, JSON.stringify(tagHistory)); } catch (e) {}
+  }
+
+  function tagGrandTotal(items) {
+    return (items || tagItems).reduce((sum, it) => sum + it.total, 0);
+  }
+
+  // Источник данных для страницы «Ценник» — либо живой черновик, либо (при
+  // просмотре из списка сохранённых) сохранённая запись целиком, read-only.
+  function currentTagView() {
+    if (viewingTagId != null) {
+      const entry = tagHistory.find((e) => e.id === viewingTagId);
+      if (entry) return { items: entry.items, tagDate: entry.tagDate, meta: { id: entry.id, createdAt: entry.createdAt }, readOnly: true };
+    }
+    return { items: tagItems, tagDate, meta: tagDraftMeta, readOnly: false };
+  }
+
+  // Короткое название позиции для компактной печатной формы — не то же
+  // самое, что modelName в «Спецификации» (там полное каталожное название);
+  // у погонажа — вид + толщина по ТЗ («Коробка 30мм»), а не полное название
+  // из каталога.
+  function tagItemLabel(o) {
+    if (o.section === "погонаж" && !isCustomTrimVid(state.trimVid)) {
+      const vidInfo = DB.trim.types.find((t) => t.id === state.trimVid);
+      const vidLabel = vidInfo ? vidInfo.name : o.model.name;
+      return `${vidLabel} ${o.thickness}мм`;
+    }
+    return leafDisplayName(o.model.name, o.glassName);
+  }
+
+  function addCurrentToTagDraft() {
     const o = computeOrder();
     if (!o.model) return;
-    const fields = {
+    if (!editingTagItemId && !tagItems.length && !tagDate) {
+      tagDate = formatSpecDate(new Date());
+    }
+    const record = {
+      id: editingTagItemId || uid("tagitem"),
       section: o.section,
-      modelName: leafDisplayName(o.model.name, o.glassName),
-      material: o.materialLabel,
-      color: o.color,
-      glassName: o.glassName,
-      patinaName: o.patinaName,
-      height: o.height, width: o.width, thickness: o.thickness,
-      standard: o.standard, quantity: o.quantity, perUnit: o.perUnit,
-      discount: o.discount, total: o.total, rows: o.rows,
+      label: tagItemLabel(o),
+      material: o.materialLabel, color: o.color, glassName: o.glassName, patinaName: o.patinaName,
+      height: o.height, width: o.width, thickness: o.thickness, standard: o.standard,
+      // Снимок стандартных ширин на момент сохранения — печатная форма
+      // показывает их списком у полотна (цена одна и та же для всех
+      // стандартных ширин), а не только выбранную в калькуляторе.
+      stdWidths: DB.standard.widths.slice(),
+      quantity: o.quantity, perUnit: o.perUnit, total: o.total,
       calcState: captureCalcState()
     };
-    if (editingTagId) {
-      const idx = priceTags.findIndex((t) => t.id === editingTagId);
-      if (idx >= 0) {
-        priceTags[idx] = { ...priceTags[idx], ...fields };
-        viewingTagId = editingTagId;
-      }
-      editingTagId = null;
-      savePriceTags();
+    if (editingTagItemId) {
+      const idx = tagItems.findIndex((it) => it.id === editingTagItemId);
+      if (idx >= 0) tagItems[idx] = record; else tagItems.push(record);
+      editingTagItemId = null;
+      saveTagDraft();
       updateEditBanner();
-      setView("pricetag");
+      setView("tag");
     } else {
-      const today = formatSpecDate(new Date());
-      const tag = { id: uid("tag"), createdAt: today, createdTs: Date.now(), tagDate: today, filledBy: "", ...fields };
-      priceTags.unshift(tag);
-      savePriceTags();
-      viewingTagId = tag.id;
-      setView("pricetag");
+      tagItems.push(record);
+      saveTagDraft();
+      flashSaved(el.saveTagBtn);
     }
   }
 
-  function beginEditTagLeaf(id) {
-    const tag = priceTags.find((t) => t.id === id);
-    if (!tag || !tag.calcState) return;
-    editingTagId = id;
+  function beginEditTagItem(id) {
+    const item = tagItems.find((it) => it.id === id);
+    if (!item || !item.calcState) return;
+    editingTagItemId = id;
     editingItemId = null;
-    restoreCalcState(tag.calcState);
+    restoreCalcState(item.calcState);
     updateEditBanner();
     setView("calc");
   }
 
-  function deletePriceTag(id, fromDetail) {
-    if (!confirm("Удалить ценник? Действие необратимо.")) return;
-    priceTags = priceTags.filter((t) => t.id !== id);
-    savePriceTags();
-    if (fromDetail) {
-      viewingTagId = null;
-      setView("tagList");
-    } else {
-      renderTagListPage();
-    }
+  function removeTagDraftItem(id) {
+    tagItems = tagItems.filter((it) => it.id !== id);
+    saveTagDraft();
+    renderTagPage();
   }
 
-  // Строки атрибутов полотна («✓ Материал: ...») — общие для экранного
-  // просмотра одного ценника и для печатной карточки (в т.ч. пакетной).
-  function priceTagAttributesHtml(tag) {
-    const rows = [];
-    if (tag.material || tag.color) {
-      rows.push({ label: "Материал / цвет", value: [tag.material, tag.color].filter(Boolean).join(" — ") });
+  // Присваивает id/дату создания (если ещё нет) и сохраняет черновик как
+  // запись в списке; повторное сохранение уже сохранённого ценника
+  // обновляет ту же запись. Черновик очищается сразу после — как у
+  // «Сохранить спецификацию».
+  function saveTagDocument() {
+    if (!tagItems.length) return;
+    if (tagDraftMeta.id == null) {
+      tagDraftMeta = { id: uid("tag"), createdAt: formatSpecDate(new Date()) };
     }
-    if (tag.glassName) rows.push({ label: "Стекло", value: tag.glassName });
-    if (tag.patinaName) rows.push({ label: "Патина", value: tag.patinaName });
-    if (tag.height && tag.width) {
-      rows.push({ label: "Размер, мм", value: `${tag.height} × ${tag.width}${tag.thickness ? " × " + tag.thickness : ""}` });
+    const entry = {
+      id: tagDraftMeta.id,
+      createdAt: tagDraftMeta.createdAt,
+      tagDate: tagDate || formatSpecDate(new Date()),
+      items: tagItems.map((it) => ({ ...it })),
+      grandTotal: tagGrandTotal(tagItems)
+    };
+    const idx = tagHistory.findIndex((e) => e.id === entry.id);
+    if (idx >= 0) tagHistory[idx] = entry; else tagHistory.unshift(entry);
+    saveTagHistory();
+    tagItems = [];
+    tagDate = "";
+    tagDraftMeta = { id: null, createdAt: null };
+    saveTagDraft();
+    renderTagPage();
+    flashSaved(el.saveTagDocBtn, "✓ Ценник сохранён");
+  }
+
+  function startNewTagDraft() {
+    if (!confirm("Начать новый ценник? Текущий черновик будет очищен (уже сохранённые ценники не пострадают).")) return;
+    tagItems = [];
+    tagDate = "";
+    tagDraftMeta = { id: null, createdAt: null };
+    saveTagDraft();
+    renderTagPage();
+  }
+
+  function viewTagHistoryEntry(id) {
+    viewingTagId = id;
+    setView("tag");
+  }
+
+  // Загружает сохранённый ценник обратно в черновик для правки — при
+  // следующем «Сохранить ценник» обновится та же запись в списке.
+  function restoreTagFromHistory(id) {
+    const entry = tagHistory.find((e) => e.id === id);
+    if (!entry) return;
+    tagItems = entry.items.map((it) => ({ ...it }));
+    tagDate = entry.tagDate;
+    tagDraftMeta = { id: entry.id, createdAt: entry.createdAt };
+    viewingTagId = null;
+    saveTagDraft();
+    setView("tag");
+  }
+
+  function deleteTagHistoryEntry(id) {
+    if (!confirm("Удалить ценник из списка? Действие необратимо.")) return;
+    tagHistory = tagHistory.filter((e) => e.id !== id);
+    saveTagHistory();
+    renderTagListPage();
+  }
+
+  function tagMoney(n) {
+    return `${Math.round(n).toLocaleString("ru-RU")}=00 руб.`;
+  }
+
+  function tagItemDimsLine(it) {
+    if (it.section === "погонаж" || it.section === "фурнитура") return null;
+    if (!it.width || !it.height) return null;
+    if (it.standard && Array.isArray(it.stdWidths) && it.stdWidths.length) {
+      return `${it.stdWidths.join("/")} × ${it.height}`;
     }
-    rows.push({ label: "Количество", value: `${tag.quantity} шт.` });
-    return rows
-      .map((r) => `
-        <div class="tag-attr-row">
-          <span class="tag-attr-check">✓</span>
-          <span class="tag-attr-label">${esc(r.label)}:</span>
-          <span class="tag-attr-value">${esc(r.value)}</span>
-        </div>`)
+    return `${it.width} × ${it.height}`;
+  }
+
+  function tagItemMaterialLine(it) {
+    if (!it.material) return null;
+    return it.color ? `${it.material} : ${it.color}` : it.material;
+  }
+
+  function tagItemPriceLine(it) {
+    if (Number(it.quantity) !== 1) {
+      const qtyStr = String(it.quantity).replace(".", ",");
+      return `${qtyStr}шт × ${tagMoney(it.perUnit)}   ${tagMoney(it.total)}`;
+    }
+    return tagMoney(it.total);
+  }
+
+  function tagItemLinesHtml(it) {
+    return [tagItemDimsLine(it), tagItemMaterialLine(it), it.glassName ? `Стекло: ${it.glassName}` : null, it.patinaName ? `Патина: ${it.patinaName}` : null]
+      .filter(Boolean)
+      .map((l) => `<div class="tag-item-line">${esc(l)}</div>`)
       .join("");
   }
 
-  function priceTagCardBodyHtml(tag) {
-    return `
-      <div class="tag-company">${SPEC_COMPANY_LINES.map(esc).join("<br>")}</div>
-      <div class="tag-model-name">${esc(tag.modelName)}</div>
-      <div class="tag-attrs">${priceTagAttributesHtml(tag)}</div>
-      <div class="tag-price">${tag.total.toLocaleString("ru-RU")} ₽</div>`;
-  }
+  // Тело печатной формы — общее и для живого просмотра/редактирования
+  // (view.readOnly === false, «Дата» — реальный input), и для печати (в
+  // т.ч. пакетной, см. printTagBatch — там всегда читается как обычный
+  // текст, оформление через .tag-date-row input в @media print).
+  function tagDocHtml(view) {
+    const itemsHtml = view.items.length
+      ? view.items.map((it) => `<div class="tag-item">
+          <div class="tag-item-title">${esc(it.label)}</div>
+          ${tagItemLinesHtml(it)}
+          <div class="tag-item-price">${esc(tagItemPriceLine(it))}</div>
+          ${view.readOnly || !it.calcState ? "" : `
+          <div class="item-actions">
+            <button type="button" data-tag-item-edit="${esc(it.id)}">✏️ Изменить</button>
+            <button type="button" class="order-item-del" data-tag-item-del="${esc(it.id)}">✕ Удалить</button>
+          </div>`}
+        </div>`).join("")
+      : `<div class="order-empty">Пока пусто — откройте «Калькулятор цены» и нажмите «Сохранить в ценник».</div>`;
 
-  // Экранная карточка одного ценника — «Дата»/«Заполнил» редактируются
-  // прямо тут (см. onTagCardInput), в печати выглядят как обычный текст
-  // (см. .tag-meta-row input в @media print).
-  function priceTagCardHtmlEditable(tag) {
-    return `<div class="price-tag-card">
-      ${priceTagCardBodyHtml(tag)}
-      <div class="tag-meta">
-        <div class="tag-meta-row">
-          <label for="tagDateInput">Дата ценника</label>
-          <input type="text" id="tagDateInput" value="${esc(tag.tagDate)}" placeholder="дд.мм.гггг">
-        </div>
-        <div class="tag-meta-row">
-          <label for="tagFilledByInput">Заполнил (ФИО)</label>
-          <input type="text" id="tagFilledByInput" value="${esc(tag.filledBy)}" placeholder="ФИО">
-        </div>
+    const dateField = view.readOnly
+      ? `<span class="tag-meta-static">${esc(view.tagDate || "")}</span>`
+      : `<input type="text" id="tagDateInput" value="${esc(view.tagDate || "")}" placeholder="дд.мм.гггг">`;
+
+    return `<div class="tag-doc">
+      <div class="tag-header-band">${esc(TAG_HEADER_TITLE)}</div>
+      <div class="tag-header-sub">${TAG_HEADER_SUB_LINES.map(esc).join("<br>")}</div>
+      <div class="tag-doc-items">${itemsHtml}</div>
+      <div class="tag-doc-footer">
+        <div class="tag-grand-total"><span>Итого</span><span>${esc(tagMoney(tagGrandTotal(view.items)))}</span></div>
+        <div class="tag-date-row"><label for="tagDateInput">Дата</label>${dateField}</div>
+        <div class="tag-sign-row">Подпись: _______________</div>
       </div>
     </div>`;
   }
 
-  // Карточка для пакетной печати (несколько ценников сразу, см.
-  // printPriceTagBatch) — те же данные, но без интерактивных полей: печать
-  // — разовый снимок, а не форма, которую можно менять на бумаге.
-  function priceTagCardHtmlStatic(tag) {
-    return `<div class="price-tag-card">
-      ${priceTagCardBodyHtml(tag)}
-      <div class="tag-meta">
-        <div class="tag-meta-row"><label>Дата ценника</label><span class="tag-meta-static">${esc(tag.tagDate || "")}</span></div>
-        <div class="tag-meta-row"><label>Заполнил (ФИО)</label><span class="tag-meta-static">${esc(tag.filledBy || "")}</span></div>
-      </div>
-    </div>`;
+  function renderTagPage() {
+    const view = currentTagView();
+    el.tagDocHolder.innerHTML = tagDocHtml(view);
+    el.tagDraftActions.hidden = view.readOnly;
+    el.tagHistoryViewActions.hidden = !view.readOnly;
+    el.tagEditingBanner.hidden = view.readOnly || view.meta.id == null;
   }
 
-  function renderPriceTagPage() {
-    const tag = priceTags.find((t) => t.id === viewingTagId);
-    el.tagCardHolder.innerHTML = tag
-      ? priceTagCardHtmlEditable(tag)
-      : `<div class="order-empty">Ценник не найден — возможно, был удалён.</div>`;
+  // Заголовок записи в папке «Сохранённые ценники» — название первого
+  // полотна двери в документе (если оно есть), иначе первой позиции;
+  // остальное — числом позиций, как у «Сохранённые спецификации».
+  function tagEntryTitle(entry) {
+    const leaf = entry.items.find((it) => it.section !== "погонаж" && it.section !== "фурнитура");
+    return (leaf || entry.items[0] || { label: "Ценник" }).label;
+  }
+
+  function renderTagListPage() {
+    selectedTagIds = new Set();
+    el.tagSelectAll.checked = false;
+    updateTagPrintSelectedBtn();
+    if (!tagHistory.length) {
+      el.tagListToolbar.hidden = true;
+      el.tagListRows.innerHTML = `<div class="order-empty">Пока нет сохранённых ценников — создайте на странице «Калькулятор цены».</div>`;
+      return;
+    }
+    el.tagListToolbar.hidden = false;
+    el.tagListRows.innerHTML = tagHistory
+      .map((entry) => `
+      <div class="tag-list-item">
+        <input type="checkbox" class="tag-select" data-tag-select="${esc(entry.id)}">
+        <div class="order-item">
+          <div class="order-item-title order-item-title-link" data-tag-view="${esc(entry.id)}">${esc(tagEntryTitle(entry))}</div>
+          <div class="order-item-sub">${esc(entry.createdAt)} · ${entry.items.length} поз.</div>
+          <div class="order-item-total"><span>Итого</span><span>${esc(tagMoney(entry.grandTotal))}</span></div>
+          <div class="item-actions">
+            <button type="button" data-tag-view="${esc(entry.id)}">👁 Открыть</button>
+            <button type="button" class="order-item-del" data-tag-del="${esc(entry.id)}">✕ Удалить</button>
+          </div>
+        </div>
+      </div>`)
+      .join("");
   }
 
   function updateTagPrintSelectedBtn() {
@@ -3663,42 +3834,14 @@ const DB = {
     el.tagPrintSelectedBtn.disabled = n === 0;
   }
 
-  function renderTagListPage() {
-    selectedTagIds = new Set();
-    el.tagSelectAll.checked = false;
-    updateTagPrintSelectedBtn();
-    if (!priceTags.length) {
-      el.tagListToolbar.hidden = true;
-      el.tagListRows.innerHTML = `<div class="order-empty">Пока нет сохранённых ценников — создайте на странице «Калькулятор цены».</div>`;
-      return;
-    }
-    el.tagListToolbar.hidden = false;
-    el.tagListRows.innerHTML = priceTags
-      .slice()
-      .sort((a, b) => (b.createdTs || 0) - (a.createdTs || 0))
-      .map((tag) => `
-      <div class="tag-list-item">
-        <input type="checkbox" class="tag-select" data-tag-select="${esc(tag.id)}">
-        <div class="order-item">
-          <div class="order-item-title order-item-title-link" data-tag-view="${esc(tag.id)}">${esc(tag.modelName)}</div>
-          <div class="order-item-sub">${esc(tag.createdAt)}</div>
-          <div class="order-item-total"><span>Цена</span><span>${tag.total.toLocaleString("ru-RU")} ₽</span></div>
-          <div class="item-actions">
-            <button type="button" data-tag-view="${esc(tag.id)}">👁 Открыть</button>
-            <button type="button" class="order-item-del" data-tag-del="${esc(tag.id)}">✕ Удалить</button>
-          </div>
-        </div>
-      </div>`)
-      .join("");
-  }
-
-  // Печать в А5: @page задаётся глобально на весь документ (у CSS @page
-  // нет способа ограничить его конкретным элементом), поэтому подключаем
-  // стиль динамически прямо перед печатью и снимаем сразу после — иначе
-  // печать «Спецификации» (без заданного формата) тоже съехала бы на А5.
-  function printWithA5(afterCleanup) {
+  // Печать в А5 альбомной ориентации: @page задаётся глобально на весь
+  // документ (у CSS @page нет способа ограничить его конкретным
+  // элементом), поэтому подключаем стиль динамически прямо перед печатью и
+  // снимаем сразу после — иначе печать «Спецификации» (без заданного
+  // формата) тоже съехала бы на А5.
+  function printWithA5Landscape(afterCleanup) {
     const style = document.createElement("style");
-    style.textContent = "@page { size: A5; margin: 10mm; }";
+    style.textContent = "@page { size: A5 landscape; margin: 10mm; }";
     document.head.appendChild(style);
     function cleanup() {
       style.remove();
@@ -3709,19 +3852,51 @@ const DB = {
     window.print();
   }
 
-  function printSinglePriceTag() {
-    printWithA5();
+  function printCurrentTagDoc() {
+    printWithA5Landscape();
   }
 
-  function printPriceTagBatch(ids) {
-    const tags = ids.map((id) => priceTags.find((t) => t.id === id)).filter(Boolean);
-    if (!tags.length) return;
-    el.priceTagPrintBatch.innerHTML = tags.map(priceTagCardHtmlStatic).join("");
-    el.priceTagPrintBatch.hidden = false;
-    printWithA5(() => {
-      el.priceTagPrintBatch.hidden = true;
-      el.priceTagPrintBatch.innerHTML = "";
+  function printTagBatch(ids) {
+    const entries = ids.map((id) => tagHistory.find((e) => e.id === id)).filter(Boolean);
+    if (!entries.length) return;
+    el.tagPrintBatch.innerHTML = entries
+      .map((entry) => tagDocHtml({ items: entry.items, tagDate: entry.tagDate, readOnly: true }))
+      .join("");
+    el.tagPrintBatch.hidden = false;
+    printWithA5Landscape(() => {
+      el.tagPrintBatch.hidden = true;
+      el.tagPrintBatch.innerHTML = "";
     });
+  }
+
+  function downloadTagFile() {
+    const view = currentTagView();
+    const itemsHtml = view.items.map((it) => `
+      <div style="border-top:1px dashed #ddd;padding-top:10px;margin-top:10px;">
+        <div style="font-weight:800;font-size:15px;">${esc(it.label)}</div>
+        <div style="font-size:13px;color:#444;">${tagItemLinesHtml(it)}</div>
+        <div style="font-weight:800;font-size:14px;margin-top:4px;">${esc(tagItemPriceLine(it))}</div>
+      </div>`).join("");
+    const html = `<!doctype html><html lang="ru"><head><meta charset="UTF-8"><title>Ценник</title></head>
+<body style="font-family:-apple-system,'Segoe UI',Roboto,Arial,sans-serif;max-width:520px;margin:24px auto;padding:0 16px;color:#1c1f26;">
+  <div style="background:#c81e1e;color:#fff;text-align:center;padding:14px 16px;font-size:20px;font-weight:800;border-radius:8px 8px 0 0;">${esc(TAG_HEADER_TITLE)}</div>
+  <div style="text-align:center;font-size:12px;color:#666;padding:8px 0;line-height:1.5;">${TAG_HEADER_SUB_LINES.map(esc).join("<br>")}</div>
+  ${itemsHtml || "<p>Пусто.</p>"}
+  <div style="display:flex;justify-content:space-between;font-weight:800;font-size:18px;border-top:2px solid #1c1f26;padding-top:12px;margin-top:12px;">
+    <span>Итого</span><span>${esc(tagMoney(tagGrandTotal(view.items)))}</span>
+  </div>
+  <div style="font-size:13px;margin-top:10px;">Дата: ${esc(view.tagDate || "")}</div>
+  <div style="font-size:13px;margin-top:6px;">Подпись: _______________</div>
+</body></html>`;
+    const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "tsennik.html";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
   function bind() {
@@ -3941,31 +4116,36 @@ const DB = {
     el.orderEmailBtn.addEventListener("click", shareOrderViaEmail);
     el.orderPrintBtn.addEventListener("click", printOrder);
     el.orderDownloadBtn.addEventListener("click", downloadOrderFile);
-    el.saveTagBtn.addEventListener("click", createOrUpdatePriceTagFromCalc);
-    el.goToTagsBtn.addEventListener("click", () => setView("tagList"));
-    el.tagBackBtn.addEventListener("click", () => { viewingTagId = null; setView("tagList"); });
-    el.tagEditLeafBtn.addEventListener("click", () => { if (viewingTagId) beginEditTagLeaf(viewingTagId); });
-    el.tagPrintBtn.addEventListener("click", printSinglePriceTag);
-    el.tagDeleteBtn.addEventListener("click", () => { if (viewingTagId) deletePriceTag(viewingTagId, true); });
-    el.tagCardHolder.addEventListener("input", (e) => {
-      const tag = priceTags.find((t) => t.id === viewingTagId);
-      if (!tag) return;
-      if (e.target.id === "tagDateInput") tag.tagDate = e.target.value;
-      else if (e.target.id === "tagFilledByInput") tag.filledBy = e.target.value;
-      else return;
-      savePriceTags();
+    el.saveTagBtn.addEventListener("click", addCurrentToTagDraft);
+    el.goToTagsBtn.addEventListener("click", () => setView("tag"));
+    el.saveTagDocBtn.addEventListener("click", saveTagDocument);
+    el.newTagBtn.addEventListener("click", startNewTagDraft);
+    el.backToTagListBtn.addEventListener("click", () => { viewingTagId = null; setView("tagList"); });
+    el.restoreTagBtn.addEventListener("click", () => { if (viewingTagId != null) restoreTagFromHistory(viewingTagId); });
+    el.tagPrintBtn.addEventListener("click", printCurrentTagDoc);
+    el.tagDownloadBtn.addEventListener("click", downloadTagFile);
+    el.tagDocHolder.addEventListener("input", (e) => {
+      if (e.target.id !== "tagDateInput") return;
+      tagDate = e.target.value;
+      saveTagDraft();
+    });
+    el.tagDocHolder.addEventListener("click", (e) => {
+      const editBtn = e.target.closest("[data-tag-item-edit]");
+      const delBtn = e.target.closest("[data-tag-item-del]");
+      if (editBtn) beginEditTagItem(editBtn.dataset.tagItemEdit);
+      else if (delBtn) removeTagDraftItem(delBtn.dataset.tagItemDel);
     });
     el.tagListRows.addEventListener("click", (e) => {
       const viewBtn = e.target.closest("[data-tag-view]");
       const delBtn = e.target.closest("[data-tag-del]");
-      if (viewBtn) { viewingTagId = viewBtn.dataset.tagView; setView("pricetag"); }
-      else if (delBtn) deletePriceTag(delBtn.dataset.tagDel, false);
+      if (viewBtn) viewTagHistoryEntry(viewBtn.dataset.tagView);
+      else if (delBtn) deleteTagHistoryEntry(delBtn.dataset.tagDel);
     });
     el.tagListRows.addEventListener("change", (e) => {
       const cb = e.target.closest(".tag-select");
       if (!cb) return;
       if (cb.checked) selectedTagIds.add(cb.dataset.tagSelect); else selectedTagIds.delete(cb.dataset.tagSelect);
-      el.tagSelectAll.checked = priceTags.length > 0 && selectedTagIds.size === priceTags.length;
+      el.tagSelectAll.checked = tagHistory.length > 0 && selectedTagIds.size === tagHistory.length;
       updateTagPrintSelectedBtn();
     });
     el.tagSelectAll.addEventListener("change", () => {
@@ -3978,7 +4158,7 @@ const DB = {
       updateTagPrintSelectedBtn();
     });
     el.tagPrintSelectedBtn.addEventListener("click", () => {
-      if (selectedTagIds.size) printPriceTagBatch(Array.from(selectedTagIds));
+      if (selectedTagIds.size) printTagBatch(Array.from(selectedTagIds));
     });
     el.sceneWallSwatches.addEventListener("click", onWallSwatchClick);
     el.sceneWallColor.addEventListener("input", () => setWallColor(el.sceneWallColor.value));
@@ -4039,13 +4219,13 @@ const DB = {
     el.viewRoom3d.hidden = view !== "room3d";
     el.viewOrder.hidden = view !== "order";
     el.viewSpecHistory.hidden = view !== "history";
-    el.viewPriceTag.hidden = view !== "pricetag";
+    el.viewTag.hidden = view !== "tag";
     el.viewTagList.hidden = view !== "tagList";
     el.viewTitle.textContent =
       view === "prices" ? "Изменение цен" : view === "scene" ? "2D картинка" :
       view === "room3d" ? "3D комната" : view === "order" ? "Спецификация" :
       view === "history" ? "Сохранённые спецификации" :
-      view === "pricetag" ? "Ценник" : view === "tagList" ? "Ценник" :
+      view === "tag" ? "Ценник" : view === "tagList" ? "Сохранённые ценники" :
       "Расчет — межкомнатные двери";
     el.menu.querySelectorAll(".menu-item").forEach((b) =>
       b.classList.toggle("active", b.dataset.view === view)
@@ -4055,7 +4235,7 @@ const DB = {
     if (view === "room3d" && window.initRoom3D) window.initRoom3D();
     if (view === "order") renderOrderPage();
     if (view === "history") renderSpecHistoryPage();
-    if (view === "pricetag") renderPriceTagPage();
+    if (view === "tag") renderTagPage();
     if (view === "tagList") renderTagListPage();
     toggleMenu(false);
   }
@@ -4968,7 +5148,8 @@ const DB = {
     loadPrices();
     loadOrderItems();
     loadSpecHistory();
-    loadPriceTags();
+    loadTagDraft();
+    loadTagHistory();
     el.sizeMode.value = state.sizeMode;
     applySectionUI();
     populateWidthMatrix();
@@ -4996,9 +5177,11 @@ const DB = {
     el.menu.addEventListener("click", (e) => {
       const btn = e.target.closest(".menu-item");
       if (!btn) return;
-      // Прямой переход в «Спецификацию» из меню — всегда живой черновик,
-      // а не то, что могло остаться открытым через «Просмотреть» из истории.
+      // Прямой переход в «Спецификацию»/«Ценник» из меню — всегда живой
+      // черновик, а не то, что могло остаться открытым через
+      // «Просмотреть»/«Открыть» из истории/списка сохранённых.
       if (btn.dataset.view === "order") viewingHistoryNumber = null;
+      if (btn.dataset.view === "tag") viewingTagId = null;
       setView(btn.dataset.view);
     });
     document.addEventListener("click", (e) => {
