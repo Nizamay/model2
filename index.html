@@ -107,8 +107,12 @@ h1 { font-size: 20px; margin: 0 0 4px; }
 .price-group[open] > summary::after { transform: rotate(90deg); }
 .price-body { padding: 8px 14px 14px; display: flex; flex-direction: column; gap: 8px; }
 
-.price-row { display: flex; align-items: center; gap: 10px; }
-.price-row .price-label { flex: 1; min-width: 0; font-size: 14px; color: var(--text); }
+/* Название читается целиком на своей строке (как в «Фурнитуре»/«Опциях»
+   choice-row), цена — под ним: на узких экранах и при глубокой вложенности
+   (Погонаж: вид → материал → позиция → категория) подпись категории иначе
+   упирается в поле цены и обрезается/переносится посреди слова. */
+.price-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+.price-row .price-label { flex: 1 1 100%; min-width: 0; font-size: 14px; color: var(--text); }
 .price-row .price-sub { font-size: 12px; color: var(--muted); }
 .price-input-wrap { position: relative; flex: 0 0 auto; }
 .price-row input[type="number"] {
