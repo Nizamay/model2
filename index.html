@@ -497,8 +497,8 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 
 /* Двойная рамка-окантовка вокруг всего ценника — border-style: double даёт
    ровно две параллельные линии с зазором средствами одного border, без
-   лишней разметки. */
-.tag-doc { border: 7px double #1c1f26; border-radius: 12px; overflow: hidden; }
+   лишней разметки. Углы прямые (без border-radius), по образцу. */
+.tag-doc { border: 7px double #1c1f26; overflow: hidden; }
 
 /* Логотип «Двери 1ый Сорт Окна» — воссоздан на CSS (SVG-подобная разметка,
    печатается чётко в любом масштабе, в отличие от растрового скриншота).
@@ -512,8 +512,13 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 }
 .tag-logo-side {
   flex: 1 1 0; color: #fff; display: flex; align-items: center;
-  font-size: 27px; font-weight: 900; letter-spacing: .01em;
-  text-shadow: 1px 1px 0 rgba(0, 0, 0, .28);
+  /* -webkit-text-stroke утолщает буквы поверх жирного начертания — обычные
+     системные шрифты с кириллицей (Roboto/Segoe UI) не имеют настолько
+     плотного «чёрного» начертания сами по себе, а шрифты вроде Impact/
+     Arial Black кириллицу зачастую не поддерживают вовсе. */
+  font-size: 29px; font-weight: 900; letter-spacing: 0;
+  -webkit-text-stroke: .6px rgba(255, 255, 255, .9);
+  text-shadow: 1px 1px 0 rgba(0, 0, 0, .35), -.5px -.5px 0 rgba(0, 0, 0, .15);
 }
 .tag-logo-side.left { justify-content: flex-end; padding-right: 14px; }
 .tag-logo-side.right { justify-content: flex-start; padding-left: 14px; }
