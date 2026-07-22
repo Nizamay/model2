@@ -499,6 +499,10 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 .tag-header-band {
   background: var(--danger); color: #fff; text-align: center;
   padding: 14px 16px; font-size: 20px; font-weight: 800; letter-spacing: .02em;
+  /* без этого браузер по умолчанию не печатает фоновые цвета, пока
+     пользователь сам не включит «Фоновые цвета/изображения» в диалоге
+     печати — красная шапка иначе выходит бледным текстом без заливки. */
+  -webkit-print-color-adjust: exact; print-color-adjust: exact;
 }
 .tag-header-sub { text-align: center; font-size: 12px; color: var(--muted); padding: 8px 16px 0; line-height: 1.5; }
 .tag-doc-items { padding: 14px 16px; display: flex; flex-direction: column; gap: 12px; }
@@ -3877,9 +3881,10 @@ const DB = {
         <div style="font-size:13px;color:#444;">${tagItemLinesHtml(it)}</div>
         <div style="font-weight:800;font-size:14px;margin-top:4px;">${esc(tagItemPriceLine(it))}</div>
       </div>`).join("");
-    const html = `<!doctype html><html lang="ru"><head><meta charset="UTF-8"><title>Ценник</title></head>
+    const html = `<!doctype html><html lang="ru"><head><meta charset="UTF-8"><title>Ценник</title>
+<style>@page { size: A5 landscape; margin: 10mm; }</style></head>
 <body style="font-family:-apple-system,'Segoe UI',Roboto,Arial,sans-serif;max-width:520px;margin:24px auto;padding:0 16px;color:#1c1f26;">
-  <div style="background:#c81e1e;color:#fff;text-align:center;padding:14px 16px;font-size:20px;font-weight:800;border-radius:8px 8px 0 0;">${esc(TAG_HEADER_TITLE)}</div>
+  <div style="background:#c81e1e;color:#fff;text-align:center;padding:14px 16px;font-size:20px;font-weight:800;border-radius:8px 8px 0 0;-webkit-print-color-adjust:exact;print-color-adjust:exact;">${esc(TAG_HEADER_TITLE)}</div>
   <div style="text-align:center;font-size:12px;color:#666;padding:8px 0;line-height:1.5;">${TAG_HEADER_SUB_LINES.map(esc).join("<br>")}</div>
   ${itemsHtml || "<p>Пусто.</p>"}
   <div style="display:flex;justify-content:space-between;font-weight:800;font-size:18px;border-top:2px solid #1c1f26;padding-top:12px;margin-top:12px;">
