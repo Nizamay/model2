@@ -1684,6 +1684,13 @@ const DB = {
 
     el.modelField.hidden = isTrim || isFurniture;
     el.trimVidField.hidden = !isTrim;
+    // trimCustomItemField/trimCustomColorField показываются только внутри
+    // applyTrimUI() (для custom-вида погонажа) — здесь всегда прячем по
+    // умолчанию, иначе при первом заходе (или после выхода из custom-вида
+    // погонажа в любой другой раздел) поля остаются видимыми пустыми, т.к.
+    // без hidden-атрибута в разметке и без applyTrimUI() их некому спрятать.
+    el.trimCustomItemField.hidden = true;
+    el.trimCustomColorField.hidden = true;
     el.furnitureVidField.hidden = !isFurniture;
     el.furnitureItemField.hidden = !isFurniture;
     el.furnitureColorField.hidden = !isFurniture;
