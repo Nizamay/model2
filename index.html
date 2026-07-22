@@ -495,7 +495,10 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 .tag-list-item > input[type="checkbox"] { margin-top: 14px; flex: 0 0 auto; width: 18px; height: 18px; }
 .tag-list-item > .order-item { flex: 1 1 auto; min-width: 0; }
 
-.tag-doc { border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+/* Двойная рамка-окантовка вокруг всего ценника — border-style: double даёт
+   ровно две параллельные линии с зазором средствами одного border, без
+   лишней разметки. */
+.tag-doc { border: 7px double #1c1f26; border-radius: 12px; overflow: hidden; }
 
 /* Логотип «Двери 1ый Сорт Окна» — воссоздан на CSS (SVG-подобная разметка,
    печатается чётко в любом масштабе, в отличие от растрового скриншота).
@@ -503,23 +506,28 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
    умолчанию не печатает фоновые цвета, пока пользователь сам не включит
    «Фоновые цвета/изображения» в диалоге печати. */
 .tag-logo {
-  display: flex; align-items: stretch; min-height: 64px;
+  display: flex; align-items: stretch; min-height: 68px; padding: 6px;
+  background: var(--danger); gap: 0;
   -webkit-print-color-adjust: exact; print-color-adjust: exact;
 }
 .tag-logo-side {
-  flex: 1 1 0; background: var(--danger); color: #fff; display: flex; align-items: center;
-  font-size: 26px; font-weight: 800; font-style: italic; letter-spacing: .03em;
+  flex: 1 1 0; color: #fff; display: flex; align-items: center;
+  font-size: 27px; font-weight: 900; letter-spacing: .01em;
+  text-shadow: 1px 1px 0 rgba(0, 0, 0, .28);
 }
-.tag-logo-side.left { justify-content: flex-end; padding-right: 16px; }
-.tag-logo-side.right { justify-content: flex-start; padding-left: 16px; }
-.tag-logo-badge { flex: 0 0 auto; background: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 6px 16px; }
+.tag-logo-side.left { justify-content: flex-end; padding-right: 14px; }
+.tag-logo-side.right { justify-content: flex-start; padding-left: 14px; }
+.tag-logo-badge {
+  flex: 0 0 auto; background: #fff; border-radius: 8px; box-shadow: 0 1px 4px rgba(0, 0, 0, .25);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 6px 18px;
+}
 .tag-logo-badge-top { display: flex; align-items: center; gap: 5px; }
 .tag-logo-badge-num {
-  width: 22px; height: 22px; background: #1c1f26; color: #fff; font-size: 15px; font-weight: 800;
-  display: flex; align-items: center; justify-content: center; border-radius: 3px;
+  width: 24px; height: 24px; background: #1c1f26; color: #fff; font-size: 16px; font-weight: 900;
+  display: flex; align-items: center; justify-content: center; border-radius: 4px;
 }
-.tag-logo-badge-text { font-size: 22px; font-weight: 800; color: #1c1f26; letter-spacing: .02em; }
-.tag-logo-badge-sub { font-size: 9px; font-weight: 700; color: var(--muted); letter-spacing: .06em; margin-top: 2px; }
+.tag-logo-badge-text { font-size: 23px; font-weight: 900; color: #1c1f26; letter-spacing: .01em; }
+.tag-logo-badge-sub { font-size: 9px; font-weight: 700; color: var(--muted); letter-spacing: .08em; margin-top: 2px; }
 
 .tag-header-sub { text-align: center; font-size: 13px; color: var(--muted); padding: 12px 16px 0; line-height: 1.6; }
 .tag-doc-items { padding: 20px 18px; display: flex; flex-direction: column; gap: 20px; }
@@ -3915,24 +3923,28 @@ const DB = {
     const html = `<!doctype html><html lang="ru"><head><meta charset="UTF-8"><title>Ценник</title>
 <style>@page { size: A5 landscape; margin: 10mm; }</style></head>
 <body style="font-family:-apple-system,'Segoe UI',Roboto,Arial,sans-serif;max-width:520px;margin:24px auto;padding:0 16px;color:#1c1f26;">
-  <div style="display:flex;align-items:stretch;min-height:64px;border-radius:8px 8px 0 0;overflow:hidden;-webkit-print-color-adjust:exact;print-color-adjust:exact;">
-    <div style="flex:1;background:#c81e1e;color:#fff;display:flex;align-items:center;justify-content:flex-end;padding-right:16px;font-size:26px;font-weight:800;font-style:italic;letter-spacing:.03em;">ДВЕРИ</div>
-    <div style="flex:0 0 auto;background:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:6px 16px;">
+  <div style="border:7px double #1c1f26;border-radius:12px;overflow:hidden;">
+  <div style="display:flex;align-items:stretch;min-height:68px;padding:6px;background:#c81e1e;-webkit-print-color-adjust:exact;print-color-adjust:exact;">
+    <div style="flex:1;color:#fff;display:flex;align-items:center;justify-content:flex-end;padding-right:14px;font-size:27px;font-weight:900;letter-spacing:.01em;text-shadow:1px 1px 0 rgba(0,0,0,.28);">ДВЕРИ</div>
+    <div style="flex:0 0 auto;background:#fff;border-radius:8px;box-shadow:0 1px 4px rgba(0,0,0,.25);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:6px 18px;">
       <div style="display:flex;align-items:center;gap:5px;">
-        <span style="width:22px;height:22px;background:#1c1f26;color:#fff;font-size:15px;font-weight:800;display:flex;align-items:center;justify-content:center;border-radius:3px;">1</span>
-        <span style="font-size:22px;font-weight:800;color:#1c1f26;letter-spacing:.02em;">СОРТ</span>
+        <span style="width:24px;height:24px;background:#1c1f26;color:#fff;font-size:16px;font-weight:900;display:flex;align-items:center;justify-content:center;border-radius:4px;">1</span>
+        <span style="font-size:23px;font-weight:900;color:#1c1f26;letter-spacing:.01em;">СОРТ</span>
       </div>
-      <div style="font-size:9px;font-weight:700;color:#666;letter-spacing:.06em;margin-top:2px;">ФИРМЕННЫЙ МАГАЗИН</div>
+      <div style="font-size:9px;font-weight:700;color:#666;letter-spacing:.08em;margin-top:2px;">ФИРМЕННЫЙ МАГАЗИН</div>
     </div>
-    <div style="flex:1;background:#c81e1e;color:#fff;display:flex;align-items:center;justify-content:flex-start;padding-left:16px;font-size:26px;font-weight:800;font-style:italic;letter-spacing:.03em;">ОКНА</div>
+    <div style="flex:1;color:#fff;display:flex;align-items:center;justify-content:flex-start;padding-left:14px;font-size:27px;font-weight:900;letter-spacing:.01em;text-shadow:1px 1px 0 rgba(0,0,0,.28);">ОКНА</div>
   </div>
-  <div style="text-align:center;font-size:12px;color:#666;padding:8px 0;line-height:1.5;">${TAG_HEADER_SUB_LINES.map(esc).join("<br>")}</div>
+  <div style="padding:0 16px;">
+  <div style="text-align:center;font-size:12px;color:#666;padding:12px 0 0;line-height:1.6;">${TAG_HEADER_SUB_LINES.map(esc).join("<br>")}</div>
   ${itemsHtml || "<p>Пусто.</p>"}
   <div style="display:flex;justify-content:space-between;font-weight:800;font-size:18px;border-top:2px solid #1c1f26;padding-top:12px;margin-top:12px;">
     <span>Итого</span><span>${esc(tagMoney(tagGrandTotal(view.items)))}</span>
   </div>
-  <div style="font-size:13px;margin-top:10px;">Дата: ${esc(view.tagDate || "")}</div>
-  <div style="font-size:13px;margin-top:6px;">Подпись: _______________</div>
+  <div style="font-size:13px;margin-top:10px;padding-bottom:16px;">Дата: ${esc(view.tagDate || "")}</div>
+  <div style="font-size:13px;margin-top:6px;padding-bottom:16px;">Подпись: _______________</div>
+  </div>
+  </div>
 </body></html>`;
     const blob = new Blob([html], { type: "text/html;charset=utf-8" });
     const url = URL.createObjectURL(blob);
