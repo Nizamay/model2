@@ -550,24 +550,65 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
    именно она раздувала бейдж вширь, вытесняя «ДВЕРИ»/«ОКНА» за края. */
 .tag-logo-badge-sub { font-size: 8px; font-weight: 700; color: var(--muted); letter-spacing: .04em; margin-top: 2px; text-align: center; }
 
-.tag-header-sub { text-align: center; font-size: 13px; color: var(--muted); padding: 12px 14px 0; line-height: 1.6; }
-.tag-doc-items { padding: 20px 14px; display: flex; flex-direction: column; gap: 20px; }
-.tag-item { display: flex; flex-direction: column; gap: 10px; }
-.tag-item + .tag-item { border-top: 1px dashed var(--border); padding-top: 20px; }
-/* Название/атрибуты — слева, сумма — справа на той же строке; на узких
-   экранах, если вместе не помещаются, сумма переносится на свою строку
-   (flex-wrap), но остаётся прижатой к правому краю (margin-left: auto) —
-   а не наезжает на название, как было при жёстком «в одну строку». */
-.tag-item-row { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 4px 14px; }
-.tag-item-info { flex: 1 1 200px; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
-.tag-item-title { font-weight: 800; font-size: clamp(16px, 5vw, 20px); }
-.tag-item-line { font-size: clamp(13px, 4vw, 15px); color: var(--text); }
-.tag-item-price {
-  flex: 0 0 auto; margin-left: auto; text-align: right;
-  font-weight: 800; font-size: clamp(15px, 4.5vw, 18px); white-space: nowrap;
+.tag-header-sub { text-align: center; font-size: 13px; color: var(--muted); padding: 10px 14px 0; line-height: 1.5; }
+
+/* Красный чекбокс-галочка — как на образце (у каждого поля/строки состава
+   комплекта). Символ ✓, а не картинка — чтобы не зависеть от файла, который
+   у заказчика и потерялся при сохранении на телефоне. */
+.tag-check {
+  flex: 0 0 auto; width: 14px; height: 14px; margin-top: 2px;
+  border: 1.5px solid var(--danger); border-radius: 2px; color: var(--danger);
+  font-size: 11px; line-height: 12px; font-weight: 900;
+  display: inline-flex; align-items: center; justify-content: center;
 }
-.tag-doc-footer { padding: 20px 14px; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 14px; }
-.tag-grand-total { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 4px 14px; font-weight: 800; font-size: clamp(19px, 6vw, 26px); }
+
+/* --- Карточка модели (по образцу таблицы: крупное название, два столбца
+   характеристик с галочками, крупная цена полотна отдельно). Показывается
+   только если в ценнике есть позиция полотна двери/фурнитуры — для
+   ценника из одного погонажа (без полотна) не рендерится, см. tagDocHtml. */
+.tag-model-title { font-weight: 900; font-size: clamp(19px, 8cqw, 32px); padding: 10px 14px 0; line-height: 1.15; }
+.tag-model-cols { display: flex; flex-wrap: wrap; gap: 10px 22px; padding: 12px 14px 0; }
+.tag-model-col { flex: 1 1 150px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.tag-model-field { display: flex; gap: 6px; align-items: flex-start; min-width: 0; }
+.tag-model-field-body { display: flex; flex-direction: column; min-width: 0; }
+.tag-model-field-label { font-weight: 700; font-size: clamp(10px, 3cqw, 12px); }
+.tag-model-field-value { font-size: clamp(11px, 3.4cqw, 13px); color: var(--muted); word-break: break-word; }
+.tag-model-price { font-weight: 900; font-size: clamp(26px, 10cqw, 40px); text-align: center; padding: 14px 14px 4px; }
+
+/* --- Состав комплекта: синяя плашка с итогом группы + таблица позиций
+   (чекбокс, название с количеством, цена за 1 шт., цена итого) — как на
+   образце из xls, вместо прежнего компактного списка. */
+.tag-komplekt-band {
+  display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 4px 14px;
+  background: #1f3a5f; color: #fff; font-weight: 800; padding: 8px 14px; margin-top: 10px;
+  font-size: clamp(14px, 5cqw, 19px);
+  -webkit-print-color-adjust: exact; print-color-adjust: exact;
+}
+/* Сетка (grid), а не flex — с flex-wrap колонка «цена за 1 шт.» иногда
+   переносилась на отдельную строку сама по себе, отрываясь от «цена
+   итого» (не помещались обе рядом с длинным названием на узкой карточке).
+   У грида ширина колонок фиксированная по содержимому — цены всегда в
+   своих двух колонках, а переносится (при нехватке места) только текст
+   названия внутри своей колонки. */
+.tag-komplekt-colheads, .tag-komplekt-row {
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center; column-gap: 8px; row-gap: 4px;
+}
+.tag-komplekt-colheads {
+  padding: 6px 14px 0; font-size: clamp(9px, 2.6cqw, 11px); color: var(--muted);
+}
+.tag-komplekt-colheads span { grid-column: 3; text-align: right; white-space: nowrap; }
+.tag-komplekt-colheads span:last-child { grid-column: 4; }
+.tag-komplekt-row { padding: 7px 14px; border-bottom: 1px dashed var(--border); }
+.tag-komplekt-label { grid-column: 2; min-width: 0; font-weight: 700; font-size: clamp(12px, 3.6cqw, 14px); }
+.tag-komplekt-qty { font-weight: 400; color: var(--muted); }
+.tag-komplekt-unit, .tag-komplekt-total {
+  grid-column: 3; text-align: right; font-size: clamp(11px, 3.2cqw, 13px); white-space: nowrap;
+}
+.tag-komplekt-total { grid-column: 4; font-weight: 800; }
+.tag-komplekt-row .item-actions { grid-column: 1 / -1; }
+
+.tag-doc-footer { padding: 16px 14px 20px; display: flex; flex-direction: column; gap: 14px; }
 /* Дата и подпись — в одну строку. */
 .tag-meta-line { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
 .tag-date-row { display: flex; align-items: center; gap: 10px; font-size: 15px; flex: 0 0 auto; }
@@ -586,12 +627,21 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
   #viewTag, #viewTag * { visibility: visible; }
   #viewTag { position: absolute; left: 0; top: 0; width: 100%; padding: 0; }
   #viewTag .order-toolbar, #viewTag .result-actions, #viewTag .item-actions, #tagEditingBanner { display: none !important; }
-  #viewTag .tag-doc { border: none; }
   #viewTag .tag-date-row input { border: none; background: none; padding: 0; font-size: 13px; outline: none; }
 
   #tagPrintBatch, #tagPrintBatch * { visibility: visible; }
   #tagPrintBatch { position: absolute; left: 0; top: 0; width: 100%; padding: 0; }
-  #tagPrintBatch .tag-doc { page-break-after: always; border: none; }
+
+  /* Печать ценника занимает ровно половину листа А4 (=реальный формат А5),
+     а не весь лист: карточка получает фиксированный размер в мм под
+     верхнюю половину А4-страницы, нижняя половина остаётся пустой —
+     заказчик просто отрезает по границе. Так работает на любом принтере
+     без выбора формата А5 (которого часто нет ни в приложении печати на
+     телефоне, ни в лотке принтера — см. отчёт пользователя). */
+  #viewTag .tag-doc, #tagPrintBatch .tag-doc {
+    border: none; width: 190mm; max-width: 190mm; max-height: 132mm; container-type: inline-size;
+  }
+  #tagPrintBatch .tag-doc { page-break-after: always; }
   #tagPrintBatch .tag-doc:last-child { page-break-after: auto; }
 }
 
@@ -3793,60 +3843,92 @@ const DB = {
     renderTagListPage();
   }
 
+  // Формат сумм — как везде в приложении (пробел между разрядами + ₽), а
+  // не собственный «=00 руб.»: реальный образец заказчика (скриншот и xls,
+  // формат ячеек "#,##0 ₽") использует именно это, без "=00".
   function tagMoney(n) {
-    return `${Math.round(n).toLocaleString("ru-RU")}=00 руб.`;
+    return `${Math.round(n).toLocaleString("ru-RU")} ₽`;
   }
 
-  function tagItemDimsLine(it) {
-    if (it.section === "погонаж" || it.section === "фурнитура") return null;
-    if (!it.width || !it.height) return null;
+  // Высота/ширина полотна отдельно (для двух колонок карточки модели) —
+  // в отличие от прежней единой строки «ширины × высота».
+  function tagLeafDims(it) {
+    const heightText = it.height ? String(it.height) : "";
+    let widthText = "";
     if (it.standard && Array.isArray(it.stdWidths) && it.stdWidths.length) {
-      return `${it.stdWidths.join("/")} × ${it.height}`;
+      widthText = it.stdWidths.join("/");
+    } else if (it.width) {
+      widthText = String(it.width);
     }
-    return `${it.width} × ${it.height}`;
+    return { heightText, widthText };
   }
 
-  function tagItemMaterialLine(it) {
-    if (!it.material) return null;
-    return it.color ? `${it.material} : ${it.color}` : it.material;
+  function tagCheckIcon() {
+    return `<span class="tag-check" aria-hidden="true">✓</span>`;
   }
 
-  function tagItemPriceLine(it) {
-    if (Number(it.quantity) !== 1) {
-      const qtyStr = String(it.quantity).replace(".", ",");
-      return `${qtyStr}шт × ${tagMoney(it.perUnit)}   ${tagMoney(it.total)}`;
-    }
-    return tagMoney(it.total);
+  function tagModelFieldHtml(label, value) {
+    if (!value) return "";
+    return `<div class="tag-model-field">${tagCheckIcon()}<div class="tag-model-field-body"><div class="tag-model-field-label">${esc(label)}</div><div class="tag-model-field-value">${esc(value)}</div></div></div>`;
   }
 
-  function tagItemLinesHtml(it) {
-    return [tagItemDimsLine(it), tagItemMaterialLine(it), it.glassName ? `Стекло: ${it.glassName}` : null, it.patinaName ? `Патина: ${it.patinaName}` : null]
-      .filter(Boolean)
-      .map((l) => `<div class="tag-item-line">${esc(l)}</div>`)
-      .join("");
+  // Карточка полотна двери — крупное название, два столбца характеристик
+  // (материал/цвет + стекло/патина слева, высота/ширина справа) с
+  // галочками и отдельная крупная цена самого полотна — по образцу
+  // xls-таблицы (там это отдельный блок над «Составом комплекта»).
+  function tagLeafCardHtml(it) {
+    const { heightText, widthText } = tagLeafDims(it);
+    const leftFields = [
+      tagModelFieldHtml(it.material || "Материал", it.color),
+      it.glassName ? tagModelFieldHtml("Полотно остеклённое (ПО):", it.glassName) : "",
+      it.patinaName ? tagModelFieldHtml("Патина:", it.patinaName) : "",
+    ].filter(Boolean).join("");
+    const rightFields = [
+      heightText ? tagModelFieldHtml("высота (мм):", heightText) : "",
+      widthText ? tagModelFieldHtml("ширина (мм):", widthText) : "",
+    ].filter(Boolean).join("");
+    return `<div class="tag-model-title">${esc(it.label)}</div>
+      <div class="tag-model-cols">
+        ${leftFields ? `<div class="tag-model-col">${leftFields}</div>` : ""}
+        ${rightFields ? `<div class="tag-model-col">${rightFields}</div>` : ""}
+      </div>
+      <div class="tag-model-price">${esc(tagMoney(it.total))}</div>`;
+  }
+
+  // Строка таблицы «Состав комплекта» — чекбокс, название с количеством,
+  // цена за 1 шт., цена итого (три отдельные колонки, как в xls), плюс
+  // кнопки правки/удаления позиции (то же поведение, что и раньше).
+  function tagKomplektRowHtml(it, readOnly) {
+    const qtyStr = String(it.quantity).replace(".", ",");
+    const actions = readOnly || !it.calcState ? "" : `
+      <div class="item-actions">
+        <button type="button" data-tag-item-edit="${esc(it.id)}">✏️ Изменить</button>
+        <button type="button" class="order-item-del" data-tag-item-del="${esc(it.id)}">✕ Удалить</button>
+      </div>`;
+    return `<div class="tag-komplekt-row">
+      ${tagCheckIcon()}
+      <div class="tag-komplekt-label">${esc(it.label)} <span class="tag-komplekt-qty">(${qtyStr} шт.)</span></div>
+      <div class="tag-komplekt-unit">${esc(tagMoney(it.perUnit))}</div>
+      <div class="tag-komplekt-total">${esc(tagMoney(it.total))}</div>
+      ${actions}
+    </div>`;
   }
 
   // Тело печатной формы — общее и для живого просмотра/редактирования
   // (view.readOnly === false, «Дата» — реальный input), и для печати (в
   // т.ч. пакетной, см. printTagBatch — там всегда читается как обычный
-  // текст, оформление через .tag-date-row input в @media print).
+  // текст, оформление через .tag-date-row input в @media print). Формат —
+  // по образцу заказчика (xls-таблица): крупная карточка первого полотна
+  // (если оно есть в ценнике) + единая таблица «Состав комплекта» со всеми
+  // позициями (полотно + погонаж/фурнитура) и их итогом.
   function tagDocHtml(view) {
-    const itemsHtml = view.items.length
-      ? view.items.map((it) => `<div class="tag-item">
-          <div class="tag-item-row">
-            <div class="tag-item-info">
-              <div class="tag-item-title">${esc(it.label)}</div>
-              ${tagItemLinesHtml(it)}
-            </div>
-            <div class="tag-item-price">${esc(tagItemPriceLine(it))}</div>
-          </div>
-          ${view.readOnly || !it.calcState ? "" : `
-          <div class="item-actions">
-            <button type="button" data-tag-item-edit="${esc(it.id)}">✏️ Изменить</button>
-            <button type="button" class="order-item-del" data-tag-item-del="${esc(it.id)}">✕ Удалить</button>
-          </div>`}
-        </div>`).join("")
-      : `<div class="order-empty">Пока пусто — откройте «Калькулятор цены» и нажмите «Сохранить в ценник».</div>`;
+    const leaf = view.items.find((it) => it.section !== "погонаж" && it.section !== "фурнитура");
+    const leafCardHtml = leaf ? tagLeafCardHtml(leaf) : "";
+    const komplektHtml = !view.items.length
+      ? `<div class="order-empty">Пока пусто — откройте «Калькулятор цены» и нажмите «Сохранить в ценник».</div>`
+      : `<div class="tag-komplekt-band"><span>Состав комплекта:</span><span>${esc(tagMoney(tagGrandTotal(view.items)))}</span></div>
+         <div class="tag-komplekt-colheads"><span>цена за 1 шт.</span><span>цена ИТОГО:</span></div>
+         ${view.items.map((it) => tagKomplektRowHtml(it, view.readOnly)).join("")}`;
 
     const dateField = view.readOnly
       ? `<span class="tag-meta-static">${esc(view.tagDate || "")}</span>`
@@ -3855,9 +3937,9 @@ const DB = {
     return `<div class="tag-doc">
       ${tagLogoHtml()}
       <div class="tag-header-sub">${TAG_HEADER_SUB_LINES.map(esc).join("<br>")}</div>
-      <div class="tag-doc-items">${itemsHtml}</div>
+      ${leafCardHtml}
+      ${komplektHtml}
       <div class="tag-doc-footer">
-        <div class="tag-grand-total"><span>Итого</span><span>${esc(tagMoney(tagGrandTotal(view.items)))}</span></div>
         <div class="tag-meta-line">
           <div class="tag-date-row"><label for="tagDateInput">Дата</label>${dateField}</div>
           <div class="tag-sign-row">Подпись: _______________</div>
@@ -3915,14 +3997,21 @@ const DB = {
     el.tagPrintSelectedBtn.disabled = n === 0;
   }
 
-  // Печать в А5 альбомной ориентации: @page задаётся глобально на весь
-  // документ (у CSS @page нет способа ограничить его конкретным
-  // элементом), поэтому подключаем стиль динамически прямо перед печатью и
-  // снимаем сразу после — иначе печать «Спецификации» (без заданного
-  // формата) тоже съехала бы на А5.
-  function printWithA5Landscape(afterCleanup) {
+  // Печать ценника занимает ровно половину листа А4 (=реальный формат А5),
+  // а не выбор формата А5 в диалоге печати: у большинства принтеров и
+  // особенно у приложений печати на телефоне такого формата попросту нет
+  // в списке, и браузер растягивает контент на весь А4 (см. отчёт
+  // пользователя со скриншотом). Вместо этого печатаем на обычном А4, а
+  // сама карточка получает фиксированный размер под верхнюю половину
+  // листа (см. #viewTag .tag-doc в @media print) — нижняя половина
+  // остаётся пустой, лист можно просто разрезать пополам.
+  // @page задаётся глобально на весь документ (у CSS @page нет способа
+  // ограничить его конкретным элементом), поэтому подключаем стиль
+  // динамически прямо перед печатью и снимаем сразу после — иначе печать
+  // «Спецификации» тоже получила бы эти поля.
+  function printTagDocument(afterCleanup) {
     const style = document.createElement("style");
-    style.textContent = "@page { size: A5 landscape; margin: 10mm; }";
+    style.textContent = "@page { size: A4 portrait; margin: 10mm; }";
     document.head.appendChild(style);
     function cleanup() {
       style.remove();
@@ -3934,7 +4023,7 @@ const DB = {
   }
 
   function printCurrentTagDoc() {
-    printWithA5Landscape();
+    printTagDocument();
   }
 
   function printTagBatch(ids) {
@@ -3944,50 +4033,112 @@ const DB = {
       .map((entry) => tagDocHtml({ items: entry.items, tagDate: entry.tagDate, readOnly: true }))
       .join("");
     el.tagPrintBatch.hidden = false;
-    printWithA5Landscape(() => {
+    printTagDocument(() => {
       el.tagPrintBatch.hidden = true;
       el.tagPrintBatch.innerHTML = "";
     });
   }
 
+  // Скачиваемый файл — тот же макет, что и на живой странице (карточка
+  // полотна + таблица «Состав комплекта»), но со встроенным <style> вместо
+  // классов основного приложения — файл должен открываться сам по себе.
   function downloadTagFile() {
     const view = currentTagView();
-    const itemsHtml = view.items.map((it) => `
-      <div style="border-top:1px dashed #ddd;padding-top:10px;margin-top:10px;">
-        <div style="display:flex;flex-wrap:wrap;align-items:flex-start;gap:4px 14px;">
-          <div style="flex:1 1 200px;min-width:0;">
-            <div style="font-weight:800;font-size:15px;">${esc(it.label)}</div>
-            <div style="font-size:13px;color:#444;">${tagItemLinesHtml(it)}</div>
-          </div>
-          <div style="flex:0 0 auto;margin-left:auto;text-align:right;font-weight:800;font-size:14px;white-space:nowrap;">${esc(tagItemPriceLine(it))}</div>
+    const leaf = view.items.find((it) => it.section !== "погонаж" && it.section !== "фурнитура");
+
+    function fieldHtml(label, value) {
+      if (!value) return "";
+      return `<div class="tag-model-field"><span class="tag-check">✓</span><div><div class="tag-model-field-label">${esc(label)}</div><div class="tag-model-field-value">${esc(value)}</div></div></div>`;
+    }
+    let leafCardHtml = "";
+    if (leaf) {
+      const { heightText, widthText } = tagLeafDims(leaf);
+      const leftFields = [
+        fieldHtml(leaf.material || "Материал", leaf.color),
+        leaf.glassName ? fieldHtml("Полотно остеклённое (ПО):", leaf.glassName) : "",
+        leaf.patinaName ? fieldHtml("Патина:", leaf.patinaName) : "",
+      ].filter(Boolean).join("");
+      const rightFields = [
+        heightText ? fieldHtml("высота (мм):", heightText) : "",
+        widthText ? fieldHtml("ширина (мм):", widthText) : "",
+      ].filter(Boolean).join("");
+      leafCardHtml = `<div class="tag-model-title">${esc(leaf.label)}</div>
+        <div class="tag-model-cols">
+          ${leftFields ? `<div class="tag-model-col">${leftFields}</div>` : ""}
+          ${rightFields ? `<div class="tag-model-col">${rightFields}</div>` : ""}
         </div>
-      </div>`).join("");
+        <div class="tag-model-price">${esc(tagMoney(leaf.total))}</div>`;
+    }
+
+    const komplektHtml = !view.items.length
+      ? "<p>Пусто.</p>"
+      : `<div class="tag-komplekt-band"><span>Состав комплекта:</span><span>${esc(tagMoney(tagGrandTotal(view.items)))}</span></div>
+         <div class="tag-komplekt-colheads"><span>цена за 1 шт.</span><span>цена ИТОГО:</span></div>
+         ${view.items.map((it) => {
+           const qtyStr = String(it.quantity).replace(".", ",");
+           return `<div class="tag-komplekt-row"><span class="tag-check">✓</span>
+             <div class="tag-komplekt-label">${esc(it.label)} <span class="tag-komplekt-qty">(${qtyStr} шт.)</span></div>
+             <div class="tag-komplekt-unit">${esc(tagMoney(it.perUnit))}</div>
+             <div class="tag-komplekt-total">${esc(tagMoney(it.total))}</div>
+           </div>`;
+         }).join("")}`;
+
     const html = `<!doctype html><html lang="ru"><head><meta charset="UTF-8"><title>Ценник</title>
-<style>@page { size: A5 landscape; margin: 10mm; }</style></head>
-<body style="font-family:-apple-system,'Segoe UI',Roboto,Arial,sans-serif;max-width:520px;margin:24px auto;padding:0 16px;color:#1c1f26;">
-  <div style="border:5px double #1c1f26;overflow:hidden;">
-  <div style="display:flex;align-items:stretch;min-height:68px;padding:6px;background:#c81e1e;-webkit-print-color-adjust:exact;print-color-adjust:exact;">
-    <div style="flex:1;min-width:0;color:#fff;display:flex;align-items:center;justify-content:flex-end;padding-right:10px;font-size:clamp(15px,6vw,27px);font-weight:900;letter-spacing:0;text-shadow:1px 1px 0 rgba(0,0,0,.28);">ДВЕРИ</div>
-    <div style="flex:0 0 auto;background:#fff;border-radius:8px;box-shadow:0 1px 4px rgba(0,0,0,.25);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:6px 12px;">
-      <div style="display:flex;align-items:center;gap:5px;">
-        <span style="width:24px;height:24px;flex:0 0 auto;background:#1c1f26;color:#fff;font-size:16px;font-weight:900;display:flex;align-items:center;justify-content:center;border-radius:4px;">1</span>
-        <span style="font-size:clamp(14px,5vw,23px);font-weight:900;color:#1c1f26;letter-spacing:.01em;white-space:nowrap;">СОРТ</span>
+<style>
+  @page { size: A4 portrait; margin: 10mm; }
+  body { font-family: -apple-system, "Segoe UI", Roboto, Arial, sans-serif; max-width: 560px; margin: 24px auto; padding: 0 16px; color: #1c1f26; }
+  .tag-doc { border: 5px double #1c1f26; overflow: hidden; }
+  .tag-logo { display: flex; align-items: stretch; min-height: 68px; padding: 6px; background: #c81e1e; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .tag-logo-side { flex: 1; min-width: 0; color: #fff; display: flex; align-items: center; font-size: clamp(15px, 6vw, 27px); font-weight: 900; text-shadow: 1px 1px 0 rgba(0,0,0,.28); }
+  .tag-logo-side.left { justify-content: flex-end; padding-right: 10px; }
+  .tag-logo-side.right { justify-content: flex-start; padding-left: 10px; }
+  .tag-logo-badge { flex: 0 0 auto; background: #fff; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,.25); display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 6px 12px; }
+  .tag-logo-badge-top { display: flex; align-items: center; gap: 5px; }
+  .tag-logo-badge-num { width: 24px; height: 24px; flex: 0 0 auto; background: #1c1f26; color: #fff; font-size: 16px; font-weight: 900; display: flex; align-items: center; justify-content: center; border-radius: 4px; }
+  .tag-logo-badge-text { font-size: clamp(14px, 5vw, 23px); font-weight: 900; color: #1c1f26; letter-spacing: .01em; white-space: nowrap; }
+  .tag-logo-badge-sub { font-size: 9px; font-weight: 700; color: #666; letter-spacing: .06em; margin-top: 2px; white-space: nowrap; }
+  .tag-header-sub { text-align: center; font-size: 12px; color: #666; padding: 10px 14px 0; line-height: 1.5; }
+  .tag-check { display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px; margin-top: 2px; border: 1.5px solid #c81e1e; border-radius: 2px; color: #c81e1e; font-size: 11px; font-weight: 900; flex: 0 0 auto; }
+  .tag-model-title { font-weight: 900; font-size: 26px; padding: 10px 14px 0; }
+  .tag-model-cols { display: flex; flex-wrap: wrap; gap: 10px 22px; padding: 12px 14px 0; }
+  .tag-model-col { flex: 1 1 150px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+  .tag-model-field { display: flex; gap: 6px; align-items: flex-start; min-width: 0; }
+  .tag-model-field-label { font-weight: 700; font-size: 11px; }
+  .tag-model-field-value { font-size: 12px; color: #666; }
+  .tag-model-price { font-weight: 900; font-size: 32px; text-align: center; padding: 14px 14px 4px; }
+  .tag-komplekt-band { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 14px; background: #1f3a5f; color: #fff; font-weight: 800; font-size: 17px; padding: 8px 14px; margin-top: 10px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .tag-komplekt-colheads, .tag-komplekt-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; column-gap: 8px; row-gap: 4px; }
+  .tag-komplekt-colheads { padding: 6px 14px 0; font-size: 10px; color: #666; }
+  .tag-komplekt-colheads span { grid-column: 3; text-align: right; white-space: nowrap; }
+  .tag-komplekt-colheads span:last-child { grid-column: 4; }
+  .tag-komplekt-row { padding: 7px 14px; border-bottom: 1px dashed #ddd; }
+  .tag-komplekt-label { grid-column: 2; min-width: 0; font-weight: 700; font-size: 13px; }
+  .tag-komplekt-qty { font-weight: 400; color: #666; }
+  .tag-komplekt-unit, .tag-komplekt-total { grid-column: 3; text-align: right; font-size: 12px; white-space: nowrap; }
+  .tag-komplekt-total { grid-column: 4; font-weight: 800; }
+  .tag-doc-footer { padding: 16px 14px 20px; }
+  .tag-meta-line { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; font-size: 13px; }
+  @media print { .tag-doc { border: none; width: 190mm; max-width: 190mm; max-height: 132mm; } }
+</style></head>
+<body>
+  <div class="tag-doc">
+    <div class="tag-logo">
+      <div class="tag-logo-side left">ДВЕРИ</div>
+      <div class="tag-logo-badge">
+        <div class="tag-logo-badge-top"><span class="tag-logo-badge-num">1</span><span class="tag-logo-badge-text">СОРТ</span></div>
+        <div class="tag-logo-badge-sub">ФИРМЕННЫЙ МАГАЗИН</div>
       </div>
-      <div style="font-size:9px;font-weight:700;color:#666;letter-spacing:.06em;margin-top:2px;white-space:nowrap;">ФИРМЕННЫЙ МАГАЗИН</div>
+      <div class="tag-logo-side right">ОКНА</div>
     </div>
-    <div style="flex:1;min-width:0;color:#fff;display:flex;align-items:center;justify-content:flex-start;padding-left:10px;font-size:clamp(15px,6vw,27px);font-weight:900;letter-spacing:0;text-shadow:1px 1px 0 rgba(0,0,0,.28);">ОКНА</div>
-  </div>
-  <div style="padding:0 14px;">
-  <div style="text-align:center;font-size:12px;color:#666;padding:12px 0 0;line-height:1.6;">${TAG_HEADER_SUB_LINES.map(esc).join("<br>")}</div>
-  ${itemsHtml || "<p>Пусто.</p>"}
-  <div style="display:flex;flex-wrap:wrap;justify-content:space-between;gap:4px 14px;font-weight:800;font-size:18px;border-top:2px solid #1c1f26;padding-top:12px;margin-top:12px;">
-    <span>Итого</span><span>${esc(tagMoney(tagGrandTotal(view.items)))}</span>
-  </div>
-  <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-top:10px;padding-bottom:16px;font-size:13px;">
-    <span>Дата: ${esc(view.tagDate || "")}</span>
-    <span>Подпись: _______________</span>
-  </div>
-  </div>
+    <div class="tag-header-sub">${TAG_HEADER_SUB_LINES.map(esc).join("<br>")}</div>
+    ${leafCardHtml}
+    ${komplektHtml}
+    <div class="tag-doc-footer">
+      <div class="tag-meta-line">
+        <span>Дата: ${esc(view.tagDate || "")}</span>
+        <span>Подпись: _______________</span>
+      </div>
+    </div>
   </div>
 </body></html>`;
     const blob = new Blob([html], { type: "text/html;charset=utf-8" });
