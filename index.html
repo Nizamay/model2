@@ -591,17 +591,20 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
   #tagPrintBatch, #tagPrintBatch * { visibility: visible; }
   #tagPrintBatch { position: absolute; left: 0; top: 0; width: 100%; padding: 0; }
 
-  /* Печать ценника по ширине под половину листа А4 (=реальный формат А5) —
-     карточка получает фиксированную ширину в мм, без выбора формата А5 в
-     принтере (которого часто нет ни в приложении печати на телефоне, ни в
-     лотке принтера). Высота НЕ ограничивается фиксированным max-height:
-     при большем числе позиций в «Составе комплекта» карточка выше
-     половины листа — раньше max-height обрезал (overflow: hidden) низ
-     документа вместе с датой/подписью, см. отчёт со скриншотом печати,
-     где подвал документа пропал. Пусть лучше печатается чуть больше
-     половины листа, чем часть ценника теряется. */
+  /* Ширина карточки — 100% страницы, а не жёсткий размер в мм: сам формат
+     страницы (А4/А5, книжная/альбомная) выбирается в диалоге печати
+     телефона/принтера — там, где пользователь это и так может сделать
+     напрямую (см. отчёт со скриншотами всех 4 комбинаций формата/
+     ориентации из диалога печати). Раньше здесь жёстко навязывался
+     «@page A4 книжная» (см. printTagDocument) — при выборе в диалоге
+     печати альбомной ориентации это приводило к сильному уменьшению и
+     смещению карточки (браузер вписывал книжную виртуальную страницу в
+     более низкий альбомный физический лист). Высота не ограничивается:
+     при большем числе позиций в «Составе комплекта» и небольшом листе
+     (А5) документ может перейти на следующую страницу — это лучше, чем
+     обрезать дату/подпись (см. предыдущий отчёт). */
   #viewTag .tag-doc, #tagPrintBatch .tag-doc {
-    border: none; width: 190mm; max-width: 190mm; overflow: visible; container-type: inline-size;
+    border: none; width: 100%; max-width: 100%; overflow: visible; container-type: inline-size;
   }
   #tagPrintBatch .tag-doc { page-break-after: always; }
   #tagPrintBatch .tag-doc:last-child { page-break-after: auto; }
@@ -3970,8 +3973,12 @@ const DB = {
   // динамически прямо перед печатью и снимаем сразу после — иначе печать
   // «Спецификации» тоже получила бы эти поля.
   function printTagDocument(afterCleanup) {
+    // Формат/ориентацию страницы намеренно не навязываем (без size: ...) —
+    // пользователь выбирает их сам в диалоге печати (А4/А5, книжная/
+    // альбомная — все 4 варианта там уже доступны напрямую); задаём только
+    // единообразные поля.
     const style = document.createElement("style");
-    style.textContent = "@page { size: A4 portrait; margin: 10mm; }";
+    style.textContent = "@page { margin: 10mm; }";
     document.head.appendChild(style);
     function cleanup() {
       style.remove();
@@ -4045,7 +4052,7 @@ const DB = {
 
     const html = `<!doctype html><html lang="ru"><head><meta charset="UTF-8"><title>Ценник</title>
 <style>
-  @page { size: A4 portrait; margin: 10mm; }
+  @page { margin: 10mm; }
   body { font-family: -apple-system, "Segoe UI", Roboto, Arial, sans-serif; max-width: 560px; margin: 24px auto; padding: 0 16px; color: #1c1f26; }
   .tag-doc { border: 5px double #1c1f26; overflow: hidden; }
   .tag-logo { display: block; width: 100%; height: auto; }
@@ -4070,7 +4077,10 @@ const DB = {
   .tag-komplekt-total { grid-column: 4; font-weight: 800; }
   .tag-doc-footer { padding: 16px 14px 20px; }
   .tag-meta-line { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; font-size: 13px; }
-  @media print { .tag-doc { border: none; width: 190mm; max-width: 190mm; overflow: visible; } }
+  @media print {
+    body { max-width: none; margin: 0; padding: 0; }
+    .tag-doc { border: none; width: 100%; max-width: 100%; overflow: visible; }
+  }
 </style></head>
 <body>
   <div class="tag-doc">
