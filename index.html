@@ -498,8 +498,21 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 /* .tag-doc-group — сам ценник (.tag-doc) и, при активной Акции, жёлтая
    приставка справа (.tag-promo-tab) в одну строку той же высоты
    (align-items: stretch). Без Акции приставки просто нет в разметке —
-   .tag-doc-group ничем не отличается от отсутствия обёртки. */
+   .tag-doc-group ничем не отличается от отсутствия обёртки.
+
+   С Акцией (.tag-doc-group-with-promo) — приставка ДОБАВЛЯЕТСЯ, а не
+   сжимает ценник: сам .tag-doc должен остаться того же размера, что и
+   без Акции (см. отчёт — ценник не должен сужаться), а приставка — это
+   ещё +1/3 сверху. Обычный flex-раздел 100%/33% пополам сжал бы сам
+   .tag-doc до 66% его обычной ширины (переносы текста, наложение строк
+   в «Сумме комплекта» — см. отчёт со скриншотом). Вместо этого группа
+   становится на 33% ШИРЕ своего контейнера (133.333%), а .tag-doc и
+   .tag-promo-tab делят её как 75%/25% — что при пересчёте от исходной
+   ширины контейнера даёт ровно 100% (ценник как был) и 33.333% (треть)
+   соответственно. Группа при этом физически шире страницы — это
+   ожидаемо (переставка «добавляется сбоку»), см. overflow-x на body. */
 .tag-doc-group { display: flex; align-items: stretch; }
+.tag-doc-group-with-promo { width: 133.333%; }
 /* Двойная рамка-окантовка вокруг самого ценника — border-style: double даёт
    ровно две параллельные линии с зазором средствами одного border, без
    лишней разметки. Углы прямые (без border-radius), по образцу. Ширина
@@ -509,31 +522,30 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
   flex: 1 1 auto; min-width: 0;
   border: 5px double #1c1f26; overflow: hidden; container-type: inline-size;
 }
+.tag-doc-group-with-promo .tag-doc { flex: 0 0 75%; }
 
-/* Жёлтая приставка «Акция» — 1/3 ширины ценника, во всю высоту, текст
-   вертикальный (снизу вверх), как на присланном от руки эскизе.
-   justify-content: space-between в .tag-promo-tab-text растягивает текст
-   на всю длину приставки (а не мелко сжимает посередине) — «Акция -N%»
-   крупным жирным у одного края, «до: дата» помельче у другого, см. отчёт
-   со скриншотом с разметкой («видно издалека», «на всю длину»). */
+/* Жёлтая приставка «Акция» — треть ширины ценника (см. .tag-doc-group-
+   with-promo выше), во всю высоту, текст вертикальный (снизу вверх), как
+   на присланном от руки эскизе — одной строкой («Акция -N% до: дата»),
+   размер шрифта подгоняется под реальную высоту приставки скриптом (см.
+   fitPromoTabText) так, чтобы строка занимала всю площадь приставки и
+   по длине, и по ширине — читается издалека. */
 .tag-promo-tab {
-  flex: 0 0 33.333%; min-width: 0; background: #ffd400; border: 3px solid #c81e1e;
+  flex: 0 0 25%; min-width: 0; background: #ffd400; border: 3px solid #c81e1e;
   border-left: none; display: flex; align-items: stretch; justify-content: center;
-  padding: 10px 4px; container-type: inline-size;
+  padding: 10px 4px;
   -webkit-print-color-adjust: exact; print-color-adjust: exact;
 }
 .tag-promo-tab-text {
   writing-mode: vertical-rl; transform: rotate(180deg);
-  color: #c81e1e; white-space: nowrap;
-  display: flex; flex-direction: column; justify-content: space-between; align-items: center; gap: 10px;
+  font-weight: 900; color: #c81e1e; white-space: nowrap;
+  display: flex; align-items: center; justify-content: center; gap: 6px;
   width: 100%;
 }
-.tag-promo-tab-highlight { font-weight: 900; font-size: clamp(20px, 34cqw, 34px); }
-.tag-promo-tab-until { font-weight: 700; font-size: clamp(12px, 16cqw, 17px); display: flex; align-items: center; gap: 4px; }
-.tag-promo-tab-until input {
+.tag-promo-tab-text input {
   writing-mode: vertical-rl; transform: rotate(180deg);
   border: none; background: none; color: inherit; font: inherit; font-weight: inherit;
-  width: 4.5em; padding: 0; text-align: center;
+  padding: 0; text-align: center;
 }
 
 /* Логотип «Двери 1ый Сорт Окна» — настоящая картинка из фирменного прайса
@@ -646,7 +658,7 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
      обрезать дату/подпись (см. предыдущий отчёт). */
   #viewTag .tag-doc-group { width: 100%; max-width: 100%; }
   #viewTag .tag-doc { border: none; overflow: visible; }
-  #viewTag .tag-promo-tab-until input { border: none; background: none; outline: none; }
+  #viewTag .tag-promo-tab-text input { border: none; background: none; outline: none; }
 }
 
 /* --- 3D комната с дверью --- */
@@ -3988,25 +4000,64 @@ const DB = {
   }
 
   // Жёлтая «приставка» справа от ценника (1/3 ширины, во всю высоту) —
-  // появляется только когда у полотна активна Акция. Текст вертикальный
-  // (снизу вверх), растянут на всю высоту (justify-content: space-between
-  // в .tag-promo-tab-text — см. CSS) — «Акция -N%» крупным жирным у одного
-  // края, «до: дата» помельче у другого, чтобы было видно издалека и на
-  // всю длину приставки, а не мелко и сжато посередине (см. отчёт со
-  // скриншотом с разметкой). Дата «до:» — обычный input, тоже повёрнутый
-  // (см. .tag-promo-tab-until input в CSS), как read-only текст при
-  // просмотре сохранённой записи.
-  function tagPromoTabHtml(leaf, view) {
+  // появляется только когда у полотна активна Акция (любой процент от 1
+  // до 100 — leaf.promoPercent просто должен быть > 0, никакой привязки
+  // к конкретному числу нет). Одна строка «Акция -N% до: дата», текст
+  // вертикальный (снизу вверх). Размер шрифта не фиксирован в CSS —
+  // подгоняется под реальные размеры приставки скриптом (см.
+  // fitPromoTabText), чтобы строка занимала всю площадь приставки и по
+  // длине, и по ширине, а не мелкий текст с пустым жёлтым полем вокруг
+  // (см. отчёт со скриншотом с разметкой). fontSizePx — готовое значение
+  // для статического экспорта (скачиваемый файл, см. downloadTagFile),
+  // где скрипта нет и подогнать размер негде, кроме как на лету при
+  // генерации. Дата «до:» — обычный input (повёрнутый вместе с текстом),
+  // как read-only текст при просмотре сохранённой записи.
+  function tagPromoTabHtml(leaf, view, fontSizePx) {
     if (!leaf || !leaf.promoPercent) return "";
     const dateField = view.readOnly
       ? esc(view.promoUntil || "")
       : `<input type="text" id="tagPromoUntilInput" value="${esc(view.promoUntil || "")}" placeholder="дд.мм.гг">`;
+    const style = fontSizePx ? ` style="font-size:${fontSizePx}px"` : "";
     return `<div class="tag-promo-tab">
-      <div class="tag-promo-tab-text">
-        <span class="tag-promo-tab-highlight">Акция -${leaf.promoPercent}%</span>
-        <span class="tag-promo-tab-until">до: ${dateField}</span>
-      </div>
+      <div class="tag-promo-tab-text"${style}>Акция -${leaf.promoPercent}% до: ${dateField}</div>
     </div>`;
+  }
+
+  // Подгоняет размер шрифта .tag-promo-tab-text под реальные размеры
+  // приставки (см. tagPromoTabHtml) — иначе при фиксированном clamp()
+  // либо остаётся пустое жёлтое поле при длинной приставке, либо текст
+  // не помещается при короткой. Логика: сперва меряем «естественную»
+  // длину строки при базовом (известном) размере шрифта — для
+  // повёрнутого (writing-mode: vertical-rl) текста без переноса это
+  // ровно scrollHeight/offsetHeight элемента (transform на итоговый
+  // layout-размер box'а не влияет, только на отображение) — а затем
+  // масштабируем размер шрифта пропорционально отношению доступной длины
+  // приставки к этой «естественной» длине. Дополнительно ограничиваем
+  // сверху шириной приставки, чтобы толщина строки не вылезала за края.
+  function fitPromoTabText(tabEl) {
+    if (!tabEl) return;
+    const textEl = tabEl.querySelector(".tag-promo-tab-text");
+    if (!textEl) return;
+    const probeSize = 16;
+    textEl.style.fontSize = probeSize + "px";
+    // .tag-promo-tab-text — flex-элемент .tag-promo-tab, у которого
+    // align-items: stretch — без этого переопределения элемент растянут на
+    // всю высоту приставки ЕЩЁ ДО измерения, и scrollHeight показывает не
+    // «естественную» длину строки при probeSize, а просто высоту приставки
+    // (замер получался «уже подогнан», хотя реальный текст короче — из-за
+    // этого шрифт совсем не увеличивался, оставался мелким с пустым жёлтым
+    // полем вокруг). Меряем с align-self: flex-start, чтобы элемент занял
+    // ровно столько места, сколько нужно контенту, затем возвращаем как было.
+    textEl.style.alignSelf = "flex-start";
+    const naturalLength = textEl.scrollHeight || textEl.offsetHeight;
+    textEl.style.alignSelf = "";
+    const availableLength = tabEl.clientHeight - 20;
+    const availableThickness = tabEl.clientWidth - 10;
+    if (!naturalLength || availableLength <= 0) return;
+    let fitSize = probeSize * (availableLength / naturalLength);
+    fitSize = Math.min(fitSize, availableThickness);
+    fitSize = Math.max(fitSize, 11);
+    textEl.style.fontSize = Math.floor(fitSize) + "px";
   }
 
   // Тело печатной формы/картинки — общее и для живого просмотра/
@@ -4017,8 +4068,23 @@ const DB = {
   // по образцу заказчика (xls-таблица): крупная карточка первого полотна
   // (если оно есть в ценнике) + единая таблица «Сумма комплекта» со всеми
   // позициями (полотно + его опции + погонаж/фурнитура) и их итогом.
+  // Полотно, которое показывается крупной карточкой на ценнике. Обычно в
+  // ценнике только одна дверь (плюс её погонаж/фурнитура) — но если в
+  // черновик по ошибке дважды нажали «Сохранить в ценник» (вместо
+  // «✏️ Изменить» для уже добавленной позиции), в списке оказывается два
+  // полотна: старое (например, без Акции или с другим %) и новое. Простой
+  // «первое найденное» в этом случае показывало бы старые/чужие данные
+  // Акции независимо от того, что выставлено в калькуляторе сейчас (см.
+  // отчёт «Акция срабатывает только на 10%» — при повторных тестах именно
+  // так и получалось). Поэтому при нескольких полотнах отдаём предпочтение
+  // тому, у которого Акция активна.
+  function tagPrimaryLeaf(items) {
+    const leaves = items.filter((it) => it.section !== "погонаж" && it.section !== "фурнитура");
+    return leaves.find((it) => it.promoPercent > 0) || leaves[0];
+  }
+
   function tagDocHtml(view) {
-    const leaf = view.items.find((it) => it.section !== "погонаж" && it.section !== "фурнитура");
+    const leaf = tagPrimaryLeaf(view.items);
     const leafCardHtml = leaf ? tagLeafCardHtml(leaf) : "";
     const komplektHtml = !view.items.length
       ? `<div class="order-empty">Пока пусто — откройте «Калькулятор цены» и нажмите «Сохранить в ценник».</div>`
@@ -4047,12 +4113,14 @@ const DB = {
     // чтобы печать/экспорт картинкой (см. downloadTagImage/printCurrentTagDoc)
     // могли всегда рассчитывать на один и тот же корневой узел независимо от
     // того, есть приставка или нет.
-    return `<div class="tag-doc-group">${docHtml}${tagPromoTabHtml(leaf, view)}</div>`;
+    const groupClass = leaf && leaf.promoPercent ? "tag-doc-group tag-doc-group-with-promo" : "tag-doc-group";
+    return `<div class="${groupClass}">${docHtml}${tagPromoTabHtml(leaf, view)}</div>`;
   }
 
   function renderTagPage() {
     const view = currentTagView();
     el.tagDocHolder.innerHTML = tagDocHtml(view);
+    fitPromoTabText(el.tagDocHolder.querySelector(".tag-promo-tab"));
     el.tagDraftActions.hidden = view.readOnly;
     el.tagHistoryViewActions.hidden = !view.readOnly;
     el.tagEditingBanner.hidden = view.readOnly || view.meta.id == null;
@@ -4141,8 +4209,14 @@ const DB = {
   // классов основного приложения — файл должен открываться сам по себе.
   function downloadTagFile() {
     const view = currentTagView();
-    const leaf = view.items.find((it) => it.section !== "погонаж" && it.section !== "фурнитура");
+    const leaf = tagPrimaryLeaf(view.items);
     let leafCardHtml = leaf ? tagLeafCardHtml(leaf) : "";
+    // Размер шрифта приставки «Акция» подгоняется на лету скриптом только на
+    // живой странице (см. fitPromoTabText) — в статическом скачиваемом файле
+    // скрипта нет, поэтому берём уже подогнанное значение с текущей открытой
+    // страницы (тот же view) и запекаем его в inline style (см. tagPromoTabHtml).
+    const liveTabText = el.tagDocHolder.querySelector(".tag-promo-tab-text");
+    const fontSizePx = liveTabText ? parseFloat(getComputedStyle(liveTabText).fontSize) : null;
 
     const komplektHtml = !view.items.length
       ? "<p>Пусто.</p>"
@@ -4150,6 +4224,7 @@ const DB = {
          <div class="tag-komplekt-colheads"><span>цена за 1 шт.</span><span>цена ИТОГО:</span></div>
          ${view.items.map((it) => tagKomplektRowHtml(it, true) + (it.options || []).map(tagOptionRowHtml).join("")).join("")}`;
 
+    const groupClass = leaf && leaf.promoPercent ? "tag-doc-group tag-doc-group-with-promo" : "tag-doc-group";
     const html = `<!doctype html><html lang="ru"><head><meta charset="UTF-8"><title>Ценник</title>
 <style>
   @page { margin: 10mm; }
@@ -4182,18 +4257,24 @@ const DB = {
   .tag-model-promo-label { font-weight: 700; font-size: 11px; }
   .tag-model-promo-value { font-weight: 900; font-size: 30px; color: #c81e1e; }
   .tag-doc-group { display: flex; align-items: stretch; }
+  .tag-doc-group-with-promo { width: 133.333%; }
+  .tag-doc-group-with-promo .tag-doc { flex: 0 0 75%; }
   .tag-promo-tab {
-    flex: 0 0 33.333%; min-width: 0; background: #ffd400; border: 3px solid #c81e1e; border-left: none;
+    flex: 0 0 25%; min-width: 0; background: #ffd400; border: 3px solid #c81e1e; border-left: none;
     display: flex; align-items: stretch; justify-content: center; padding: 10px 4px;
     -webkit-print-color-adjust: exact; print-color-adjust: exact;
   }
   .tag-promo-tab-text {
-    writing-mode: vertical-rl; transform: rotate(180deg); color: #c81e1e; white-space: nowrap;
-    display: flex; flex-direction: column; justify-content: space-between; align-items: center; gap: 10px;
+    writing-mode: vertical-rl; transform: rotate(180deg);
+    font-weight: 900; color: #c81e1e; white-space: nowrap;
+    display: flex; align-items: center; justify-content: center; gap: 6px;
     width: 100%;
   }
-  .tag-promo-tab-highlight { font-weight: 900; font-size: 26px; }
-  .tag-promo-tab-until { font-weight: 700; font-size: 14px; }
+  .tag-promo-tab-text input {
+    writing-mode: vertical-rl; transform: rotate(180deg);
+    border: none; background: none; color: inherit; font: inherit; font-weight: inherit;
+    padding: 0; text-align: center;
+  }
   @media print {
     body { max-width: none; margin: 0; padding: 0; }
     .tag-doc-group { width: 100%; max-width: 100%; }
@@ -4201,7 +4282,7 @@ const DB = {
   }
 </style></head>
 <body>
-  <div class="tag-doc-group">
+  <div class="${groupClass}">
   <div class="tag-doc">
     <img class="tag-logo" src="${TAG_LOGO_DATA_URI}" alt="Двери 1 Сорт Окна — фирменный магазин">
     <div class="tag-header-sub">${TAG_HEADER_SUB_LINES.map(esc).join("<br>")}</div>
@@ -4214,7 +4295,7 @@ const DB = {
       </div>
     </div>
   </div>
-  ${tagPromoTabHtml(leaf, { ...view, readOnly: true })}
+  ${tagPromoTabHtml(leaf, { ...view, readOnly: true }, fontSizePx)}
   </div>
 </body></html>`;
     const blob = new Blob([html], { type: "text/html;charset=utf-8" });
@@ -4362,6 +4443,7 @@ const DB = {
       const entry = entries[i];
       host.innerHTML = tagDocHtml({ items: entry.items, tagDate: entry.tagDate, promoUntil: entry.promoUntil || "", readOnly: true });
       const docEl = host.querySelector(".tag-doc-group");
+      fitPromoTabText(host.querySelector(".tag-promo-tab"));
       try {
         const blob = await tagDocToPngBlob(docEl);
         downloadBlob(blob, `tsennik-${i + 1}.png`);
