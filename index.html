@@ -3959,7 +3959,11 @@ const DB = {
   // остальное — числом позиций, как у «Сохранённые спецификации».
   function tagEntryTitle(entry) {
     const leaf = entry.items.find((it) => it.section !== "погонаж" && it.section !== "фурнитура");
-    return (leaf || entry.items[0] || { label: "Ценник" }).label;
+    const name = (leaf || entry.items[0] || { label: "Ценник" }).label;
+    // Дата — та, что показана на самом ценнике (entry.tagDate), а не
+    // служебная createdAt: по просьбе заказчика название записи в списке
+    // — «дата + название модели», как на самом документе.
+    return entry.tagDate ? `${entry.tagDate} · ${name}` : name;
   }
 
   function renderTagListPage() {
@@ -3978,7 +3982,7 @@ const DB = {
         <input type="checkbox" class="tag-select" data-tag-select="${esc(entry.id)}">
         <div class="order-item">
           <div class="order-item-title order-item-title-link" data-tag-view="${esc(entry.id)}">${esc(tagEntryTitle(entry))}</div>
-          <div class="order-item-sub">${esc(entry.createdAt)} · ${entry.items.length} поз.</div>
+          <div class="order-item-sub">${entry.items.length} поз.</div>
           <div class="order-item-total"><span>Итого</span><span>${esc(tagMoney(entry.grandTotal))}</span></div>
           <div class="item-actions">
             <button type="button" data-tag-view="${esc(entry.id)}">👁 Открыть</button>
