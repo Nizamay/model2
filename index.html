@@ -495,12 +495,46 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 .tag-list-item > input[type="checkbox"] { margin-top: 14px; flex: 0 0 auto; width: 18px; height: 18px; }
 .tag-list-item > .order-item { flex: 1 1 auto; min-width: 0; }
 
-/* Двойная рамка-окантовка вокруг всего ценника — border-style: double даёт
+/* .tag-doc-group — сам ценник (.tag-doc) и, при активной Акции, жёлтая
+   приставка справа (.tag-promo-tab) в одну строку той же высоты
+   (align-items: stretch). Без Акции приставки просто нет в разметке —
+   .tag-doc-group ничем не отличается от отсутствия обёртки. */
+.tag-doc-group { display: flex; align-items: stretch; }
+/* Двойная рамка-окантовка вокруг самого ценника — border-style: double даёт
    ровно две параллельные линии с зазором средствами одного border, без
    лишней разметки. Углы прямые (без border-radius), по образцу. Ширина
    поменьше — на узких телефонных экранах толстая рамка съедала слишком
    много места под контент (см. отчёт со скриншотом реального устройства). */
-.tag-doc { border: 5px double #1c1f26; overflow: hidden; container-type: inline-size; }
+.tag-doc {
+  flex: 1 1 auto; min-width: 0;
+  border: 5px double #1c1f26; overflow: hidden; container-type: inline-size;
+}
+
+/* Жёлтая приставка «Акция» — 1/3 ширины ценника, во всю высоту, текст
+   вертикальный (снизу вверх), как на присланном от руки эскизе.
+   justify-content: space-between в .tag-promo-tab-text растягивает текст
+   на всю длину приставки (а не мелко сжимает посередине) — «Акция -N%»
+   крупным жирным у одного края, «до: дата» помельче у другого, см. отчёт
+   со скриншотом с разметкой («видно издалека», «на всю длину»). */
+.tag-promo-tab {
+  flex: 0 0 33.333%; min-width: 0; background: #ffd400; border: 3px solid #c81e1e;
+  border-left: none; display: flex; align-items: stretch; justify-content: center;
+  padding: 10px 4px; container-type: inline-size;
+  -webkit-print-color-adjust: exact; print-color-adjust: exact;
+}
+.tag-promo-tab-text {
+  writing-mode: vertical-rl; transform: rotate(180deg);
+  color: #c81e1e; white-space: nowrap;
+  display: flex; flex-direction: column; justify-content: space-between; align-items: center; gap: 10px;
+  width: 100%;
+}
+.tag-promo-tab-highlight { font-weight: 900; font-size: clamp(20px, 34cqw, 34px); }
+.tag-promo-tab-until { font-weight: 700; font-size: clamp(12px, 16cqw, 17px); display: flex; align-items: center; gap: 4px; }
+.tag-promo-tab-until input {
+  writing-mode: vertical-rl; transform: rotate(180deg);
+  border: none; background: none; color: inherit; font: inherit; font-weight: inherit;
+  width: 4.5em; padding: 0; text-align: center;
+}
 
 /* Логотип «Двери 1ый Сорт Окна» — настоящая картинка из фирменного прайса
    заказчика (см. TAG_LOGO_DATA_URI), а не воссозданная вёрсткой — печатает
@@ -532,6 +566,13 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 .tag-model-field-label { font-weight: 700; font-size: clamp(10px, 3cqw, 12px); }
 .tag-model-field-value { font-size: clamp(11px, 3.4cqw, 13px); color: var(--muted); word-break: break-word; }
 .tag-model-price { font-weight: 900; font-size: clamp(26px, 10cqw, 40px); text-align: center; padding: 14px 14px 4px; }
+/* Акция: цена полотна зачёркнута жирной чертой, а цена со скидкой — в
+   правом столбце характеристик (см. tagLeafCardHtml), крупнее основной
+   цены полотна — по просьбе заказчика (сама скидка важнее «недействующей»
+   цены). */
+.tag-model-price-crossed { text-decoration: line-through; text-decoration-thickness: 4px; text-decoration-color: var(--danger); opacity: .7; }
+.tag-model-promo-label { font-weight: 700; font-size: clamp(10px, 3cqw, 12px); }
+.tag-model-promo-value { font-weight: 900; font-size: clamp(30px, 12cqw, 46px); color: var(--danger); }
 
 /* --- Сумма комплекта: синяя плашка с итогом группы + таблица позиций
    (чекбокс, название с количеством, цена за 1 шт., цена итого) — как на
@@ -603,9 +644,9 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
      при большем числе позиций в «Сумме комплекта» и небольшом листе
      (А5) документ может перейти на следующую страницу — это лучше, чем
      обрезать дату/подпись (см. предыдущий отчёт). */
-  #viewTag .tag-doc {
-    border: none; width: 100%; max-width: 100%; overflow: visible; container-type: inline-size;
-  }
+  #viewTag .tag-doc-group { width: 100%; max-width: 100%; }
+  #viewTag .tag-doc { border: none; overflow: visible; }
+  #viewTag .tag-promo-tab-until input { border: none; background: none; outline: none; }
 }
 
 /* --- 3D комната с дверью --- */
@@ -963,7 +1004,7 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
       <div class="spec-editing-banner" id="tagEditingBanner" hidden>
         ✏️ В изменении — этот ценник уже сохранён. Правки попадут в список только после повторного «Сохранить ценник».
       </div>
-      <div class="tag-doc" id="tagDocHolder"></div>
+      <div id="tagDocHolder"></div>
       <div class="result-actions" id="tagDraftActions">
         <button type="button" id="saveTagDocBtn" class="btn-save">💾 Сохранить ценник</button>
         <button type="button" id="newTagBtn" class="btn-goto">🆕 Новый ценник</button>
@@ -2954,11 +2995,18 @@ const DB = {
     rows.push(`Полотно: ${leafBase} ₽`);
 
     const promo = promoActive();
+    const promoPercent = promo ? Math.max(0, Math.min(100, Number(state.promo) || 0)) : 0;
     let leafPrice = applyPromo(leafBase, rows);
+    // Цена полотна без учёта Акции — считается той же цепочкой (нестандарт
+    // и т.п.), просто от leafBase напрямую, а не от уже уценённого leafPrice.
+    // Нужна только для «зачёркнутой» цены в Ценнике (см. tagLeafCardHtml),
+    // на сам расчёт (perUnit/total) не влияет.
+    let leafPriceNoPromo = leafBase;
     const standard = isStandardSize(state.height, state.width, state.thickness);
     const nsMult = 1 + (Number(DB.nonStandardPercent) || 0) / 100;
     if (!standard) {
       leafPrice = roundUp10(leafPrice * nsMult);
+      leafPriceNoPromo = roundUp10(leafPriceNoPromo * nsMult);
       rows.push(`Наценка за нестандарт (+${DB.nonStandardPercent}%, округление вверх до 10 ₽): ${leafPrice} ₽`);
     }
 
@@ -2979,6 +3027,7 @@ const DB = {
     if (patina) rows.push(`Патина (${patina.name}): +${patinaPrice} ₽`);
 
     const perUnit = leafPrice + optionsSum + glassPrice + patinaPrice;
+    const perUnitNoPromo = leafPriceNoPromo + optionsSum + glassPrice + patinaPrice;
     const result = finishOrder(model, perUnit, rows, promo);
     return {
       ...result,
@@ -2988,6 +3037,10 @@ const DB = {
       glassName: glass ? glass.name : "",
       patinaName: patina ? patina.name : "",
       options: optionItems,
+      // Акция — для «Ценника» (зачёркнутая цена без скидки + жёлтая
+      // приставка), сам расчёт total/perUnit выше не меняется.
+      promoPercent,
+      totalNoPromo: promoPercent ? Math.round(perUnitNoPromo * result.quantity) : null,
       height: state.height, width: state.width, thickness: state.thickness,
       section: state.section
     };
@@ -3625,6 +3678,9 @@ const DB = {
 
   let tagItems = [];
   let tagDate = "";
+  // «До какого числа действует Акция» — общий для документа (не для каждой
+  // позиции), показывается в жёлтой приставке (см. tagPromoTabHtml).
+  let tagPromoUntil = "";
   // Присваивается (id/дата создания) только при первом «Сохранить ценник» —
   // как orderMeta.number у спецификации, см. saveTagDocument.
   let tagDraftMeta = { id: null, createdAt: null };
@@ -3643,17 +3699,18 @@ const DB = {
       if (parsed && typeof parsed === "object") {
         tagItems = Array.isArray(parsed.items) ? parsed.items : [];
         tagDate = typeof parsed.tagDate === "string" ? parsed.tagDate : "";
+        tagPromoUntil = typeof parsed.promoUntil === "string" ? parsed.promoUntil : "";
         tagDraftMeta = (parsed.meta && typeof parsed.meta === "object") ? parsed.meta : { id: null, createdAt: null };
       } else {
-        tagItems = []; tagDate = ""; tagDraftMeta = { id: null, createdAt: null };
+        tagItems = []; tagDate = ""; tagPromoUntil = ""; tagDraftMeta = { id: null, createdAt: null };
       }
     } catch (e) {
-      tagItems = []; tagDate = ""; tagDraftMeta = { id: null, createdAt: null };
+      tagItems = []; tagDate = ""; tagPromoUntil = ""; tagDraftMeta = { id: null, createdAt: null };
     }
   }
 
   function saveTagDraft() {
-    try { localStorage.setItem(TAG_DRAFT_KEY, JSON.stringify({ items: tagItems, tagDate, meta: tagDraftMeta })); } catch (e) {}
+    try { localStorage.setItem(TAG_DRAFT_KEY, JSON.stringify({ items: tagItems, tagDate, promoUntil: tagPromoUntil, meta: tagDraftMeta })); } catch (e) {}
   }
 
   function loadTagHistory() {
@@ -3682,9 +3739,9 @@ const DB = {
   function currentTagView() {
     if (viewingTagId != null) {
       const entry = tagHistory.find((e) => e.id === viewingTagId);
-      if (entry) return { items: entry.items, tagDate: entry.tagDate, meta: { id: entry.id, createdAt: entry.createdAt }, readOnly: true };
+      if (entry) return { items: entry.items, tagDate: entry.tagDate, promoUntil: entry.promoUntil || "", meta: { id: entry.id, createdAt: entry.createdAt }, readOnly: true };
     }
-    return { items: tagItems, tagDate, meta: tagDraftMeta, readOnly: false };
+    return { items: tagItems, tagDate, promoUntil: tagPromoUntil, meta: tagDraftMeta, readOnly: false };
   }
 
   // Короткое название позиции для компактной печатной формы — не то же
@@ -3715,6 +3772,10 @@ const DB = {
       // отображения в карточке полотна (галочкой) и в «Сумме комплекта»
       // (своей ценой), см. tagLeafCardHtml/tagOptionRowHtml.
       options: Array.isArray(o.options) ? o.options.map((x) => ({ ...x })) : [],
+      // Акция (см. computeOrder) — для «зачёркнутой» цены и жёлтой
+      // приставки в Ценнике, см. tagLeafCardHtml/tagPromoTabHtml.
+      promoPercent: o.promoPercent || 0,
+      totalNoPromo: o.totalNoPromo != null ? o.totalNoPromo : null,
       height: o.height, width: o.width, thickness: o.thickness, standard: o.standard,
       // Снимок стандартных ширин на момент сохранения — печатная форма
       // показывает их списком у полотна (цена одна и та же для всех
@@ -3766,6 +3827,7 @@ const DB = {
       id: tagDraftMeta.id,
       createdAt: tagDraftMeta.createdAt,
       tagDate: tagDate || formatSpecDate(new Date()),
+      promoUntil: tagPromoUntil || "",
       items: tagItems.map((it) => ({ ...it })),
       grandTotal: tagGrandTotal(tagItems)
     };
@@ -3774,6 +3836,7 @@ const DB = {
     saveTagHistory();
     tagItems = [];
     tagDate = "";
+    tagPromoUntil = "";
     tagDraftMeta = { id: null, createdAt: null };
     saveTagDraft();
     renderTagPage();
@@ -3784,6 +3847,7 @@ const DB = {
     if (!confirm("Начать новый ценник? Текущий черновик будет очищен (уже сохранённые ценники не пострадают).")) return;
     tagItems = [];
     tagDate = "";
+    tagPromoUntil = "";
     tagDraftMeta = { id: null, createdAt: null };
     saveTagDraft();
     renderTagPage();
@@ -3801,6 +3865,7 @@ const DB = {
     if (!entry) return;
     tagItems = entry.items.map((it) => ({ ...it }));
     tagDate = entry.tagDate;
+    tagPromoUntil = entry.promoUntil || "";
     tagDraftMeta = { id: entry.id, createdAt: entry.createdAt };
     viewingTagId = null;
     saveTagDraft();
@@ -3858,6 +3923,11 @@ const DB = {
   // галочками и отдельная крупная цена самого полотна — по образцу
   // xls-таблицы (там это отдельный блок над «Суммой комплекта»). Опции —
   // сразу после названия модели (см. отчёт с просьбой добавить их).
+  // При активной Акции (it.promoPercent) — цена полотна зачёркивается, а
+  // цена со скидкой добавляется в правый столбец (не отдельной третьей
+  // колонкой — так не растягивает карточку переносом на новую строку на
+  // узких экранах, см. отчёт со скриншотом с оранжевой разметкой), крупнее
+  // основной цены полотна.
   function tagLeafCardHtml(it) {
     const { heightText, widthText } = tagLeafDims(it);
     const optionFields = (it.options || []).map((opt) => tagModelFieldHtml(opt.name, "Да")).join("");
@@ -3867,16 +3937,22 @@ const DB = {
       it.glassName ? tagModelFieldHtml("Полотно остеклённое (ПО):", it.glassName) : "",
       it.patinaName ? tagModelFieldHtml("Патина:", it.patinaName) : "",
     ].filter(Boolean).join("");
+    const hasPromo = it.promoPercent > 0 && it.totalNoPromo != null;
+    const promoField = hasPromo
+      ? `<div class="tag-model-field tag-model-field-promo">${tagCheckIcon()}<div class="tag-model-field-body"><div class="tag-model-promo-label">Цена по акции:</div><div class="tag-model-promo-value">${esc(tagMoney(it.total - tagOptionsTotal(it)))}</div></div></div>`
+      : "";
     const rightFields = [
       heightText ? tagModelFieldHtml("высота (мм):", heightText) : "",
       widthText ? tagModelFieldHtml("ширина (мм):", widthText) : "",
+      promoField,
     ].filter(Boolean).join("");
+    const priceValue = hasPromo ? it.totalNoPromo - tagOptionsTotal(it) : it.total - tagOptionsTotal(it);
     return `<div class="tag-model-title">${esc(it.label)}</div>
       <div class="tag-model-cols">
         ${leftFields ? `<div class="tag-model-col">${leftFields}</div>` : ""}
         ${rightFields ? `<div class="tag-model-col">${rightFields}</div>` : ""}
       </div>
-      <div class="tag-model-price">${esc(tagMoney(it.total - tagOptionsTotal(it)))}</div>`;
+      <div class="tag-model-price${hasPromo ? " tag-model-price-crossed" : ""}">${esc(tagMoney(priceValue))}</div>`;
   }
 
   // Строка таблицы «Состав комплекта» — чекбокс, название с количеством,
@@ -3911,6 +3987,28 @@ const DB = {
     </div>`;
   }
 
+  // Жёлтая «приставка» справа от ценника (1/3 ширины, во всю высоту) —
+  // появляется только когда у полотна активна Акция. Текст вертикальный
+  // (снизу вверх), растянут на всю высоту (justify-content: space-between
+  // в .tag-promo-tab-text — см. CSS) — «Акция -N%» крупным жирным у одного
+  // края, «до: дата» помельче у другого, чтобы было видно издалека и на
+  // всю длину приставки, а не мелко и сжато посередине (см. отчёт со
+  // скриншотом с разметкой). Дата «до:» — обычный input, тоже повёрнутый
+  // (см. .tag-promo-tab-until input в CSS), как read-only текст при
+  // просмотре сохранённой записи.
+  function tagPromoTabHtml(leaf, view) {
+    if (!leaf || !leaf.promoPercent) return "";
+    const dateField = view.readOnly
+      ? esc(view.promoUntil || "")
+      : `<input type="text" id="tagPromoUntilInput" value="${esc(view.promoUntil || "")}" placeholder="дд.мм.гг">`;
+    return `<div class="tag-promo-tab">
+      <div class="tag-promo-tab-text">
+        <span class="tag-promo-tab-highlight">Акция -${leaf.promoPercent}%</span>
+        <span class="tag-promo-tab-until">до: ${dateField}</span>
+      </div>
+    </div>`;
+  }
+
   // Тело печатной формы/картинки — общее и для живого просмотра/
   // редактирования (view.readOnly === false, «Дата» — реальный input), и
   // для read-only рендера (печать, экспорт картинкой — как для текущего
@@ -3932,7 +4030,7 @@ const DB = {
       ? `<span class="tag-meta-static">${esc(view.tagDate || "")}</span>`
       : `<input type="text" id="tagDateInput" value="${esc(view.tagDate || "")}" placeholder="дд.мм.гггг">`;
 
-    return `<div class="tag-doc">
+    const docHtml = `<div class="tag-doc">
       ${tagLogoHtml()}
       <div class="tag-header-sub">${TAG_HEADER_SUB_LINES.map(esc).join("<br>")}</div>
       ${leafCardHtml}
@@ -3944,6 +4042,12 @@ const DB = {
         </div>
       </div>
     </div>`;
+
+    // Обёртка .tag-doc-group нужна всегда (не только при активной Акции) —
+    // чтобы печать/экспорт картинкой (см. downloadTagImage/printCurrentTagDoc)
+    // могли всегда рассчитывать на один и тот же корневой узел независимо от
+    // того, есть приставка или нет.
+    return `<div class="tag-doc-group">${docHtml}${tagPromoTabHtml(leaf, view)}</div>`;
   }
 
   function renderTagPage() {
@@ -4074,12 +4178,30 @@ const DB = {
   .tag-komplekt-total { grid-column: 4; font-weight: 800; }
   .tag-doc-footer { padding: 16px 14px 20px; }
   .tag-meta-line { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; font-size: 13px; }
+  .tag-model-price-crossed { text-decoration: line-through; text-decoration-thickness: 4px; text-decoration-color: #c81e1e; opacity: .7; }
+  .tag-model-promo-label { font-weight: 700; font-size: 11px; }
+  .tag-model-promo-value { font-weight: 900; font-size: 30px; color: #c81e1e; }
+  .tag-doc-group { display: flex; align-items: stretch; }
+  .tag-promo-tab {
+    flex: 0 0 33.333%; min-width: 0; background: #ffd400; border: 3px solid #c81e1e; border-left: none;
+    display: flex; align-items: stretch; justify-content: center; padding: 10px 4px;
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
+  .tag-promo-tab-text {
+    writing-mode: vertical-rl; transform: rotate(180deg); color: #c81e1e; white-space: nowrap;
+    display: flex; flex-direction: column; justify-content: space-between; align-items: center; gap: 10px;
+    width: 100%;
+  }
+  .tag-promo-tab-highlight { font-weight: 900; font-size: 26px; }
+  .tag-promo-tab-until { font-weight: 700; font-size: 14px; }
   @media print {
     body { max-width: none; margin: 0; padding: 0; }
-    .tag-doc { border: none; width: 100%; max-width: 100%; overflow: visible; }
+    .tag-doc-group { width: 100%; max-width: 100%; }
+    .tag-doc { border: none; overflow: visible; }
   }
 </style></head>
 <body>
+  <div class="tag-doc-group">
   <div class="tag-doc">
     <img class="tag-logo" src="${TAG_LOGO_DATA_URI}" alt="Двери 1 Сорт Окна — фирменный магазин">
     <div class="tag-header-sub">${TAG_HEADER_SUB_LINES.map(esc).join("<br>")}</div>
@@ -4091,6 +4213,8 @@ const DB = {
         <span>Подпись: _______________</span>
       </div>
     </div>
+  </div>
+  ${tagPromoTabHtml(leaf, { ...view, readOnly: true })}
   </div>
 </body></html>`;
     const blob = new Blob([html], { type: "text/html;charset=utf-8" });
@@ -4130,12 +4254,13 @@ const DB = {
       // форме (см. .item-actions/.tag-date-row input в @media print).
       const clone = docEl.cloneNode(true);
       clone.querySelectorAll(".item-actions").forEach((n) => n.remove());
-      const dateInput = clone.querySelector("#tagDateInput");
-      if (dateInput) {
+      // Дата и «до:» акции — обычным текстом вместо input (то же, что и
+      // .tag-date-row input в @media print).
+      clone.querySelectorAll("#tagDateInput, #tagPromoUntilInput").forEach((input) => {
         const span = document.createElement("span");
-        span.textContent = dateInput.value;
-        dateInput.replaceWith(span);
-      }
+        span.textContent = input.value;
+        input.replaceWith(span);
+      });
       clone.removeAttribute("id");
 
       const width = Math.ceil(docEl.getBoundingClientRect().width);
@@ -4206,7 +4331,7 @@ const DB = {
   }
 
   async function downloadTagImage() {
-    const docEl = el.tagDocHolder.querySelector(".tag-doc");
+    const docEl = el.tagDocHolder.querySelector(".tag-doc-group");
     if (!docEl) return;
     try {
       const blob = await tagDocToPngBlob(docEl);
@@ -4235,8 +4360,8 @@ const DB = {
     document.body.appendChild(host);
     for (let i = 0; i < entries.length; i++) {
       const entry = entries[i];
-      host.innerHTML = tagDocHtml({ items: entry.items, tagDate: entry.tagDate, readOnly: true });
-      const docEl = host.querySelector(".tag-doc");
+      host.innerHTML = tagDocHtml({ items: entry.items, tagDate: entry.tagDate, promoUntil: entry.promoUntil || "", readOnly: true });
+      const docEl = host.querySelector(".tag-doc-group");
       try {
         const blob = await tagDocToPngBlob(docEl);
         downloadBlob(blob, `tsennik-${i + 1}.png`);
@@ -4475,9 +4600,13 @@ const DB = {
     el.tagImageBtn.addEventListener("click", downloadTagImage);
     el.tagDownloadBtn.addEventListener("click", downloadTagFile);
     el.tagDocHolder.addEventListener("input", (e) => {
-      if (e.target.id !== "tagDateInput") return;
-      tagDate = e.target.value;
-      saveTagDraft();
+      if (e.target.id === "tagDateInput") {
+        tagDate = e.target.value;
+        saveTagDraft();
+      } else if (e.target.id === "tagPromoUntilInput") {
+        tagPromoUntil = e.target.value;
+        saveTagDraft();
+      }
     });
     el.tagDocHolder.addEventListener("click", (e) => {
       const editBtn = e.target.closest("[data-tag-item-edit]");
