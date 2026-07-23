@@ -533,7 +533,7 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 .tag-model-field-value { font-size: clamp(11px, 3.4cqw, 13px); color: var(--muted); word-break: break-word; }
 .tag-model-price { font-weight: 900; font-size: clamp(26px, 10cqw, 40px); text-align: center; padding: 14px 14px 4px; }
 
-/* --- Состав комплекта: синяя плашка с итогом группы + таблица позиций
+/* --- Сумма комплекта: синяя плашка с итогом группы + таблица позиций
    (чекбокс, название с количеством, цена за 1 шт., цена итого) — как на
    образце из xls, вместо прежнего компактного списка. */
 .tag-komplekt-band {
@@ -542,6 +542,9 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
   font-size: clamp(14px, 5cqw, 19px);
   -webkit-print-color-adjust: exact; print-color-adjust: exact;
 }
+/* Сама сумма — крупнее подписи, тем же размером, что и цена полотна
+   (.tag-model-price), по просьбе заказчика. */
+.tag-komplekt-band-value { font-size: clamp(24px, 9cqw, 38px); }
 /* Сетка (grid), а не flex — с flex-wrap колонка «цена за 1 шт.» иногда
    переносилась на отдельную строку сама по себе, отрываясь от «цена
    итого» (не помещались обе рядом с длинным названием на узкой карточке).
@@ -588,9 +591,6 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
   #viewTag .order-toolbar, #viewTag .result-actions, #viewTag .item-actions, #tagEditingBanner { display: none !important; }
   #viewTag .tag-date-row input { border: none; background: none; padding: 0; font-size: 13px; outline: none; }
 
-  #tagPrintBatch, #tagPrintBatch * { visibility: visible; }
-  #tagPrintBatch { position: absolute; left: 0; top: 0; width: 100%; padding: 0; }
-
   /* Ширина карточки — 100% страницы, а не жёсткий размер в мм: сам формат
      страницы (А4/А5, книжная/альбомная) выбирается в диалоге печати
      телефона/принтера — там, где пользователь это и так может сделать
@@ -600,14 +600,12 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
      печати альбомной ориентации это приводило к сильному уменьшению и
      смещению карточки (браузер вписывал книжную виртуальную страницу в
      более низкий альбомный физический лист). Высота не ограничивается:
-     при большем числе позиций в «Составе комплекта» и небольшом листе
+     при большем числе позиций в «Сумме комплекта» и небольшом листе
      (А5) документ может перейти на следующую страницу — это лучше, чем
      обрезать дату/подпись (см. предыдущий отчёт). */
-  #viewTag .tag-doc, #tagPrintBatch .tag-doc {
+  #viewTag .tag-doc {
     border: none; width: 100%; max-width: 100%; overflow: visible; container-type: inline-size;
   }
-  #tagPrintBatch .tag-doc { page-break-after: always; }
-  #tagPrintBatch .tag-doc:last-child { page-break-after: auto; }
 }
 
 /* --- 3D комната с дверью --- */
@@ -984,13 +982,11 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
     <div id="viewTagList" hidden>
       <div class="tag-list-toolbar" id="tagListToolbar" hidden>
         <label class="tag-select-all"><input type="checkbox" id="tagSelectAll"> Выбрать все</label>
-        <button type="button" id="tagPrintSelectedBtn" class="btn-save" disabled>🖨️ Печать выбранных (0)</button>
+        <button type="button" id="tagPrintSelectedBtn" class="btn-save" disabled>🖼️ Скачать картинки (0)</button>
       </div>
       <div id="tagListRows"></div>
     </div>
   </main>
-
-  <div id="tagPrintBatch" hidden></div>
 
   <div id="nameEditOverlay" class="modal-overlay" hidden>
     <div class="modal-box">
@@ -1660,8 +1656,7 @@ const DB = {
     tagListToolbar: document.getElementById("tagListToolbar"),
     tagSelectAll: document.getElementById("tagSelectAll"),
     tagPrintSelectedBtn: document.getElementById("tagPrintSelectedBtn"),
-    tagListRows: document.getElementById("tagListRows"),
-    tagPrintBatch: document.getElementById("tagPrintBatch")
+    tagListRows: document.getElementById("tagListRows")
   };
 
   // Контексты рисования для двух SVG: превью в калькуляторе и картинка в
@@ -2207,11 +2202,16 @@ const DB = {
     const optionDefs = getOptionDefs(getModel(state.modelId));
     let sum = 0;
     const lines = [];
+    // items — структурировано (имя + цена), отдельно от lines (готовый
+    // текст для разбивки/шаринга) — нужно для карточки/таблицы в Ценнике,
+    // где имя и цена показываются в разных колонках, а не одной строкой.
+    const items = [];
     optionDefs.forEach((opt) => {
       if (opt.kind === "checkbox") {
         if (state.options[opt.id]) {
           sum += opt.price;
           lines.push(`${opt.name}: +${opt.price} ₽`);
+          items.push({ name: opt.name, price: opt.price });
         }
       } else {
         const idx = state.options[opt.id] || 0;
@@ -2219,10 +2219,11 @@ const DB = {
         if (choice && choice.price) {
           sum += choice.price;
           lines.push(`${opt.name} (${choice.label}): +${choice.price} ₽`);
+          items.push({ name: `${opt.name} (${choice.label})`, price: choice.price });
         }
       }
     });
-    return { sum, lines };
+    return { sum, lines, items };
   }
 
   function updateSizeUI() {
@@ -2961,7 +2962,7 @@ const DB = {
       rows.push(`Наценка за нестандарт (+${DB.nonStandardPercent}%, округление вверх до 10 ₽): ${leafPrice} ₽`);
     }
 
-    const { sum: optionsSum, lines: optionLines } = sumSelectedOptions();
+    const { sum: optionsSum, lines: optionLines, items: optionItems } = sumSelectedOptions();
     const glass = state.glassId !== "none" ? modelGlasses(model).find((g) => g.id === state.glassId) : null;
     const glassPrice = glass ? glass.price : 0;
     optionLines.forEach((l) => rows.push(l));
@@ -2986,6 +2987,7 @@ const DB = {
       color: state.color,
       glassName: glass ? glass.name : "",
       patinaName: patina ? patina.name : "",
+      options: optionItems,
       height: state.height, width: state.width, thickness: state.thickness,
       section: state.section
     };
@@ -3709,6 +3711,10 @@ const DB = {
       section: o.section,
       label: tagItemLabel(o),
       material: o.materialLabel, color: o.color, glassName: o.glassName, patinaName: o.patinaName,
+      // Выбранные опции (кромка/усиление и т.п.) — отдельным списком, для
+      // отображения в карточке полотна (галочкой) и в «Сумме комплекта»
+      // (своей ценой), см. tagLeafCardHtml/tagOptionRowHtml.
+      options: Array.isArray(o.options) ? o.options.map((x) => ({ ...x })) : [],
       height: o.height, width: o.width, thickness: o.thickness, standard: o.standard,
       // Снимок стандартных ширин на момент сохранения — печатная форма
       // показывает их списком у полотна (цена одна и та же для всех
@@ -3837,13 +3843,26 @@ const DB = {
     return `<div class="tag-model-field">${tagCheckIcon()}<div class="tag-model-field-body"><div class="tag-model-field-label">${esc(label)}</div><div class="tag-model-field-value">${esc(value)}</div></div></div>`;
   }
 
+  // Опции уже учтены внутри it.total/it.perUnit (см. computeOrder: perUnit
+  // = leafPrice + optionsSum + ...), но в «Сумме комплекта» показываются
+  // отдельными строками с собственной ценой — как короб/наличник. Чтобы
+  // сумма строк полотна+опций визуально сходилась с it.total (не задваивая
+  // цену опции), из цены самого полотна её вычитаем — см. использование
+  // ниже в tagLeafCardHtml/tagKomplektRowHtml.
+  function tagOptionsTotal(it) {
+    return (it.options || []).reduce((s, o) => s + o.price, 0);
+  }
+
   // Карточка полотна двери — крупное название, два столбца характеристик
-  // (материал/цвет + стекло/патина слева, высота/ширина справа) с
+  // (опции/материал/цвет + стекло/патина слева, высота/ширина справа) с
   // галочками и отдельная крупная цена самого полотна — по образцу
-  // xls-таблицы (там это отдельный блок над «Составом комплекта»).
+  // xls-таблицы (там это отдельный блок над «Суммой комплекта»). Опции —
+  // сразу после названия модели (см. отчёт с просьбой добавить их).
   function tagLeafCardHtml(it) {
     const { heightText, widthText } = tagLeafDims(it);
+    const optionFields = (it.options || []).map((opt) => tagModelFieldHtml(opt.name, "Да")).join("");
     const leftFields = [
+      optionFields,
       tagModelFieldHtml(it.material || "Материал", it.color),
       it.glassName ? tagModelFieldHtml("Полотно остеклённое (ПО):", it.glassName) : "",
       it.patinaName ? tagModelFieldHtml("Патина:", it.patinaName) : "",
@@ -3857,7 +3876,7 @@ const DB = {
         ${leftFields ? `<div class="tag-model-col">${leftFields}</div>` : ""}
         ${rightFields ? `<div class="tag-model-col">${rightFields}</div>` : ""}
       </div>
-      <div class="tag-model-price">${esc(tagMoney(it.total))}</div>`;
+      <div class="tag-model-price">${esc(tagMoney(it.total - tagOptionsTotal(it)))}</div>`;
   }
 
   // Строка таблицы «Состав комплекта» — чекбокс, название с количеством,
@@ -3865,6 +3884,7 @@ const DB = {
   // кнопки правки/удаления позиции (то же поведение, что и раньше).
   function tagKomplektRowHtml(it, readOnly) {
     const qtyStr = String(it.quantity).replace(".", ",");
+    const optionsTotal = tagOptionsTotal(it);
     const actions = readOnly || !it.calcState ? "" : `
       <div class="item-actions">
         <button type="button" data-tag-item-edit="${esc(it.id)}">✏️ Изменить</button>
@@ -3873,27 +3893,40 @@ const DB = {
     return `<div class="tag-komplekt-row">
       ${tagCheckIcon()}
       <div class="tag-komplekt-label">${esc(it.label)} <span class="tag-komplekt-qty">(${qtyStr} шт.)</span></div>
-      <div class="tag-komplekt-unit">${esc(tagMoney(it.perUnit))}</div>
-      <div class="tag-komplekt-total">${esc(tagMoney(it.total))}</div>
+      <div class="tag-komplekt-unit">${esc(tagMoney(it.perUnit - optionsTotal))}</div>
+      <div class="tag-komplekt-total">${esc(tagMoney(it.total - optionsTotal))}</div>
       ${actions}
     </div>`;
   }
 
-  // Тело печатной формы — общее и для живого просмотра/редактирования
-  // (view.readOnly === false, «Дата» — реальный input), и для печати (в
-  // т.ч. пакетной, см. printTagBatch — там всегда читается как обычный
-  // текст, оформление через .tag-date-row input в @media print). Формат —
+  // Строка опции полотна (кромка/усиление и т.п.) в таблице «Сумма
+  // комплекта» — той же формы, что и строка короба/наличника, но без
+  // кнопок правки/удаления (это часть записи полотна, не своя позиция).
+  function tagOptionRowHtml(opt) {
+    return `<div class="tag-komplekt-row">
+      ${tagCheckIcon()}
+      <div class="tag-komplekt-label">${esc(opt.name)} <span class="tag-komplekt-qty">(1 шт.)</span></div>
+      <div class="tag-komplekt-unit">${esc(tagMoney(opt.price))}</div>
+      <div class="tag-komplekt-total">${esc(tagMoney(opt.price))}</div>
+    </div>`;
+  }
+
+  // Тело печатной формы/картинки — общее и для живого просмотра/
+  // редактирования (view.readOnly === false, «Дата» — реальный input), и
+  // для read-only рендера (печать, экспорт картинкой — как для текущего
+  // черновика, так и для сохранённых записей, см. downloadTagImagesForSelected
+  // — там всегда читается как обычный текст). Формат —
   // по образцу заказчика (xls-таблица): крупная карточка первого полотна
-  // (если оно есть в ценнике) + единая таблица «Состав комплекта» со всеми
-  // позициями (полотно + погонаж/фурнитура) и их итогом.
+  // (если оно есть в ценнике) + единая таблица «Сумма комплекта» со всеми
+  // позициями (полотно + его опции + погонаж/фурнитура) и их итогом.
   function tagDocHtml(view) {
     const leaf = view.items.find((it) => it.section !== "погонаж" && it.section !== "фурнитура");
     const leafCardHtml = leaf ? tagLeafCardHtml(leaf) : "";
     const komplektHtml = !view.items.length
       ? `<div class="order-empty">Пока пусто — откройте «Калькулятор цены» и нажмите «Сохранить в ценник».</div>`
-      : `<div class="tag-komplekt-band"><span>Состав комплекта:</span><span>${esc(tagMoney(tagGrandTotal(view.items)))}</span></div>
+      : `<div class="tag-komplekt-band"><span>Сумма комплекта:</span><span class="tag-komplekt-band-value">${esc(tagMoney(tagGrandTotal(view.items)))}</span></div>
          <div class="tag-komplekt-colheads"><span>цена за 1 шт.</span><span>цена ИТОГО:</span></div>
-         ${view.items.map((it) => tagKomplektRowHtml(it, view.readOnly)).join("")}`;
+         ${view.items.map((it) => tagKomplektRowHtml(it, view.readOnly) + (it.options || []).map(tagOptionRowHtml).join("")).join("")}`;
 
     const dateField = view.readOnly
       ? `<span class="tag-meta-static">${esc(view.tagDate || "")}</span>`
@@ -3926,7 +3959,11 @@ const DB = {
   // остальное — числом позиций, как у «Сохранённые спецификации».
   function tagEntryTitle(entry) {
     const leaf = entry.items.find((it) => it.section !== "погонаж" && it.section !== "фурнитура");
-    return (leaf || entry.items[0] || { label: "Ценник" }).label;
+    const name = (leaf || entry.items[0] || { label: "Ценник" }).label;
+    // Дата — та, что показана на самом ценнике (entry.tagDate), а не
+    // служебная createdAt: по просьбе заказчика название записи в списке
+    // — «дата + название модели», как на самом документе.
+    return entry.tagDate ? `${entry.tagDate} · ${name}` : name;
   }
 
   function renderTagListPage() {
@@ -3945,7 +3982,7 @@ const DB = {
         <input type="checkbox" class="tag-select" data-tag-select="${esc(entry.id)}">
         <div class="order-item">
           <div class="order-item-title order-item-title-link" data-tag-view="${esc(entry.id)}">${esc(tagEntryTitle(entry))}</div>
-          <div class="order-item-sub">${esc(entry.createdAt)} · ${entry.items.length} поз.</div>
+          <div class="order-item-sub">${entry.items.length} поз.</div>
           <div class="order-item-total"><span>Итого</span><span>${esc(tagMoney(entry.grandTotal))}</span></div>
           <div class="item-actions">
             <button type="button" data-tag-view="${esc(entry.id)}">👁 Открыть</button>
@@ -3958,7 +3995,7 @@ const DB = {
 
   function updateTagPrintSelectedBtn() {
     const n = selectedTagIds.size;
-    el.tagPrintSelectedBtn.textContent = `🖨️ Печать выбранных (${n})`;
+    el.tagPrintSelectedBtn.textContent = `🖼️ Скачать картинки (${n})`;
     el.tagPrintSelectedBtn.disabled = n === 0;
   }
 
@@ -3995,62 +4032,19 @@ const DB = {
     printTagDocument();
   }
 
-  function printTagBatch(ids) {
-    const entries = ids.map((id) => tagHistory.find((e) => e.id === id)).filter(Boolean);
-    if (!entries.length) return;
-    el.tagPrintBatch.innerHTML = entries
-      .map((entry) => tagDocHtml({ items: entry.items, tagDate: entry.tagDate, readOnly: true }))
-      .join("");
-    el.tagPrintBatch.hidden = false;
-    printTagDocument(() => {
-      el.tagPrintBatch.hidden = true;
-      el.tagPrintBatch.innerHTML = "";
-    });
-  }
-
   // Скачиваемый файл — тот же макет, что и на живой странице (карточка
   // полотна + таблица «Состав комплекта»), но со встроенным <style> вместо
   // классов основного приложения — файл должен открываться сам по себе.
   function downloadTagFile() {
     const view = currentTagView();
     const leaf = view.items.find((it) => it.section !== "погонаж" && it.section !== "фурнитура");
-
-    function fieldHtml(label, value) {
-      if (!value) return "";
-      return `<div class="tag-model-field"><span class="tag-check">✓</span><div><div class="tag-model-field-label">${esc(label)}</div><div class="tag-model-field-value">${esc(value)}</div></div></div>`;
-    }
-    let leafCardHtml = "";
-    if (leaf) {
-      const { heightText, widthText } = tagLeafDims(leaf);
-      const leftFields = [
-        fieldHtml(leaf.material || "Материал", leaf.color),
-        leaf.glassName ? fieldHtml("Полотно остеклённое (ПО):", leaf.glassName) : "",
-        leaf.patinaName ? fieldHtml("Патина:", leaf.patinaName) : "",
-      ].filter(Boolean).join("");
-      const rightFields = [
-        heightText ? fieldHtml("высота (мм):", heightText) : "",
-        widthText ? fieldHtml("ширина (мм):", widthText) : "",
-      ].filter(Boolean).join("");
-      leafCardHtml = `<div class="tag-model-title">${esc(leaf.label)}</div>
-        <div class="tag-model-cols">
-          ${leftFields ? `<div class="tag-model-col">${leftFields}</div>` : ""}
-          ${rightFields ? `<div class="tag-model-col">${rightFields}</div>` : ""}
-        </div>
-        <div class="tag-model-price">${esc(tagMoney(leaf.total))}</div>`;
-    }
+    let leafCardHtml = leaf ? tagLeafCardHtml(leaf) : "";
 
     const komplektHtml = !view.items.length
       ? "<p>Пусто.</p>"
-      : `<div class="tag-komplekt-band"><span>Состав комплекта:</span><span>${esc(tagMoney(tagGrandTotal(view.items)))}</span></div>
+      : `<div class="tag-komplekt-band"><span>Сумма комплекта:</span><span class="tag-komplekt-band-value">${esc(tagMoney(tagGrandTotal(view.items)))}</span></div>
          <div class="tag-komplekt-colheads"><span>цена за 1 шт.</span><span>цена ИТОГО:</span></div>
-         ${view.items.map((it) => {
-           const qtyStr = String(it.quantity).replace(".", ",");
-           return `<div class="tag-komplekt-row"><span class="tag-check">✓</span>
-             <div class="tag-komplekt-label">${esc(it.label)} <span class="tag-komplekt-qty">(${qtyStr} шт.)</span></div>
-             <div class="tag-komplekt-unit">${esc(tagMoney(it.perUnit))}</div>
-             <div class="tag-komplekt-total">${esc(tagMoney(it.total))}</div>
-           </div>`;
-         }).join("")}`;
+         ${view.items.map((it) => tagKomplektRowHtml(it, true) + (it.options || []).map(tagOptionRowHtml).join("")).join("")}`;
 
     const html = `<!doctype html><html lang="ru"><head><meta charset="UTF-8"><title>Ценник</title>
 <style>
@@ -4068,6 +4062,7 @@ const DB = {
   .tag-model-field-value { font-size: 12px; color: #666; }
   .tag-model-price { font-weight: 900; font-size: 32px; text-align: center; padding: 14px 14px 4px; }
   .tag-komplekt-band { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 14px; background: #1f3a5f; color: #fff; font-weight: 800; font-size: 17px; padding: 8px 14px; margin-top: 10px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .tag-komplekt-band-value { font-size: 30px; }
   .tag-komplekt-colheads, .tag-komplekt-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; column-gap: 8px; row-gap: 4px; }
   .tag-komplekt-colheads { padding: 6px 14px 0; font-size: 10px; color: #666; }
   .tag-komplekt-colheads span { grid-column: 3; text-align: right; white-space: nowrap; }
@@ -4124,60 +4119,61 @@ const DB = {
       .join(" ");
   }
 
-  function downloadTagImage() {
-    const docEl = el.tagDocHolder.querySelector(".tag-doc");
-    if (!docEl) return;
+  // Растеризует произвольный узел .tag-doc (уже в DOM, можно вне экрана) в
+  // PNG-Blob — общий код для одиночного «Скачать как картинку» и пакетного
+  // экспорта выбранных сохранённых ценников (см. downloadTagImage/
+  // downloadTagImagesForSelected).
+  function tagDocToPngBlob(docEl) {
+    return new Promise((resolve, reject) => {
+      // Клон без интерактивных элементов (кнопки правки/удаления, поле
+      // даты как обычный input) — на картинке это лишнее, как и в печатной
+      // форме (см. .item-actions/.tag-date-row input в @media print).
+      const clone = docEl.cloneNode(true);
+      clone.querySelectorAll(".item-actions").forEach((n) => n.remove());
+      const dateInput = clone.querySelector("#tagDateInput");
+      if (dateInput) {
+        const span = document.createElement("span");
+        span.textContent = dateInput.value;
+        dateInput.replaceWith(span);
+      }
+      clone.removeAttribute("id");
 
-    // Клон без интерактивных элементов (кнопки правки/удаления, поле даты
-    // как обычный input) — на картинке это лишнее, как и в печатной форме
-    // (см. .item-actions/.tag-date-row input в @media print).
-    const clone = docEl.cloneNode(true);
-    clone.querySelectorAll(".item-actions").forEach((n) => n.remove());
-    const dateInput = clone.querySelector("#tagDateInput");
-    if (dateInput) {
-      const span = document.createElement("span");
-      span.textContent = dateInput.value;
-      dateInput.replaceWith(span);
-    }
-    clone.removeAttribute("id");
+      const width = Math.ceil(docEl.getBoundingClientRect().width);
+      // Высоту меряем у самого клона (без кнопок правки/удаления), а не у
+      // исходного docEl — иначе картинка выше реального содержимого клона
+      // ровно на высоту убранных .item-actions, и внизу остаётся пустая
+      // полоса (см. отчёт со скриншотом экспортированной картинки).
+      clone.style.position = "absolute";
+      clone.style.left = "-9999px";
+      clone.style.top = "0";
+      clone.style.width = width + "px";
+      document.body.appendChild(clone);
+      // offsetHeight, а не scrollHeight — scrollHeight не включает толщину
+      // рамки (border), из-за чего SVG/canvas были на ~10px короче реальной
+      // карточки и нижняя часть двойной рамки просто обрезалась (см.
+      // отчёт с распечаткой скачанной картинки без нижней рамки).
+      const height = Math.ceil(clone.offsetHeight);
+      document.body.removeChild(clone);
+      clone.style.position = "";
+      clone.style.left = "";
+      clone.style.top = "";
+      const scale = 3; // выше разрешение — не размажется при печати фото
 
-    const width = Math.ceil(docEl.getBoundingClientRect().width);
-    // Высоту меряем у самого клона (без кнопок правки/удаления), а не у
-    // исходного docEl — иначе картинка выше реального содержимого клона
-    // ровно на высоту убранных .item-actions, и внизу остаётся пустая
-    // полоса (см. отчёт со скриншотом экспортированной картинки).
-    clone.style.position = "absolute";
-    clone.style.left = "-9999px";
-    clone.style.top = "0";
-    clone.style.width = width + "px";
-    document.body.appendChild(clone);
-    const height = Math.ceil(clone.scrollHeight);
-    document.body.removeChild(clone);
-    clone.style.position = "";
-    clone.style.left = "";
-    clone.style.top = "";
-    const scale = 3; // выше разрешение — не размажется при печати фото
+      const cssText = Array.from(document.querySelectorAll("style")).map((s) => s.textContent).join("\n");
+      // foreignObject требует строго валидный XML — обычный outerHTML не
+      // закрывает void-элементы (<img>) сам закрывающим слэшем, из-за чего
+      // вся SVG-строка не парсится и картинка не рендерится. XMLSerializer
+      // сериализует их правильно (<img .../>).
+      const cloneXml = new XMLSerializer().serializeToString(clone);
+      const svgMarkup = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">
+        <foreignObject width="100%" height="100%">
+          <div xmlns="http://www.w3.org/1999/xhtml" style="width:${width}px; ${tagRootCssVars()} background:#fff; font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+            <style>${cssText}</style>
+            ${cloneXml}
+          </div>
+        </foreignObject>
+      </svg>`;
 
-    const cssText = Array.from(document.querySelectorAll("style")).map((s) => s.textContent).join("\n");
-    // foreignObject требует строго валидный XML — обычный outerHTML не
-    // закрывает void-элементы (<img>) сам закрывающим слэшем, из-за чего
-    // вся SVG-строка не парсится и картинка не рендерится. XMLSerializer
-    // сериализует их правильно (<img .../>).
-    const cloneXml = new XMLSerializer().serializeToString(clone);
-    const svgMarkup = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">
-      <foreignObject width="100%" height="100%">
-        <div xmlns="http://www.w3.org/1999/xhtml" style="width:${width}px; ${tagRootCssVars()} background:#fff; font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
-          <style>${cssText}</style>
-          ${cloneXml}
-        </div>
-      </foreignObject>
-    </svg>`;
-
-    function fail() {
-      alert("Не удалось создать картинку в этом браузере. Можно сделать скриншот страницы вручную.");
-    }
-
-    try {
       const svgUrl = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svgMarkup);
       const img = new Image();
       img.onload = () => {
@@ -4190,23 +4186,66 @@ const DB = {
         ctx.scale(scale, scale);
         ctx.drawImage(img, 0, 0, width, height);
         canvas.toBlob((blob) => {
-          if (!blob) { fail(); return; }
-          const a = document.createElement("a");
-          const blobUrl = URL.createObjectURL(blob);
-          a.href = blobUrl;
-          a.download = "tsennik.png";
-          document.body.appendChild(a);
-          a.click();
-          a.remove();
-          setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+          if (blob) resolve(blob); else reject(new Error("canvas.toBlob returned null"));
         }, "image/png");
       };
-      img.onerror = (e) => { console.error("tag image export: img failed to load", e); fail(); };
+      img.onerror = (e) => reject(e);
       img.src = svgUrl;
+    });
+  }
+
+  function downloadBlob(blob, filename) {
+    const a = document.createElement("a");
+    const blobUrl = URL.createObjectURL(blob);
+    a.href = blobUrl;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+  }
+
+  async function downloadTagImage() {
+    const docEl = el.tagDocHolder.querySelector(".tag-doc");
+    if (!docEl) return;
+    try {
+      const blob = await tagDocToPngBlob(docEl);
+      downloadBlob(blob, "tsennik.png");
     } catch (e) {
       console.error("tag image export failed", e);
-      fail();
+      alert("Не удалось создать картинку в этом браузере. Можно сделать скриншот страницы вручную.");
     }
+  }
+
+  // Пакетный экспорт выбранных сохранённых ценников — по картинке на
+  // каждый (взамен прежней «Печати выбранных», которая печатала через
+  // window.print() и стала неактуальна с переходом на печать картинкой,
+  // см. отчёт пользователя). Каждый ценник рендерится по очереди в скрытом
+  // контейнере вне экрана (сама страница «Сохранённые ценники» их не
+  // показывает), тем же кодом, что и одиночное скачивание.
+  async function downloadTagImagesForSelected(ids) {
+    const entries = ids.map((id) => tagHistory.find((e) => e.id === id)).filter(Boolean);
+    if (!entries.length) return;
+    const cardWidth = document.querySelector(".calc-card").clientWidth - 56;
+    const host = document.createElement("div");
+    host.style.position = "absolute";
+    host.style.left = "-9999px";
+    host.style.top = "0";
+    host.style.width = cardWidth + "px";
+    document.body.appendChild(host);
+    for (let i = 0; i < entries.length; i++) {
+      const entry = entries[i];
+      host.innerHTML = tagDocHtml({ items: entry.items, tagDate: entry.tagDate, readOnly: true });
+      const docEl = host.querySelector(".tag-doc");
+      try {
+        const blob = await tagDocToPngBlob(docEl);
+        downloadBlob(blob, `tsennik-${i + 1}.png`);
+      } catch (e) {
+        console.error("tag image export (batch) failed", e);
+        alert(`Не удалось создать картинку для позиции ${i + 1} из ${entries.length}. Остальные попробуем продолжить.`);
+      }
+    }
+    host.remove();
   }
 
   function bind() {
@@ -4469,7 +4508,7 @@ const DB = {
       updateTagPrintSelectedBtn();
     });
     el.tagPrintSelectedBtn.addEventListener("click", () => {
-      if (selectedTagIds.size) printTagBatch(Array.from(selectedTagIds));
+      if (selectedTagIds.size) downloadTagImagesForSelected(Array.from(selectedTagIds));
     });
     el.sceneWallSwatches.addEventListener("click", onWallSwatchClick);
     el.sceneWallColor.addEventListener("input", () => setWallColor(el.sceneWallColor.value));
