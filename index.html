@@ -591,14 +591,17 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
   #tagPrintBatch, #tagPrintBatch * { visibility: visible; }
   #tagPrintBatch { position: absolute; left: 0; top: 0; width: 100%; padding: 0; }
 
-  /* Печать ценника занимает ровно половину листа А4 (=реальный формат А5),
-     а не весь лист: карточка получает фиксированный размер в мм под
-     верхнюю половину А4-страницы, нижняя половина остаётся пустой —
-     заказчик просто отрезает по границе. Так работает на любом принтере
-     без выбора формата А5 (которого часто нет ни в приложении печати на
-     телефоне, ни в лотке принтера — см. отчёт пользователя). */
+  /* Печать ценника по ширине под половину листа А4 (=реальный формат А5) —
+     карточка получает фиксированную ширину в мм, без выбора формата А5 в
+     принтере (которого часто нет ни в приложении печати на телефоне, ни в
+     лотке принтера). Высота НЕ ограничивается фиксированным max-height:
+     при большем числе позиций в «Составе комплекта» карточка выше
+     половины листа — раньше max-height обрезал (overflow: hidden) низ
+     документа вместе с датой/подписью, см. отчёт со скриншотом печати,
+     где подвал документа пропал. Пусть лучше печатается чуть больше
+     половины листа, чем часть ценника теряется. */
   #viewTag .tag-doc, #tagPrintBatch .tag-doc {
-    border: none; width: 190mm; max-width: 190mm; max-height: 132mm; container-type: inline-size;
+    border: none; width: 190mm; max-width: 190mm; overflow: visible; container-type: inline-size;
   }
   #tagPrintBatch .tag-doc { page-break-after: always; }
   #tagPrintBatch .tag-doc:last-child { page-break-after: auto; }
@@ -4067,7 +4070,7 @@ const DB = {
   .tag-komplekt-total { grid-column: 4; font-weight: 800; }
   .tag-doc-footer { padding: 16px 14px 20px; }
   .tag-meta-line { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; font-size: 13px; }
-  @media print { .tag-doc { border: none; width: 190mm; max-width: 190mm; max-height: 132mm; } }
+  @media print { .tag-doc { border: none; width: 190mm; max-width: 190mm; overflow: visible; } }
 </style></head>
 <body>
   <div class="tag-doc">
