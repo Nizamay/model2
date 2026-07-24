@@ -2985,18 +2985,27 @@ const DB = {
     }
 
     if (isSimpleModelSection(state.section)) {
-      // «Матрица» и пользовательские типы двери (см. isSimpleModelSection):
-      // готовая цена за полотно, категория цвета/стекло/опции не влияют —
-      // всё уже заложено в basePrice самой позиции. Название модели уже
-      // вынесено отдельным крупным заголовком — здесь не повторяем его.
+      // «Матрица» и пользовательские типы двери (см. isSimpleModelSection,
+      // например группа «Распродажа») — готовая цена за полотно, категория
+      // цвета/стекло/опции не влияют — всё уже заложено в basePrice самой
+      // позиции. Название модели уже вынесено отдельным крупным заголовком
+      // — здесь не повторяем его.
       rows.push(`Полотно: ${model.basePrice} ₽`);
       const promo = promoActive();
+      const promoPercent = promo ? Math.max(0, Math.min(100, Number(state.promo) || 0)) : 0;
       const perUnit = applyPromo(model.basePrice, rows);
       const result = finishOrder(model, perUnit, rows, promo);
       return {
         ...result,
         standard: true,
         materialLabel: "", color: "", glassName: "",
+        options: [],
+        // Акция — та же логика, что и в «обычной» ветке ниже (Щитовые/
+        // Сборные): раньше здесь эти поля не заполнялись, поэтому Ценник не
+        // показывал зачёркнутую цену/приставку для Матрицы и пользовательских
+        // групп, хотя сама цена в калькуляторе Акцию уже учитывала (см. отчёт).
+        promoPercent,
+        totalNoPromo: promoPercent ? Math.round(model.basePrice * result.quantity) : null,
         height: DB.standard.height, width: state.width, thickness: DB.standard.thickness,
         section: state.section
       };
