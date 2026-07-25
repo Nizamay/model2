@@ -4008,9 +4008,19 @@ const DB = {
         <button type="button" data-tag-item-edit="${esc(it.id)}">✏️ Изменить</button>
         <button type="button" class="order-item-del" data-tag-item-del="${esc(it.id)}">✕ Удалить</button>
       </div>`;
+    // Цвет погонажа (Коробка/Наличник/Доборная доска и т.п.) раньше не
+    // попадал в печатную форму — строка показывала только вид и толщину
+    // («Коробка 30мм»), без цвета, хотя он выбирается на калькуляторе и
+    // влияет на цену (см. отчёт со скриншотом печатной формы). Для полотна
+    // двери цвет уже показан отдельно на карточке модели — тут его не
+    // дублируем, дописываем только для позиций погонажа. it.color хранился
+    // в записи и раньше — досчитываем название на лету, а не только для
+    // новых сохранений, чтобы поправка подхватила и уже сохранённые
+    // ценники.
+    const label = it.section === "погонаж" && it.color ? `${it.label}, ${it.color}` : it.label;
     return `<div class="tag-komplekt-row">
       ${tagCheckIcon()}
-      <div class="tag-komplekt-label">${esc(it.label)} <span class="tag-komplekt-qty">(${qtyStr} шт.)</span></div>
+      <div class="tag-komplekt-label">${esc(label)} <span class="tag-komplekt-qty">(${qtyStr} шт.)</span></div>
       <div class="tag-komplekt-unit">${esc(tagMoney(it.perUnit - optionsTotal))}</div>
       <div class="tag-komplekt-total">${esc(tagMoney(it.total - optionsTotal))}</div>
       ${actions}
