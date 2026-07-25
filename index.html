@@ -583,8 +583,19 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 /* Акция: цена полотна зачёркнута жирной чертой, а цена со скидкой — в
    правом столбце характеристик (см. tagLeafCardHtml), крупнее основной
    цены полотна — по просьбе заказчика (сама скидка важнее «недействующей»
-   цены). */
-.tag-model-price-crossed { text-decoration: line-through; text-decoration-thickness: 4px; text-decoration-color: var(--danger); opacity: .7; }
+   цены). Зачёркнутая цена выровнена по левому краю с «Цена по акции» —
+   а не по центру, как обычная цена без Акции (см. .tag-model-price выше):
+   отступ слева считается скриптом (см. alignTagPromoPrices), т.к. «Цена по
+   акции» стоит то в единственном столбце характеристик (Матрица/
+   пользовательские группы), то во втором из двух (Щитовые/Сборные —
+   там его положение зависит от ширины первого столбца, фиксированным
+   числом не посчитать). 14px ниже — запасной вариант на случай, если
+   скрипт почему-то не отработал (не должно случаться в приложении).
+*/
+.tag-model-price-crossed {
+  text-decoration: line-through; text-decoration-thickness: 4px; text-decoration-color: var(--danger); opacity: .7;
+  text-align: left; padding-left: 14px;
+}
 .tag-model-promo-label { font-weight: 700; font-size: clamp(10px, 3cqw, 12px); }
 .tag-model-promo-value { font-weight: 900; font-size: clamp(30px, 12cqw, 46px); color: var(--danger); }
 
@@ -600,6 +611,14 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 /* Сама сумма — крупнее подписи, тем же размером, что и цена полотна
    (.tag-model-price), по просьбе заказчика. */
 .tag-komplekt-band-value { font-size: clamp(24px, 9cqw, 38px); }
+/* При активной Акции на полотне — подпись и сумма друг под другом (не в
+   одну строку), сумма выровнена по левому краю с «Цена по акции» и
+   зачёркнутой ценой (см. .tag-model-price-crossed выше и
+   alignTagPromoPrices) — те же три цены одной вертикальной линией, что
+   просил заказчик. Без Акции — прежняя раскладка в одну строку
+   (подпись слева, сумма справа), её никто не менял. */
+.tag-komplekt-band-with-promo { flex-direction: column; align-items: flex-start; gap: 2px; }
+.tag-komplekt-band-with-promo .tag-komplekt-band-value { padding-left: 14px; }
 /* Сетка (grid), а не flex — с flex-wrap колонка «цена за 1 шт.» иногда
    переносилась на отдельную строку сама по себе, отрываясь от «цена
    итого» (не помещались обе рядом с длинным названием на узкой карточке).
@@ -4080,6 +4099,41 @@ const DB = {
     textEl.style.fontSize = Math.floor(fitSize) + "px";
   }
 
+  // Выравнивает по левому краю три цены на ценнике при активной Акции —
+  // «Цена по акции», зачёркнутую цену полотна и «Сумма комплекта» (см.
+  // отчёт со скриншотом). Отступ не фиксированный: «Цена по акции» стоит
+  // то в единственном столбце характеристик (Матрица/пользовательские
+  // группы — тогда отступ маленький, у самого края), то во втором из двух
+  // столбцов (Щитовые/Сборные, где есть материал/цвет — тогда отступ
+  // зависит от ширины первого столбца и заранее не известен). Поэтому
+  // меряем, где «Цена по акции» оказалась на самом деле, и подгоняем под
+  // неё зачёркнутую цену и сумму комплекта — вместо того чтобы гадать
+  // числом в CSS.
+  // Сдвигает el так, чтобы его текст (левый край с учётом уже стоящего
+  // padding-left) оказался ровно на targetLeft (координата viewport, как из
+  // getBoundingClientRect). Считаем через «текущее положение → нужная
+  // поправка», а не абсолютной арифметикой через границы/паддинги
+  // родителей (.tag-doc/.tag-komplekt-band и т.п.) — так не важно, на какой
+  // глубине вложенности элемент и сколько своих border/padding у предков
+  // (двойная рамка карточки в 5px один раз уже привела к промаху на эти же
+  // 5px при прямом расчёте).
+  function shiftTagPriceTo(el, targetLeft) {
+    if (!el) return;
+    const currentPadding = parseFloat(getComputedStyle(el).paddingLeft) || 0;
+    const currentTextLeft = el.getBoundingClientRect().left + currentPadding;
+    const newPadding = Math.max(0, currentPadding + (targetLeft - currentTextLeft));
+    el.style.paddingLeft = Math.round(newPadding) + "px";
+  }
+
+  function alignTagPromoPrices(docEl) {
+    if (!docEl) return;
+    const promoValue = docEl.querySelector(".tag-model-promo-value");
+    if (!promoValue) return;
+    const targetLeft = promoValue.getBoundingClientRect().left;
+    shiftTagPriceTo(docEl.querySelector(".tag-model-price-crossed"), targetLeft);
+    shiftTagPriceTo(docEl.querySelector(".tag-komplekt-band-with-promo .tag-komplekt-band-value"), targetLeft);
+  }
+
   // Тело печатной формы/картинки — общее и для живого просмотра/
   // редактирования (view.readOnly === false, «Дата» — реальный input), и
   // для read-only рендера (печать, экспорт картинкой — как для текущего
@@ -4106,10 +4160,11 @@ const DB = {
   function tagDocHtml(view) {
     const leaf = tagPrimaryLeaf(view.items);
     const leafCardHtml = leaf ? tagLeafCardHtml(leaf) : "";
+    const hasPromo = !!(leaf && leaf.promoPercent > 0 && leaf.totalNoPromo != null);
     const komplektHtml = !view.items.length
       ? `<div class="order-empty">Пока пусто — откройте «Калькулятор цены» и нажмите «Сохранить в ценник».</div>`
-      : `<div class="tag-komplekt-band"><span>Сумма комплекта:</span><span class="tag-komplekt-band-value">${esc(tagMoney(tagGrandTotal(view.items)))}</span></div>
-         <div class="tag-komplekt-colheads"><span>цена за 1 шт.</span><span>цена ИТОГО:</span></div>
+      : `<div class="tag-komplekt-band${hasPromo ? " tag-komplekt-band-with-promo" : ""}"><span>Сумма комплекта:</span><span class="tag-komplekt-band-value">${esc(tagMoney(tagGrandTotal(view.items)))}</span></div>
+         <div class="tag-komplekt-colheads"><span>за 1 шт.</span><span>ИТОГО:</span></div>
          ${view.items.map((it) => tagKomplektRowHtml(it, view.readOnly) + (it.options || []).map(tagOptionRowHtml).join("")).join("")}`;
 
     const dateField = view.readOnly
@@ -4141,6 +4196,7 @@ const DB = {
     const view = currentTagView();
     el.tagDocHolder.innerHTML = tagDocHtml(view);
     fitPromoTabText(el.tagDocHolder.querySelector(".tag-promo-tab"));
+    alignTagPromoPrices(el.tagDocHolder.querySelector(".tag-doc-group"));
     el.tagDraftActions.hidden = view.readOnly;
     el.tagHistoryViewActions.hidden = !view.readOnly;
     el.tagEditingBanner.hidden = view.readOnly || view.meta.id == null;
@@ -4237,11 +4293,23 @@ const DB = {
     // страницы (тот же view) и запекаем его в inline style (см. tagPromoTabHtml).
     const liveTabText = el.tagDocHolder.querySelector(".tag-promo-tab-text");
     const fontSizePx = liveTabText ? parseFloat(getComputedStyle(liveTabText).fontSize) : null;
+    // Выравнивание зачёркнутой цены/суммы комплекта под «Цена по акции» (см.
+    // alignTagPromoPrices) НЕЛЬЗЯ запечь числом с живой страницы, как размер
+    // шрифта приставки чуть выше: «Цена по акции» стоит то в единственном
+    // столбце характеристик (тогда отступ не зависит от ширины), то во
+    // втором из двух (Щитовые/Сборные — тогда отступ зависит от ширины
+    // первого столбца), а скачанный файл открывается в своей ширине
+    // (max-width: 560px), которая почти наверняка отличается от ширины
+    // живой страницы в момент скачивания — запечённое число было бы верным
+    // только случайно. Поэтому здесь не запекаем px, а добавляем в файл
+    // маленький самостоятельный скрипт (см. ниже), который меряет и
+    // выравнивает уже после открытия файла, в его собственной раскладке.
+    const hasPromo = !!(leaf && leaf.promoPercent > 0 && leaf.totalNoPromo != null);
 
     const komplektHtml = !view.items.length
       ? "<p>Пусто.</p>"
-      : `<div class="tag-komplekt-band"><span>Сумма комплекта:</span><span class="tag-komplekt-band-value">${esc(tagMoney(tagGrandTotal(view.items)))}</span></div>
-         <div class="tag-komplekt-colheads"><span>цена за 1 шт.</span><span>цена ИТОГО:</span></div>
+      : `<div class="tag-komplekt-band${hasPromo ? " tag-komplekt-band-with-promo" : ""}"><span>Сумма комплекта:</span><span class="tag-komplekt-band-value">${esc(tagMoney(tagGrandTotal(view.items)))}</span></div>
+         <div class="tag-komplekt-colheads"><span>за 1 шт.</span><span>ИТОГО:</span></div>
          ${view.items.map((it) => tagKomplektRowHtml(it, true) + (it.options || []).map(tagOptionRowHtml).join("")).join("")}`;
 
     const groupClass = leaf && leaf.promoPercent ? "tag-doc-group tag-doc-group-with-promo" : "tag-doc-group";
@@ -4262,6 +4330,8 @@ const DB = {
   .tag-model-price { font-weight: 900; font-size: 32px; text-align: center; padding: 14px 14px 4px; }
   .tag-komplekt-band { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 14px; background: #1f3a5f; color: #fff; font-weight: 800; font-size: 17px; padding: 8px 14px; margin-top: 10px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .tag-komplekt-band-value { font-size: 30px; }
+  .tag-komplekt-band-with-promo { flex-direction: column; align-items: flex-start; gap: 2px; }
+  .tag-komplekt-band-with-promo .tag-komplekt-band-value { padding-left: 14px; }
   .tag-komplekt-colheads, .tag-komplekt-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; column-gap: 8px; row-gap: 4px; }
   .tag-komplekt-colheads { padding: 6px 14px 0; font-size: 10px; color: #666; }
   .tag-komplekt-colheads span { grid-column: 3; text-align: right; white-space: nowrap; }
@@ -4273,7 +4343,7 @@ const DB = {
   .tag-komplekt-total { grid-column: 4; font-weight: 800; }
   .tag-doc-footer { padding: 16px 14px 20px; }
   .tag-meta-line { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; font-size: 13px; }
-  .tag-model-price-crossed { text-decoration: line-through; text-decoration-thickness: 4px; text-decoration-color: #c81e1e; opacity: .7; }
+  .tag-model-price-crossed { text-decoration: line-through; text-decoration-thickness: 4px; text-decoration-color: #c81e1e; opacity: .7; text-align: left; padding-left: 14px; }
   .tag-model-promo-label { font-weight: 700; font-size: 11px; }
   .tag-model-promo-value { font-weight: 900; font-size: 30px; color: #c81e1e; }
   .tag-doc-group { display: flex; align-items: stretch; }
@@ -4312,6 +4382,32 @@ const DB = {
   </div>
   ${tagPromoTabHtml(leaf, { ...view, readOnly: true }, fontSizePx)}
   </div>
+  ${hasPromo ? `<scr${""}ipt>
+    // Выравнивает зачёркнутую цену и «Сумма комплекта» под «Цена по акции»
+    // — то же самое, что alignTagPromoPrices в приложении (см. комментарий
+    // выше про запекание px), но самостоятельно: файл открывается сам по
+    // себе, без остального приложения, поэтому меряет и выравнивает уже
+    // после открытия, в собственной раскладке файла. Тег разбит на части
+    // (склеен из кусков через ${""}) — иначе буквальный тег открытия/
+    // закрытия внутри шаблонной строки основного скрипта приложения
+    // сбивает с толку простые текстовые парсеры (например, извлечение
+    // тегов скрипта для node --check при тестировании этого файла),
+    // которые не различают настоящие теги и текст внутри JS-строки.
+    (function () {
+      function shiftTo(el, targetLeft) {
+        if (!el) return;
+        var currentPadding = parseFloat(getComputedStyle(el).paddingLeft) || 0;
+        var currentTextLeft = el.getBoundingClientRect().left + currentPadding;
+        var newPadding = Math.max(0, currentPadding + (targetLeft - currentTextLeft));
+        el.style.paddingLeft = Math.round(newPadding) + "px";
+      }
+      var promoValue = document.querySelector(".tag-model-promo-value");
+      if (!promoValue) return;
+      var targetLeft = promoValue.getBoundingClientRect().left;
+      shiftTo(document.querySelector(".tag-model-price-crossed"), targetLeft);
+      shiftTo(document.querySelector(".tag-komplekt-band-with-promo .tag-komplekt-band-value"), targetLeft);
+    })();
+  </scr${""}ipt>` : ""}
 </body></html>`;
     const blob = new Blob([html], { type: "text/html;charset=utf-8" });
     const url = URL.createObjectURL(blob);
@@ -4461,6 +4557,7 @@ const DB = {
       host.innerHTML = tagDocHtml({ items: entry.items, tagDate: entry.tagDate, promoUntil: entry.promoUntil || "", readOnly: true });
       const docEl = host.querySelector(".tag-doc-group");
       fitPromoTabText(host.querySelector(".tag-promo-tab"));
+      alignTagPromoPrices(docEl);
       try {
         const blob = await tagDocToPngBlob(docEl);
         downloadBlob(blob, `tsennik-${i + 1}.png`);
