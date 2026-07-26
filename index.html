@@ -2010,7 +2010,7 @@ const DB = {
   // renderPriceEditor), их id используется во множестве мест по всему
   // погонажу; пользовательские (custom) — можно и переименовать, и удалить.
   function populateTrimVid() {
-    const types = DB.trim.types;
+    const types = DB.trim.types.slice().sort((a, b) => RU_COLLATOR.compare(a.name, b.name));
     el.trimVid.innerHTML = types
       .map((t) => `<option value="${t.id}">${t.name}</option>`)
       .join("");
@@ -2023,7 +2023,9 @@ const DB = {
   // Позиция/цвет у custom-вида погонажа — тот же движок, что и у Фурнитуры
   // (см. DB.trim.customItems/populateFurnitureItem-populateFurnitureColor).
   function populateTrimCustomItem() {
-    const items = DB.trim.customItems.filter((it) => it.vid === state.trimVid);
+    const items = DB.trim.customItems
+      .filter((it) => it.vid === state.trimVid)
+      .sort((a, b) => RU_COLLATOR.compare(a.name, b.name));
     el.trimCustomItem.innerHTML = items
       .map((it) => `<option value="${it.id}">${it.name}</option>`)
       .join("");
@@ -2036,7 +2038,9 @@ const DB = {
 
   function populateTrimCustomColor() {
     const item = DB.trim.customItems.find((it) => it.id === state.trimCustomItemId);
-    const colors = (item && Array.isArray(item.colors)) ? item.colors : [];
+    const colors = ((item && Array.isArray(item.colors)) ? item.colors : [])
+      .slice()
+      .sort((a, b) => RU_COLLATOR.compare(a.name, b.name));
     el.trimCustomColor.innerHTML = colors
       .map((c) => `<option value="${c.id}">${c.name}</option>`)
       .join("");
@@ -2194,12 +2198,8 @@ const DB = {
 
   function populateColors() {
     const groups = DB.colors[state.material] || {};
-    const optionsHtml = Object.keys(groups)
-      .sort()
-      .map((cat) => groups[cat].map((c) => `<option value="${c}">${c}</option>`).join(""))
-      .join("");
-    el.color.innerHTML = optionsHtml;
-    const allColors = Object.values(groups).flat();
+    const allColors = Object.values(groups).flat().sort((a, b) => RU_COLLATOR.compare(a, b));
+    el.color.innerHTML = allColors.map((c) => `<option value="${c}">${c}</option>`).join("");
     if (!allColors.includes(state.color)) state.color = allColors[0];
     el.color.value = state.color;
   }
@@ -3050,8 +3050,16 @@ const DB = {
     // Название модели уже вынесено отдельным крупным заголовком — здесь не повторяем его.
     rows.push(`Полотно: ${leafBase} ₽`);
 
+    // Опции считаем до Акции — она теперь действует на сумму «полотно +
+    // опции» вместе (см. отчёт), а не только на цену полотна одного.
+    const { sum: optionsSum, lines: optionLines, items: optionItems } = sumSelectedOptions();
+
     const promo = promoActive();
     const promoPercent = promo ? Math.max(0, Math.min(100, Number(state.promo) || 0)) : 0;
+    // Один и тот же процент считается отдельно от leafBase и от optionsSum
+    // (в сумме — тот же результат, что и от общей суммы сразу), чтобы
+    // наценка за нестандарт ниже по-прежнему применялась только к цене
+    // полотна, а не к опциям.
     let leafPrice = applyPromo(leafBase, rows);
     // Цена полотна без учёта Акции — считается той же цепочкой (нестандарт
     // и т.п.), просто от leafBase напрямую, а не от уже уценённого leafPrice.
@@ -3066,6 +3074,8 @@ const DB = {
     // калькулятора/Спецификации.
     const leafPriceTag = promoPercent ? leafBase - Math.round((leafBase * promoPercent) / 100) : leafBase;
     const leafPriceTagNoPromo = leafBase;
+    const optionsPromoAmt = promoPercent ? Math.round((optionsSum * promoPercent) / 100) : 0;
+    const optionsSumAfterPromo = optionsSum - optionsPromoAmt;
     const standard = isStandardSize(state.height, state.width, state.thickness);
     const nsMult = 1 + (Number(DB.nonStandardPercent) || 0) / 100;
     if (!standard) {
@@ -3074,10 +3084,10 @@ const DB = {
       rows.push(`Наценка за нестандарт (+${DB.nonStandardPercent}%, округление вверх до 10 ₽): ${leafPrice} ₽`);
     }
 
-    const { sum: optionsSum, lines: optionLines, items: optionItems } = sumSelectedOptions();
     const glass = state.glassId !== "none" ? modelGlasses(model).find((g) => g.id === state.glassId) : null;
     const glassPrice = glass ? glass.price : 0;
     optionLines.forEach((l) => rows.push(l));
+    if (optionsPromoAmt > 0) rows.push(`Акция ${promoPercent}% на опции: -${optionsPromoAmt} ₽`);
     // Стекло не показывается отдельной строкой с ценой — его название и
     // отметка «ПО» приписываются к наименованию модели (см. leafDisplayName),
     // а стоимость по-прежнему учитывается в perUnit ниже без изменений.
@@ -3090,8 +3100,11 @@ const DB = {
     const patinaPrice = patina ? patina.price : 0;
     if (patina) rows.push(`Патина (${patina.name}): +${patinaPrice} ₽`);
 
-    const perUnit = leafPrice + optionsSum + glassPrice + patinaPrice;
+    const perUnit = leafPrice + optionsSumAfterPromo + glassPrice + patinaPrice;
     const perUnitNoPromo = leafPriceNoPromo + optionsSum + glassPrice + patinaPrice;
+    // «Ценник» пока не трогаем: опции там по-прежнему по каталожной цене
+    // без скидки (см. отчёт) — Акция+опции в сумме действует только на
+    // калькулятор/Спецификацию (perUnit/total выше).
     const perUnitTag = leafPriceTag + optionsSum + glassPrice + patinaPrice;
     const perUnitTagNoPromo = leafPriceTagNoPromo + optionsSum + glassPrice + patinaPrice;
     const result = finishOrder(model, perUnit, rows, promo);
@@ -3234,6 +3247,41 @@ const DB = {
     const name = [customer.lastName, customer.firstName].filter(Boolean).join(" ");
     if (!name && !customer.phone) return "";
     return `Заказчик: ${name || "—"}${customer.phone ? ", тел. " + customer.phone : ""}`;
+  }
+
+  // Имя скачиваемого файла спецификации: "26.07.2026 No12 Galkin Sergey" —
+  // чтобы в «Диспетчере загрузок» было сразу понятно, какая это спецификация.
+  // Кириллица в атрибуте download молча обнуляется частью браузеров (файл
+  // сохраняется как безымянный "download", проверено эмпирически) —
+  // транслитерируем в латиницу, чтобы имя всегда сохранялось корректно.
+  function sanitizeFileNamePart(s) {
+    return String(s || "").replace(/[\\/:*?"<>|]+/g, " ").replace(/\s+/g, " ").trim();
+  }
+
+  const CYRILLIC_TRANSLIT = {
+    а: "a", б: "b", в: "v", г: "g", д: "d", е: "e", ё: "e", ж: "zh", з: "z", и: "i",
+    й: "y", к: "k", л: "l", м: "m", н: "n", о: "o", п: "p", р: "r", с: "s", т: "t",
+    у: "u", ф: "f", х: "kh", ц: "ts", ч: "ch", ш: "sh", щ: "shch", ъ: "", ы: "y",
+    ь: "", э: "e", ю: "yu", я: "ya"
+  };
+  function transliterate(s) {
+    return String(s || "").split("").map((ch) => {
+      const lower = ch.toLowerCase();
+      const mapped = CYRILLIC_TRANSLIT[lower];
+      if (mapped == null) return ch;
+      return ch === lower ? mapped : mapped.charAt(0).toUpperCase() + mapped.slice(1);
+    }).join("");
+  }
+
+  function specFileBaseName(view) {
+    const parts = [];
+    if (view.meta && view.meta.date) parts.push(view.meta.date);
+    if (view.meta && view.meta.number != null) parts.push(`No${view.meta.number}`);
+    const custName = [view.customer && view.customer.lastName, view.customer && view.customer.firstName]
+      .filter(Boolean).join(" ");
+    if (custName) parts.push(custName);
+    const raw = transliterate(parts.join(" ")) || "Spetsifikatsiya";
+    return sanitizeFileNamePart(raw);
   }
 
   // Источник данных для страницы «Спецификация» и всех форм экспорта —
@@ -3400,6 +3448,7 @@ const DB = {
       perUnit: o.perUnit,
       discount: o.discount,
       total: o.total,
+      promoPercent: o.promoPercent || 0,
       rows: o.rows,
       calcState: captureCalcState()
     };
@@ -3450,16 +3499,29 @@ const DB = {
   }
 
   // Скидка на заказ — те же правила ввода, что и «Скидка, %» на калькуляторе
-  // (0–100%, округление суммы скидки до рубля), но применяется к сумме всех
-  // позиций спецификации целиком, а не к одному полотну.
+  // (0–100%), но применяется к каждой позиции отдельно, а не к сумме заказа
+  // целиком — так учитывается Акция конкретной позиции: если Акция позиции
+  // была равна или больше Скидки на заказ, Скидка эту позицию не трогает
+  // (у неё уже есть своя, более выгодная скидка); если Скидка больше —
+  // применяется только разница сверх Акции, с округлением вверх до 10 ₽
+  // (см. отчёт с примером расчёта).
   function orderDiscountPercent(view) {
     return Math.max(0, Math.min(100, Number(view.discount) || 0));
   }
-  function orderDiscountAmount(view) {
-    return Math.round(orderGrandTotal(view.items) * orderDiscountPercent(view) / 100);
+  function orderItemFinalTotal(it, discPct) {
+    if (!discPct) return it.total;
+    const promoPct = Number(it.promoPercent) || 0;
+    if (promoPct && discPct <= promoPct) return it.total;
+    const effectivePct = discPct - promoPct;
+    return roundUp10(it.total * (1 - effectivePct / 100));
   }
-  function orderFinalTotal(view) {
-    return orderGrandTotal(view.items) - orderDiscountAmount(view);
+  function orderFinalTotal(view, discPctOverride) {
+    const discPct = discPctOverride != null ? discPctOverride : orderDiscountPercent(view);
+    return (view.items || []).reduce((sum, it) => sum + orderItemFinalTotal(it, discPct), 0);
+  }
+  function orderDiscountAmount(view) {
+    const discPct = orderDiscountPercent(view);
+    return orderGrandTotal(view.items) - orderFinalTotal(view, discPct);
   }
 
   // Присваивает номер (если ещё не присвоен — только в этот момент, не
@@ -3633,7 +3695,6 @@ const DB = {
     view.items.forEach((it, idx) => {
       lines.push(`${idx + 1}. ${it.modelName}`);
       lines.push(orderItemSummaryLine(it));
-      it.rows.forEach((r) => lines.push("   " + r));
       lines.push(`Итого по позиции: ${it.total.toLocaleString("ru-RU")} ₽`, "");
     });
     const discPct = orderDiscountPercent(view);
@@ -3668,6 +3729,13 @@ const DB = {
   }
 
   function printOrder() {
+    const originalTitle = document.title;
+    document.title = specFileBaseName(currentSpecView());
+    function cleanup() {
+      document.title = originalTitle;
+      window.removeEventListener("afterprint", cleanup);
+    }
+    window.addEventListener("afterprint", cleanup);
     window.print();
   }
 
@@ -3711,9 +3779,7 @@ const DB = {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    // Кириллица в атрибуте download молча обнуляется частью браузеров
-    // (файл сохраняется как безымянный "download") — используем латиницу.
-    a.download = "spetsifikatsiya-dverey.html";
+    a.download = `${specFileBaseName(view)}.html`;
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -5550,7 +5616,7 @@ const DB = {
     // Пользовательские (custom) виды — простой каталог позиция→цвет→цена,
     // как у Фурнитуры, с полным добавлением/переименованием/удалением
     // вида целиком.
-    let trimRows = DB.trim.types.map((t) => {
+    let trimRows = DB.trim.types.slice().sort((a, b) => RU_COLLATOR.compare(a.name, b.name)).map((t) => {
       let itemsHtml = "";
       if (t.custom) {
         const items = DB.trim.customItems
@@ -6074,6 +6140,16 @@ const DB = {
     document.addEventListener("keydown", (e) => {
       if (!el.nameEditOverlay.hidden && e.key === "Escape") closeNameEditModal();
     });
+
+    // «Прилипающий» 0 в числовых полях: при фокусе выделяем всё значение
+    // целиком, чтобы первая же введённая цифра заменяла его, а не
+    // приписывалась после (было «0» + «1» = «01» вместо «1»). Слушатель
+    // навешан на document (capture — focus не всплывает) — работает и на
+    // полях, отрисованных позже (редактор цен и т.п.).
+    document.addEventListener("focus", (e) => {
+      const t = e.target;
+      if (t && t.tagName === "INPUT" && t.type === "number") t.select();
+    }, true);
 
     render();
   }
