@@ -642,6 +642,15 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 }
 .tag-komplekt-total { grid-column: 4; font-weight: 800; }
 .tag-komplekt-row .item-actions { grid-column: 1 / -1; }
+/* Погонаж — три строки на всю ширину (наименование / цвет / математика
+   расчёта) вместо обычной сетки с ценой в отдельных колонках, см.
+   tagKomplektRowHtml — чтобы был виден цвет плёнки/эмали (см. отчёт). */
+.tag-komplekt-row.tag-komplekt-row-trim { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px; }
+.tag-komplekt-trim-body { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.tag-komplekt-trim-name { font-weight: 700; font-size: clamp(12px, 3.6cqw, 14px); }
+.tag-komplekt-trim-color { font-size: clamp(11px, 3.2cqw, 13px); color: var(--muted); }
+.tag-komplekt-trim-math { font-weight: 800; font-size: clamp(12px, 3.6cqw, 14px); }
+.tag-komplekt-row-trim .item-actions { flex: 1 1 100%; }
 
 .tag-doc-footer { padding: 16px 14px 20px; display: flex; flex-direction: column; gap: 14px; }
 /* Дата и подпись — в одну строку. */
@@ -2916,6 +2925,9 @@ const DB = {
     rows.push(`${vidLabel}: ${basePrice} ₽`);
 
     let perUnit = basePrice;
+    // «Ценник»: без наценки за нестандартную ширину (см. computeOrder — та
+    // же логика для дверного полотна, tagPerUnit/tagTotal).
+    const perUnitTag = basePrice;
     if (isWidthCustom) {
       const nsMult = 1 + (Number(DB.nonStandardPercent) || 0) / 100;
       perUnit = roundUp10(perUnit * nsMult);
@@ -2929,6 +2941,8 @@ const DB = {
       ...result,
       standard: !isWidthCustom,
       materialLabel, color: state.color, glassName: "",
+      tagPerUnit: perUnitTag,
+      tagTotal: Math.round(perUnitTag * result.quantity),
       height: state.trimLength || 0, width: displayWidth, thickness: item.thickness || 10,
       section: state.section
     };
@@ -3044,6 +3058,14 @@ const DB = {
     // Нужна только для «зачёркнутой» цены в Ценнике (см. tagLeafCardHtml),
     // на сам расчёт (perUnit/total) не влияет.
     let leafPriceNoPromo = leafBase;
+    // «Ценник»: своя параллельная цепочка без наценки за нестандарт (по
+    // просьбе заказчика — в Ценнике размер всегда считается «как
+    // стандартный», трудозатраты на нестандарт туда не закладываются), но
+    // с Акцией, если она активна. rows не трогаем — этот расчёт только для
+    // Ценника (см. addCurrentToTagDraft), не для разбивки на экране
+    // калькулятора/Спецификации.
+    const leafPriceTag = promoPercent ? leafBase - Math.round((leafBase * promoPercent) / 100) : leafBase;
+    const leafPriceTagNoPromo = leafBase;
     const standard = isStandardSize(state.height, state.width, state.thickness);
     const nsMult = 1 + (Number(DB.nonStandardPercent) || 0) / 100;
     if (!standard) {
@@ -3070,6 +3092,8 @@ const DB = {
 
     const perUnit = leafPrice + optionsSum + glassPrice + patinaPrice;
     const perUnitNoPromo = leafPriceNoPromo + optionsSum + glassPrice + patinaPrice;
+    const perUnitTag = leafPriceTag + optionsSum + glassPrice + patinaPrice;
+    const perUnitTagNoPromo = leafPriceTagNoPromo + optionsSum + glassPrice + patinaPrice;
     const result = finishOrder(model, perUnit, rows, promo);
     return {
       ...result,
@@ -3083,6 +3107,13 @@ const DB = {
       // приставка), сам расчёт total/perUnit выше не меняется.
       promoPercent,
       totalNoPromo: promoPercent ? Math.round(perUnitNoPromo * result.quantity) : null,
+      // «Ценник»: без общей позиционной «Скидка, %» и без наценки за
+      // нестандарт (см. addCurrentToTagDraft) — используется только при
+      // сохранении позиции в Ценник, калькулятор/Спецификация эти поля не
+      // читают.
+      tagPerUnit: perUnitTag,
+      tagTotal: Math.round(perUnitTag * result.quantity),
+      tagTotalNoPromo: promoPercent ? Math.round(perUnitTagNoPromo * result.quantity) : null,
       height: state.height, width: state.width, thickness: state.thickness,
       section: state.section
     };
@@ -3817,13 +3848,24 @@ const DB = {
       // Акция (см. computeOrder) — для «зачёркнутой» цены и жёлтой
       // приставки в Ценнике, см. tagLeafCardHtml/tagPromoTabHtml.
       promoPercent: o.promoPercent || 0,
-      totalNoPromo: o.totalNoPromo != null ? o.totalNoPromo : null,
+      // «Ценник» считает цену без общей позиционной «Скидка, %» и без
+      // наценки за нестандартный размер (по просьбе заказчика — Ценник это
+      // «список цен», а не расчёт конкретного заказа). Там, где у ветки
+      // computeOrder есть отдельная «версия для Ценника» (дверное полотно,
+      // погонаж с нестандартной шириной — см. tagPerUnit/tagTotal/
+      // tagTotalNoPromo), берём её; для остальных разделов (Матрица,
+      // Фурнитура, погонаж со стандартной шириной) наценки за нестандарт
+      // не бывает вовсе, там достаточно lineSubtotal — та же цена без
+      // скидки, которую считает finishOrder независимо от ветки.
+      totalNoPromo: o.tagTotalNoPromo !== undefined ? o.tagTotalNoPromo : (o.totalNoPromo != null ? o.totalNoPromo : null),
       height: o.height, width: o.width, thickness: o.thickness, standard: o.standard,
       // Снимок стандартных ширин на момент сохранения — печатная форма
       // показывает их списком у полотна (цена одна и та же для всех
       // стандартных ширин), а не только выбранную в калькуляторе.
       stdWidths: DB.standard.widths.slice(),
-      quantity: o.quantity, perUnit: o.perUnit, total: o.total,
+      quantity: o.quantity,
+      perUnit: o.tagPerUnit != null ? o.tagPerUnit : o.perUnit,
+      total: o.tagTotal != null ? o.tagTotal : Math.round(o.lineSubtotal),
       calcState: captureCalcState()
     };
     if (editingTagItemId) {
@@ -4001,26 +4043,48 @@ const DB = {
   // цена за 1 шт., цена итого (три отдельные колонки, как в xls), плюс
   // кнопки правки/удаления позиции (то же поведение, что и раньше).
   function tagKomplektRowHtml(it, readOnly) {
-    const qtyStr = String(it.quantity).replace(".", ",");
-    const optionsTotal = tagOptionsTotal(it);
     const actions = readOnly || !it.calcState ? "" : `
       <div class="item-actions">
         <button type="button" data-tag-item-edit="${esc(it.id)}">✏️ Изменить</button>
         <button type="button" class="order-item-del" data-tag-item-del="${esc(it.id)}">✕ Удалить</button>
       </div>`;
-    // Цвет погонажа (Коробка/Наличник/Доборная доска и т.п.) раньше не
-    // попадал в печатную форму — строка показывала только вид и толщину
-    // («Коробка 30мм»), без цвета, хотя он выбирается на калькуляторе и
-    // влияет на цену (см. отчёт со скриншотом печатной формы). Для полотна
-    // двери цвет уже показан отдельно на карточке модели — тут его не
-    // дублируем, дописываем только для позиций погонажа. it.color хранился
-    // в записи и раньше — досчитываем название на лету, а не только для
-    // новых сохранений, чтобы поправка подхватила и уже сохранённые
-    // ценники.
-    const label = it.section === "погонаж" && it.color ? `${it.label}, ${it.color}` : it.label;
+    if (it.section === "погонаж") {
+      // Погонаж (Коробка/Наличник/Доборная доска и пользовательские виды) —
+      // три строки на всю ширину карточки (наименование / цвет / математика
+      // расчёта), а не строка в общей сетке с ценой сбоку — иначе цвет
+      // плёнки/эмали негде показать (см. отчёт: цвет погонажа нигде не
+      // виден, кроме этой строки — на карточке полотна его нет вовсе).
+      const qtyStr = String(it.quantity).replace(".", ",");
+      return `<div class="tag-komplekt-row tag-komplekt-row-trim">
+        ${tagCheckIcon()}
+        <div class="tag-komplekt-trim-body">
+          <div class="tag-komplekt-trim-name">${esc(it.label)}</div>
+          ${it.color ? `<div class="tag-komplekt-trim-color">${esc(it.color)}</div>` : ""}
+          <div class="tag-komplekt-trim-math">${esc(qtyStr)}шт × ${esc(tagMoney(it.perUnit))} = ${esc(tagMoney(it.total))}</div>
+        </div>
+        ${actions}
+      </div>`;
+    }
+    if (it.section === "фурнитура") {
+      // Фурнитура — не дверное полотно, повторять «Дверное полотно» тут
+      // незачем, оставляем как было (собственное название + количество).
+      const qtyStr = String(it.quantity).replace(".", ",");
+      return `<div class="tag-komplekt-row">
+        ${tagCheckIcon()}
+        <div class="tag-komplekt-label">${esc(it.label)} <span class="tag-komplekt-qty">(${qtyStr} шт.)</span></div>
+        <div class="tag-komplekt-unit">${esc(tagMoney(it.perUnit))}</div>
+        <div class="tag-komplekt-total">${esc(tagMoney(it.total))}</div>
+        ${actions}
+      </div>`;
+    }
+    // Дверное полотно (Щитовые/Сборные/Матрица/пользовательские группы) —
+    // название модели уже крупным заголовком на карточке выше, тут не
+    // повторяем (везде одно и то же «Дверное полотно»), и без «(1 шт.)» —
+    // почти всегда 1, лишний шум (см. отчёт).
+    const optionsTotal = tagOptionsTotal(it);
     return `<div class="tag-komplekt-row">
       ${tagCheckIcon()}
-      <div class="tag-komplekt-label">${esc(label)} <span class="tag-komplekt-qty">(${qtyStr} шт.)</span></div>
+      <div class="tag-komplekt-label">Дверное полотно</div>
       <div class="tag-komplekt-unit">${esc(tagMoney(it.perUnit - optionsTotal))}</div>
       <div class="tag-komplekt-total">${esc(tagMoney(it.total - optionsTotal))}</div>
       ${actions}
@@ -4144,6 +4208,60 @@ const DB = {
     shiftTagPriceTo(docEl.querySelector(".tag-komplekt-band-with-promo .tag-komplekt-band-value"), targetLeft);
   }
 
+  // Заголовок карточки модели (.tag-model-title) — фиксированный размер
+  // шрифта по группе моделей, а не под конкретное название ТЕКУЩЕЙ позиции
+  // — иначе ценники с длинным и коротким названием выглядят по-разному
+  // (карточка как будто «гуляет» от длины текста, см. отчёт). Две группы
+  // (по просьбе заказчика): «Щитовые» — свой размер, все остальные разделы
+  // (Матрица, Сборные, пользовательские типы) — общий, «там названия одни
+  // и те же». Размер считается от самого длинного названия модели В ЭТОЙ
+  // ГРУППЕ целиком (DB.models), а не от текущего — поэтому одинаков для
+  // всех позиций группы, даже если у конкретной позиции название короче.
+  function tagTitleBucket(section) {
+    return section === "щитовое" ? "щитовое" : "прочее";
+  }
+  function tagTitleLongestName(bucket) {
+    return DB.models
+      .filter((m) => tagTitleBucket(m.type) === bucket)
+      .reduce((longest, m) => (m.name.length > longest.length ? m.name : longest), "");
+  }
+  // Подбирает размер шрифта, при котором самое длинное название группы
+  // умещается в доступную ширину карточки максимум в maxLines строк — тем
+  // же приёмом измерения через скрытый зонд, что и fitPromoTabText выше
+  // (пробный размер → масштабируем под реальную ширину).
+  function fitTagModelTitle(docEl, leaf) {
+    if (!docEl || !leaf) return;
+    const titleEl = docEl.querySelector(".tag-model-title");
+    if (!titleEl) return;
+    const availableWidth = titleEl.clientWidth;
+    if (!availableWidth) return;
+    const longestName = tagTitleLongestName(tagTitleBucket(leaf.section));
+    if (!longestName) return;
+
+    const probe = document.createElement("div");
+    probe.style.position = "absolute";
+    probe.style.visibility = "hidden";
+    probe.style.left = "-9999px";
+    probe.style.top = "0";
+    probe.style.width = availableWidth + "px";
+    const cs = getComputedStyle(titleEl);
+    probe.style.fontWeight = cs.fontWeight;
+    probe.style.fontFamily = cs.fontFamily;
+    probe.style.lineHeight = "1.15";
+    probe.textContent = longestName;
+    document.body.appendChild(probe);
+
+    const maxSize = 32, minSize = 15, maxLines = 2;
+    let fitSize = minSize;
+    for (let size = maxSize; size >= minSize; size--) {
+      probe.style.fontSize = size + "px";
+      const lines = Math.round(probe.scrollHeight / (size * 1.15));
+      if (lines <= maxLines) { fitSize = size; break; }
+    }
+    document.body.removeChild(probe);
+    titleEl.style.fontSize = fitSize + "px";
+  }
+
   // Тело печатной формы/картинки — общее и для живого просмотра/
   // редактирования (view.readOnly === false, «Дата» — реальный input), и
   // для read-only рендера (печать, экспорт картинкой — как для текущего
@@ -4207,6 +4325,7 @@ const DB = {
     el.tagDocHolder.innerHTML = tagDocHtml(view);
     fitPromoTabText(el.tagDocHolder.querySelector(".tag-promo-tab"));
     alignTagPromoPrices(el.tagDocHolder.querySelector(".tag-doc-group"));
+    fitTagModelTitle(el.tagDocHolder.querySelector(".tag-doc-group"), tagPrimaryLeaf(view.items));
     el.tagDraftActions.hidden = view.readOnly;
     el.tagHistoryViewActions.hidden = !view.readOnly;
     el.tagEditingBanner.hidden = view.readOnly || view.meta.id == null;
@@ -4315,6 +4434,14 @@ const DB = {
     // маленький самостоятельный скрипт (см. ниже), который меряет и
     // выравнивает уже после открытия файла, в его собственной раскладке.
     const hasPromo = !!(leaf && leaf.promoPercent > 0 && leaf.totalNoPromo != null);
+    // Фиксированный размер шрифта заголовка модели по группе (см.
+    // fitTagModelTitle в приложении) — та же проблема с шириной, что и у
+    // alignTagPromoPrices ниже: запекать числом нельзя (ширина карточки
+    // в файле отличается от ширины страницы на момент скачивания), поэтому
+    // передаём в файл только САМОЕ ДЛИННОЕ НАЗВАНИЕ группы (строка не
+    // зависит от ширины) и меряем/подгоняем уже в собственной раскладке
+    // файла тем же самостоятельным скриптом.
+    const longestTitleName = leaf ? tagTitleLongestName(tagTitleBucket(leaf.section)) : "";
 
     const komplektHtml = !view.items.length
       ? "<p>Пусто.</p>"
@@ -4351,6 +4478,12 @@ const DB = {
   .tag-komplekt-qty { font-weight: 400; color: #666; }
   .tag-komplekt-unit, .tag-komplekt-total { grid-column: 3; text-align: right; font-size: 12px; white-space: nowrap; }
   .tag-komplekt-total { grid-column: 4; font-weight: 800; }
+  .tag-komplekt-row.tag-komplekt-row-trim { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px; }
+  .tag-komplekt-trim-body { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+  .tag-komplekt-trim-name { font-weight: 700; font-size: 13px; }
+  .tag-komplekt-trim-color { font-size: 12px; color: #666; }
+  .tag-komplekt-trim-math { font-weight: 800; font-size: 13px; }
+  .tag-komplekt-row-trim .item-actions { flex: 1 1 100%; }
   .tag-doc-footer { padding: 16px 14px 20px; }
   .tag-meta-line { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; font-size: 13px; }
   .tag-model-price-crossed { text-decoration: line-through; text-decoration-thickness: 4px; text-decoration-color: #c81e1e; opacity: .7; text-align: left; padding-left: 14px; }
@@ -4392,6 +4525,35 @@ const DB = {
   </div>
   ${tagPromoTabHtml(leaf, { ...view, readOnly: true }, fontSizePx)}
   </div>
+  ${longestTitleName ? `<scr${""}ipt>
+    (function () {
+      var longestName = ${JSON.stringify(longestTitleName)};
+      var titleEl = document.querySelector(".tag-model-title");
+      if (!titleEl) return;
+      var availableWidth = titleEl.clientWidth;
+      if (!availableWidth) return;
+      var probe = document.createElement("div");
+      probe.style.position = "absolute";
+      probe.style.visibility = "hidden";
+      probe.style.left = "-9999px";
+      probe.style.top = "0";
+      probe.style.width = availableWidth + "px";
+      var cs = getComputedStyle(titleEl);
+      probe.style.fontWeight = cs.fontWeight;
+      probe.style.fontFamily = cs.fontFamily;
+      probe.style.lineHeight = "1.15";
+      probe.textContent = longestName;
+      document.body.appendChild(probe);
+      var maxSize = 32, minSize = 15, maxLines = 2, fitSize = minSize;
+      for (var size = maxSize; size >= minSize; size--) {
+        probe.style.fontSize = size + "px";
+        var lines = Math.round(probe.scrollHeight / (size * 1.15));
+        if (lines <= maxLines) { fitSize = size; break; }
+      }
+      document.body.removeChild(probe);
+      titleEl.style.fontSize = fitSize + "px";
+    })();
+  </scr${""}ipt>` : ""}
   ${hasPromo ? `<scr${""}ipt>
     // Выравнивает зачёркнутую цену и «Сумма комплекта» под «Цена по акции»
     // — то же самое, что alignTagPromoPrices в приложении (см. комментарий
@@ -4568,6 +4730,7 @@ const DB = {
       const docEl = host.querySelector(".tag-doc-group");
       fitPromoTabText(host.querySelector(".tag-promo-tab"));
       alignTagPromoPrices(docEl);
+      fitTagModelTitle(docEl, tagPrimaryLeaf(entry.items));
       try {
         const blob = await tagDocToPngBlob(docEl);
         downloadBlob(blob, `tsennik-${i + 1}.png`);
