@@ -3544,7 +3544,14 @@ const DB = {
     if (!discPct) return it.total;
     const promoPct = Number(it.promoPercent) || 0;
     if (promoPct && discPct <= promoPct) return it.total;
-    const rawTotal = (promoPct && it.totalNoPromo != null) ? it.totalNoPromo : it.total;
+    // rawTotal — цена без всякой скидки (ни Акции, ни Скидки на заказ).
+    // it.totalNoPromo хранится на позиции с этой версии (см. отчёт); для
+    // позиций, сохранённых до неё, восстанавливаем «сырую» цену обратным
+    // счётом от it.total и её же promoPercent (небольшая погрешность
+    // округления возможна, но направление и порядок величины верны).
+    const rawTotal = promoPct
+      ? (it.totalNoPromo != null ? it.totalNoPromo : Math.round(it.total / (1 - promoPct / 100)))
+      : it.total;
     return Math.round(rawTotal * (1 - discPct / 100));
   }
   function orderFinalTotal(view, discPctOverride) {
