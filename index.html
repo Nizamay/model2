@@ -773,7 +773,7 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 
     <div class="field" id="promoField">
       <label for="promo">Акция, %</label>
-      <input type="number" id="promo" step="0.1" min="0" max="100" value="0">
+      <input type="number" enterkeyhint="enter" id="promo" step="0.1" min="0" max="100" value="0">
     </div>
 
     <div class="field" id="materialField">
@@ -840,7 +840,7 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 
     <div class="field" id="trimWidthFreeField">
       <label for="trimWidthFree">Ширина (нестандарт), мм</label>
-      <input type="number" id="trimWidthFree" step="1" min="1">
+      <input type="number" enterkeyhint="enter" id="trimWidthFree" step="1" min="1">
     </div>
 
     <div class="field" id="sizeModeField">
@@ -855,11 +855,11 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
       <div class="field-row">
         <div class="field">
           <label for="height">Высота, мм</label>
-          <input type="number" id="height" step="1">
+          <input type="number" enterkeyhint="enter" id="height" step="1">
         </div>
         <div class="field">
           <label for="width">Ширина, мм</label>
-          <input type="number" id="width" step="1">
+          <input type="number" enterkeyhint="enter" id="width" step="1">
         </div>
         <div class="field">
           <label for="thickness">Толщина, мм</label>
@@ -893,7 +893,7 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
       <label for="quantity">Количество, шт</label>
       <div class="qty-stepper">
         <button type="button" id="qtyMinus" aria-label="Уменьшить количество">−</button>
-        <input type="number" id="quantity" min="1" step="1" value="1">
+        <input type="number" enterkeyhint="enter" id="quantity" min="1" step="1" value="1">
         <button type="button" id="qtyPlus" aria-label="Увеличить количество">+</button>
       </div>
     </div>
@@ -905,7 +905,7 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 
     <div class="field">
       <label for="discount">Скидка, %</label>
-      <input type="number" id="discount" step="0.1" min="0" max="100">
+      <input type="number" enterkeyhint="enter" id="discount" step="0.1" min="0" max="100">
     </div>
 
     <div class="result">
@@ -1015,7 +1015,7 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
       <div id="orderList"></div>
       <div class="field" id="orderDiscountField">
         <label for="orderDiscountInput">Скидка на заказ, %</label>
-        <input type="number" id="orderDiscountInput" step="0.1" min="0" max="100" value="0">
+        <input type="number" enterkeyhint="enter" id="orderDiscountInput" step="0.1" min="0" max="100" value="0">
       </div>
       <div class="breakdown" id="orderSummaryLines"></div>
       <div class="order-grand-total"><span>Итого по заказу</span><span id="orderGrandTotal">0 ₽</span></div>
@@ -5330,7 +5330,7 @@ const DB = {
     const priceBlock = opts.noPrice ? "" : `
         <label class="pitem-field">
           <span>Цена</span>
-          <span class="price-input-wrap"><input type="number" step="10" min="0" value="${priceVal}" data-field="price" ${a}></span>
+          <span class="price-input-wrap"><input type="number" enterkeyhint="enter" step="10" min="0" value="${priceVal}" data-field="price" ${a}></span>
         </label>`;
     const delBlock = opts.noDelete ? "" : `
         <div class="pitem-del">
@@ -5356,7 +5356,7 @@ const DB = {
     const a = dataAttrs("optionChoice", { material: mat, opt: optId, choice: i });
     return `<div class="choice-row">
       <input type="text" class="edit-name" value="${esc(label)}" data-field="name" ${a}>
-      <span class="price-input-wrap"><input type="number" step="10" min="0" value="${price}" data-field="price" ${a}></span>
+      <span class="price-input-wrap"><input type="number" enterkeyhint="enter" step="10" min="0" value="${price}" data-field="price" ${a}></span>
       <div class="pitem-del">
         <label class="switch"><input type="checkbox" class="arm-del"><span class="switch-track"></span></label>
         <span class="switch-label">Разрешить удаление</span>
@@ -5390,7 +5390,7 @@ const DB = {
     const a = dataAttrs("modelGlass", { model: modelId, id: g.id });
     return `<div class="choice-row">
       <input type="text" class="edit-name" value="${esc(g.name)}" data-field="name" ${a}>
-      <span class="price-input-wrap"><input type="number" step="10" min="0" value="${g.price}" data-field="price" ${a}></span>
+      <span class="price-input-wrap"><input type="number" enterkeyhint="enter" step="10" min="0" value="${g.price}" data-field="price" ${a}></span>
       <div class="pitem-del">
         <label class="switch"><input type="checkbox" class="arm-del"><span class="switch-track"></span></label>
         <span class="switch-label">Разрешить удаление</span>
@@ -5406,7 +5406,7 @@ const DB = {
     const a = dataAttrs("modelPatina", { model: modelId, id: p.id });
     return `<div class="choice-row">
       <input type="text" class="edit-name" value="${esc(p.name)}" data-field="name" ${a}>
-      <span class="price-input-wrap"><input type="number" step="10" min="0" value="${p.price}" data-field="price" ${a}></span>
+      <span class="price-input-wrap"><input type="number" enterkeyhint="enter" step="10" min="0" value="${p.price}" data-field="price" ${a}></span>
       <div class="pitem-del">
         <label class="switch"><input type="checkbox" class="arm-del"><span class="switch-track"></span></label>
         <span class="switch-label">Разрешить удаление</span>
@@ -5422,7 +5422,7 @@ const DB = {
     const a = dataAttrs("furnitureColor", { item: itemId, id: c.id });
     return `<div class="choice-row">
       <input type="text" class="edit-name" value="${esc(c.name)}" data-field="name" ${a}>
-      <span class="price-input-wrap"><input type="number" step="10" min="0" value="${c.price}" data-field="price" ${a}></span>
+      <span class="price-input-wrap"><input type="number" enterkeyhint="enter" step="10" min="0" value="${c.price}" data-field="price" ${a}></span>
       <div class="pitem-del">
         <label class="switch"><input type="checkbox" class="arm-del"><span class="switch-track"></span></label>
         <span class="switch-label">Разрешить удаление</span>
@@ -5438,7 +5438,7 @@ const DB = {
     const a = dataAttrs("trimCustomColor", { item: itemId, id: c.id });
     return `<div class="choice-row">
       <input type="text" class="edit-name" value="${esc(c.name)}" data-field="name" ${a}>
-      <span class="price-input-wrap"><input type="number" step="10" min="0" value="${c.price}" data-field="price" ${a}></span>
+      <span class="price-input-wrap"><input type="number" enterkeyhint="enter" step="10" min="0" value="${c.price}" data-field="price" ${a}></span>
       <div class="pitem-del">
         <label class="switch"><input type="checkbox" class="arm-del"><span class="switch-track"></span></label>
         <span class="switch-label">Разрешить удаление</span>
@@ -5499,7 +5499,7 @@ const DB = {
       <div class="price-body">
         <div class="price-row">
           <span class="price-label">Надбавка за нестандарт</span>
-          <span class="price-input-wrap is-percent"><input type="number" step="1" min="0" value="${DB.nonStandardPercent}" data-kind="nonstandard" data-field="price"></span>
+          <span class="price-input-wrap is-percent"><input type="number" enterkeyhint="enter" step="1" min="0" value="${DB.nonStandardPercent}" data-kind="nonstandard" data-field="price"></span>
         </div>
       </div></details>`);
 
@@ -5644,7 +5644,7 @@ const DB = {
               const price = (it.prices && it.prices[cat]) || 0;
               priceHtml += `<div class="price-row">
                 <span class="price-label">${catName(it.material, cat)}</span>
-                <span class="price-input-wrap"><input type="number" step="10" min="0" value="${price}" data-field="price" ${a}></span>
+                <span class="price-input-wrap"><input type="number" enterkeyhint="enter" step="10" min="0" value="${price}" data-field="price" ${a}></span>
               </div>`;
             });
             itemsHtml += editItem("trim", { id: it.id }, it.name, 0, { noPrice: true, extraBody: priceHtml, isOpen, search: true });
@@ -6141,14 +6141,39 @@ const DB = {
       if (!el.nameEditOverlay.hidden && e.key === "Escape") closeNameEditModal();
     });
 
-    // «Прилипающий» 0 в числовых полях: при фокусе выделяем всё значение
-    // целиком, чтобы первая же введённая цифра заменяла его, а не
-    // приписывалась после (было «0» + «1» = «01» вместо «1»). Слушатель
-    // навешан на document (capture — focus не всплывает) — работает и на
-    // полях, отрисованных позже (редактор цен и т.п.).
+    // «Прилипающий» 0 в числовых полях: при фокусе очищаем поле, если там
+    // именно «0», чтобы первая же введённая цифра заменяла его, а не
+    // приписывалась после (было «0» + «1» = «01» вместо «1»). Раньше здесь
+    // стоял t.select() — он выделяет текст целиком, а на телефоне это
+    // само по себе открывает системное меню «Вырезать/Копировать» при
+    // каждом нажатии на любое числовое поле (например, «Количество»,
+    // где «0» никогда и не бывает — см. отчёт). Просто очищаем значение
+    // (без выделения — меню не появляется), а на blur, если поле осталось
+    // пустым, возвращаем «0» обратно. Слушатели навешаны на document
+    // (capture — focus/blur не всплывают) — работают и на полях,
+    // отрисованных позже (редактор цен и т.п.).
     document.addEventListener("focus", (e) => {
       const t = e.target;
-      if (t && t.tagName === "INPUT" && t.type === "number") t.select();
+      if (t && t.tagName === "INPUT" && t.type === "number" && t.value === "0") t.value = "";
+    }, true);
+    document.addEventListener("blur", (e) => {
+      const t = e.target;
+      if (t && t.tagName === "INPUT" && t.type === "number" && t.value === "") t.value = "0";
+    }, true);
+
+    // Клавиша подтверждения на цифровой клавиатуре телефона (см. отчёт:
+    // в разных полях у неё то стрелка, то галочка — единообразия не было,
+    // потому что enterkeyhint нигде не задавался и иконку браузер выбирал
+    // сам по контексту поля). Теперь везде задан один и тот же enterkeyhint
+    // (см. атрибут у всех input[type=number] выше) — иконка везде
+    // одинаковая, а по Enter поле всегда просто закрывает клавиатуру
+    // (никакой отправки формы — её тут и нет).
+    document.addEventListener("keydown", (e) => {
+      const t = e.target;
+      if (t && t.tagName === "INPUT" && t.type === "number" && e.key === "Enter") {
+        e.preventDefault();
+        t.blur();
+      }
     }, true);
 
     render();
