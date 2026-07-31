@@ -423,6 +423,12 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 
 .spec-customer { margin-bottom: 16px; display: flex; flex-direction: column; gap: 10px; }
 .spec-customer-readonly { margin-bottom: 16px; font-size: 13px; color: var(--text); }
+/* Печатный вариант данных заказчика — обычные <input> печатать нельзя
+   (пустое поле иногда печатает подсказку "Фамилия"/"Имя"/"+7 ..." как
+   будто это введённый текст — баг конкретных браузеров, см. отчёт со
+   скриншотом), поэтому в @media print показываем готовый текст вместо
+   живых полей. На экране всегда скрыт (атрибут hidden). */
+.spec-customer-print { margin-bottom: 16px; font-size: 13px; color: var(--text); }
 
 .edit-banner, .spec-editing-banner {
   display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
@@ -667,7 +673,21 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
   #viewOrder, #viewOrder * { visibility: visible; }
   #viewOrder { position: absolute; left: 0; top: 0; width: 100%; padding: 0; }
   .order-toolbar, .order-note, .topbar, .item-actions, .result-actions, .spec-editing-banner, .edit-banner, #orderDiscountField { display: none !important; }
-  .spec-customer input { border: none; background: none; padding: 0; font-size: 13px; outline: none; }
+  /* Живые поля заказчика (и их частый на телефонах баг с печатью
+     подсказки как введённого текста) на печати не показываем — вместо
+     них готовый текст (см. #specCustomerPrint/renderOrderPage). */
+  #viewOrder .spec-customer, #viewOrder .spec-customer-readonly { display: none !important; }
+  #viewOrder .spec-customer-print { display: block !important; }
+  /* Пункт 2/3 отчёта: мелкий серый текст на печати плохо читается —
+     крупнее и контрастнее везде, кроме названий позиций (уже крупные и
+     жирные, см. .order-item-title). */
+  #viewOrder .spec-number { font-size: 18px; }
+  #viewOrder .spec-company,
+  #viewOrder .spec-customer-print,
+  #viewOrder .order-item-sub,
+  #viewOrder .breakdown,
+  #viewOrder .order-item-total { font-size: 15px; color: #000; }
+  #viewOrder .order-grand-total { font-size: 22px; color: #000; }
 
   #viewTag, #viewTag * { visibility: visible; }
   #viewTag { position: absolute; left: 0; top: 0; width: 100%; padding: 0; }
@@ -1012,6 +1032,7 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
         <div class="field"><label for="custPhone">Телефон</label><input type="text" id="custPhone" placeholder="+7 ..."></div>
       </div>
       <div class="spec-customer-readonly" id="specCustomerView" hidden></div>
+      <div class="spec-customer-print" id="specCustomerPrint" hidden></div>
       <div id="orderList"></div>
       <div class="field" id="orderDiscountField">
         <label for="orderDiscountInput">Скидка на заказ, %</label>
@@ -1683,6 +1704,7 @@ const DB = {
     specNumber: document.getElementById("specNumber"),
     specCustomerEdit: document.getElementById("specCustomerEdit"),
     specCustomerView: document.getElementById("specCustomerView"),
+    specCustomerPrint: document.getElementById("specCustomerPrint"),
     custLastName: document.getElementById("custLastName"),
     custFirstName: document.getElementById("custFirstName"),
     custPhone: document.getElementById("custPhone"),
@@ -3188,7 +3210,7 @@ const DB = {
   let orderCustomer = { lastName: "", firstName: "", phone: "" };
   // Скидка на весь заказ (%), в отличие от «Скидка, %» на калькуляторе —
   // не на одно полотно, а на сумму всех позиций спецификации целиком (см.
-  // orderDiscountPercent/orderDiscountAmount/orderFinalTotal ниже). Те же
+  // orderDiscountPercent/orderSummaryBreakdown/orderFinalTotal ниже). Те же
   // правила ввода, что и у калькулятора: 0–100%, округление до рубля.
   let orderDiscount = 0;
   let specHistory = [];
@@ -3526,10 +3548,6 @@ const DB = {
     renderOrderPage();
   }
 
-  function orderGrandTotal(items) {
-    return (items || orderItems).reduce((sum, it) => sum + it.total, 0);
-  }
-
   // Скидка на заказ — 0–100%, применяется к каждой позиции отдельно, а не к
   // сумме заказа целиком — так учитывается Акция конкретной позиции (см.
   // отчёт): если Акция позиции больше Скидки на заказ или равна ей —
@@ -3540,27 +3558,49 @@ const DB = {
   function orderDiscountPercent(view) {
     return Math.max(0, Math.min(100, Number(view.discount) || 0));
   }
+  // Цена позиции без всякой скидки (ни Акции, ни Скидки на заказ).
+  // it.totalNoPromo хранится на позиции с этой версии (см. отчёт); для
+  // позиций, сохранённых до неё, восстанавливаем «сырую» цену обратным
+  // счётом от it.total и её же promoPercent (небольшая погрешность
+  // округления возможна, но направление и порядок величины верны).
+  function itemRawTotal(it) {
+    const promoPct = Number(it.promoPercent) || 0;
+    if (!promoPct) return it.total;
+    return it.totalNoPromo != null ? it.totalNoPromo : Math.round(it.total / (1 - promoPct / 100));
+  }
   function orderItemFinalTotal(it, discPct) {
     if (!discPct) return it.total;
     const promoPct = Number(it.promoPercent) || 0;
     if (promoPct && discPct <= promoPct) return it.total;
-    // rawTotal — цена без всякой скидки (ни Акции, ни Скидки на заказ).
-    // it.totalNoPromo хранится на позиции с этой версии (см. отчёт); для
-    // позиций, сохранённых до неё, восстанавливаем «сырую» цену обратным
-    // счётом от it.total и её же promoPercent (небольшая погрешность
-    // округления возможна, но направление и порядок величины верны).
-    const rawTotal = promoPct
-      ? (it.totalNoPromo != null ? it.totalNoPromo : Math.round(it.total / (1 - promoPct / 100)))
-      : it.total;
-    return Math.round(rawTotal * (1 - discPct / 100));
+    return Math.round(itemRawTotal(it) * (1 - discPct / 100));
   }
   function orderFinalTotal(view, discPctOverride) {
     const discPct = discPctOverride != null ? discPctOverride : orderDiscountPercent(view);
     return (view.items || []).reduce((sum, it) => sum + orderItemFinalTotal(it, discPct), 0);
   }
-  function orderDiscountAmount(view) {
+
+  // Полная разбивка «Итого:» для печати/скачивания/мессенджеров (см.
+  // отчёт): «Сумма позиций» (без всяких скидок) → «Акция» (сколько сэкономлено
+  // за счёт Акции по тем позициям, где она в итоге победила Скидку на
+  // заказ) → «Скидка на заказ» (сколько сэкономлено сверху) → «Итого по
+  // заказу». rawTotal - promoSavings - discSavings всегда равен
+  // orderFinalTotal(view) — считаем по тем же правилам победителя
+  // (orderItemFinalTotal), просто раскладываем разницу по источнику.
+  function orderSummaryBreakdown(view) {
     const discPct = orderDiscountPercent(view);
-    return orderGrandTotal(view.items) - orderFinalTotal(view, discPct);
+    let rawTotal = 0, promoSavings = 0, discSavings = 0;
+    (view.items || []).forEach((it) => {
+      const raw = itemRawTotal(it);
+      const promoPct = Number(it.promoPercent) || 0;
+      const promoWins = promoPct > 0 && (!discPct || discPct <= promoPct);
+      rawTotal += raw;
+      if (promoWins) {
+        promoSavings += raw - it.total;
+      } else {
+        discSavings += raw - orderItemFinalTotal(it, discPct);
+      }
+    });
+    return { rawTotal, promoSavings, discPct, discSavings, finalTotal: rawTotal - promoSavings - discSavings };
   }
 
   // Присваивает номер (если ещё не присвоен — только в этот момент, не
@@ -3647,6 +3687,10 @@ const DB = {
     el.specEditingBanner.hidden = view.readOnly || view.meta.number == null;
 
     el.orderDiscountField.hidden = view.readOnly;
+    // Печатный вариант данных заказчика — всегда готовый текст, а не живые
+    // поля (см. @media print/.spec-customer-print) — заполняем независимо
+    // от readOnly, печать использует его в обоих случаях.
+    el.specCustomerPrint.textContent = customerLine(view.customer) || "Заказчик не указан";
     if (view.readOnly) {
       el.specCustomerView.textContent = customerLine(view.customer) || "Заказчик не указан";
     } else {
@@ -3680,14 +3724,24 @@ const DB = {
         .join("");
     }
 
-    const rawTotal = orderGrandTotal(view.items);
-    const discPct = orderDiscountPercent(view);
-    const discAmt = orderDiscountAmount(view);
-    el.orderSummaryLines.innerHTML = discPct > 0
-      ? `<div class="breakdown-row">Сумма позиций: ${rawTotal.toLocaleString("ru-RU")} ₽</div>` +
-        `<div class="breakdown-row">Скидка на заказ ${discPct}%: -${discAmt.toLocaleString("ru-RU")} ₽</div>`
-      : "";
-    el.orderGrandTotal.textContent = (rawTotal - discAmt).toLocaleString("ru-RU") + " ₽";
+    el.orderSummaryLines.innerHTML = orderSummaryLinesHtml(view);
+    el.orderGrandTotal.textContent = orderSummaryBreakdown(view).finalTotal.toLocaleString("ru-RU") + " ₽";
+  }
+
+  // Строки блока «Итого:» (Сумма позиций / Акция / Скидка на заказ) —
+  // общий источник для экрана/печати, скачиваемого файла и текста для
+  // мессенджеров (см. отчёт: все формы должны быть одинаковыми), каждый
+  // потребитель сам оформляет label/value под свою разметку.
+  function orderSummaryEntries(view) {
+    if (!view.items.length) return [];
+    const b = orderSummaryBreakdown(view);
+    const entries = [{ label: "Сумма позиций", value: `${b.rawTotal.toLocaleString("ru-RU")} ₽` }];
+    if (b.promoSavings > 0) entries.push({ label: "Акция", value: `-${b.promoSavings.toLocaleString("ru-RU")} ₽` });
+    if (b.discPct > 0) entries.push({ label: `Скидка на заказ ${b.discPct}%`, value: `-${b.discSavings.toLocaleString("ru-RU")} ₽` });
+    return entries;
+  }
+  function orderSummaryLinesHtml(view) {
+    return orderSummaryEntries(view).map((e) => `<div class="breakdown-row">${e.label}: ${e.value}</div>`).join("");
   }
 
   function renderSpecHistoryPage() {
@@ -3734,13 +3788,10 @@ const DB = {
     view.items.forEach((it, idx) => {
       lines.push(`${idx + 1}. ${it.modelName}`);
       lines.push(orderItemSummaryLine(it));
+      it.rows.forEach((r) => lines.push(r));
       lines.push(`Итого по позиции: ${it.total.toLocaleString("ru-RU")} ₽`, "");
     });
-    const discPct = orderDiscountPercent(view);
-    if (discPct > 0) {
-      lines.push(`Сумма позиций: ${orderGrandTotal(view.items).toLocaleString("ru-RU")} ₽`);
-      lines.push(`Скидка на заказ ${discPct}%: -${orderDiscountAmount(view).toLocaleString("ru-RU")} ₽`);
-    }
+    orderSummaryEntries(view).forEach((e) => lines.push(`${e.label}: ${e.value}`));
     lines.push(`Итого по заказу: ${orderFinalTotal(view).toLocaleString("ru-RU")} ₽`);
     return lines.join("\n");
   }
@@ -3780,37 +3831,36 @@ const DB = {
 
   function downloadOrderFile() {
     const view = currentSpecView();
+    // Пункт 2/3 отчёта: мелкий блёклый текст плохо читается при печати —
+    // крупнее и контрастнее везде, кроме названий позиций (уже крупные и
+    // жирные).
     const itemsHtml = view.items
       .map((it, idx) => `
         <div style="border:1px solid #ddd;border-radius:10px;padding:14px;margin-bottom:12px;">
           <div style="font-weight:700;font-size:18px;margin-bottom:4px;">${idx + 1}. ${esc(it.modelName)}</div>
-          <div style="font-size:13px;color:#666;margin-bottom:8px;">${esc(orderItemSummaryLine(it))}</div>
-          <div style="font-size:13px;color:#444;">${it.rows.map((r) => `<div>${esc(r)}</div>`).join("")}</div>
-          <div style="display:flex;justify-content:space-between;font-weight:700;font-size:15px;border-top:1px solid #ddd;padding-top:8px;margin-top:8px;">
+          <div style="font-size:15px;color:#1a1a1a;margin-bottom:8px;">${esc(orderItemSummaryLine(it))}</div>
+          <div style="font-size:15px;color:#1a1a1a;">${it.rows.map((r) => `<div>${esc(r)}</div>`).join("")}</div>
+          <div style="display:flex;justify-content:space-between;font-weight:700;font-size:16px;color:#000;border-top:1px solid #ddd;padding-top:8px;margin-top:8px;">
             <span>Итого</span><span>${it.total.toLocaleString("ru-RU")} ₽</span>
           </div>
         </div>`)
       .join("");
     const custLine = customerLine(view.customer);
-    const discPct = orderDiscountPercent(view);
-    const summaryHtml = discPct > 0 ? `
-  <div style="display:flex;justify-content:space-between;font-size:14px;color:#666;">
-    <span>Сумма позиций</span><span>${orderGrandTotal(view.items).toLocaleString("ru-RU")} ₽</span>
-  </div>
-  <div style="display:flex;justify-content:space-between;font-size:14px;color:#666;margin-bottom:6px;">
-    <span>Скидка на заказ ${discPct}%</span><span>-${orderDiscountAmount(view).toLocaleString("ru-RU")} ₽</span>
-  </div>` : "";
+    const summaryHtml = orderSummaryEntries(view).map((e) => `
+  <div style="display:flex;justify-content:space-between;font-size:15px;color:#1a1a1a;margin-bottom:4px;">
+    <span>${esc(e.label)}</span><span>${esc(e.value)}</span>
+  </div>`).join("");
     const html = `<!doctype html><html lang="ru"><head><meta charset="UTF-8"><title>Спецификация дверей</title></head>
 <body style="font-family:-apple-system,'Segoe UI',Roboto,Arial,sans-serif;max-width:640px;margin:24px auto;padding:0 16px;color:#1c1f26;">
   <div style="text-align:right;margin-bottom:16px;">
-    <div style="font-size:15px;font-weight:700;">${esc(specNumberText(view.meta))}</div>
-    <div style="font-size:12px;color:#666;margin-top:4px;line-height:1.5;">${SPEC_COMPANY_LINES.map(esc).join("<br>")}</div>
+    <div style="font-size:18px;font-weight:700;">${esc(specNumberText(view.meta))}</div>
+    <div style="font-size:15px;color:#1a1a1a;margin-top:4px;line-height:1.5;">${SPEC_COMPANY_LINES.map(esc).join("<br>")}</div>
   </div>
-  ${custLine ? `<div style="font-size:13px;margin-bottom:14px;">${esc(custLine)}</div>` : ""}
+  ${custLine ? `<div style="font-size:16px;color:#1a1a1a;margin-bottom:14px;">${esc(custLine)}</div>` : ""}
   <h1 style="font-size:20px;">Спецификация дверей</h1>
   ${itemsHtml || "<p>Пусто.</p>"}
   ${summaryHtml}
-  <div style="display:flex;justify-content:space-between;font-size:20px;font-weight:800;border-top:2px solid #1c1f26;padding-top:14px;margin-top:6px;">
+  <div style="display:flex;justify-content:space-between;font-size:22px;font-weight:800;color:#000;border-top:2px solid #1c1f26;padding-top:14px;margin-top:6px;">
     <span>Итого по заказу</span><span>${orderFinalTotal(view).toLocaleString("ru-RU")} ₽</span>
   </div>
 </body></html>`;
