@@ -3230,6 +3230,17 @@ const DB = {
 
   // --- Спецификация: сохранённые полотна --------------------------------
 
+  // Заголовок вкладки/страницы — на время просмотра «Спецификации» ставим
+  // тот же текст, что и имя скачиваемого файла (дата/№/ФИО, см.
+  // specFileBaseName), а не только вокруг window.print(): часть браузеров
+  // (замечено на Android) печатает в PDF заголовок, который был у страницы
+  // ДО вызова печати, а не тот, что выставлен непосредственно перед
+  // window.print() — если печать вызвана не нашей кнопкой «Печать», а
+  // системным меню браузера, наш код вокруг window.print() вообще не
+  // выполняется. Держим заголовок актуальным всё время, пока открыта
+  // страница «Спецификация» (см. renderOrderPage/setView), а не только
+  // в момент печати — тогда PDF получает верное имя при любом способе печати.
+  const DEFAULT_DOCUMENT_TITLE = document.title;
   const ORDER_STORE_KEY = "doorcalc_order_v1";
   const SPEC_SEQ_KEY = "doorcalc_spec_seq_v1";
   const SPEC_HISTORY_KEY = "doorcalc_spec_history_v1";
@@ -3723,6 +3734,9 @@ const DB = {
 
   function renderOrderPage() {
     const view = currentSpecView();
+    // См. DEFAULT_DOCUMENT_TITLE — держим заголовок актуальным всё время,
+    // пока страница открыта, а не только вокруг window.print().
+    document.title = specFileBaseName(view);
 
     el.specNumber.textContent = specNumberText(view.meta);
     el.draftActions.hidden = view.readOnly;
@@ -3867,13 +3881,6 @@ const DB = {
   }
 
   function printOrder() {
-    const originalTitle = document.title;
-    document.title = specFileBaseName(currentSpecView());
-    function cleanup() {
-      document.title = originalTitle;
-      window.removeEventListener("afterprint", cleanup);
-    }
-    window.addEventListener("afterprint", cleanup);
     window.print();
   }
 
@@ -5151,6 +5158,10 @@ const DB = {
       input.addEventListener("input", () => {
         orderCustomer[key] = input.value;
         saveOrderItems();
+        // Полный renderOrderPage() тут не годится — сбросит фокус/курсор
+        // посреди набора текста, а заголовок вкладки/страницы (см.
+        // DEFAULT_DOCUMENT_TITLE) обновляем отдельно, он не влияет на DOM полей.
+        document.title = specFileBaseName(currentSpecView());
       });
     });
     el.orderDiscountInput.addEventListener("input", () => {
@@ -5281,6 +5292,9 @@ const DB = {
   }
 
   function setView(view) {
+    // См. DEFAULT_DOCUMENT_TITLE — вне «Спецификации» заголовок обычный,
+    // renderOrderPage сам выставит нужный при входе на страницу.
+    if (view !== "order") document.title = DEFAULT_DOCUMENT_TITLE;
     el.viewCalc.hidden = view !== "calc";
     el.viewScene.hidden = view !== "scene";
     el.viewPrices.hidden = view !== "prices";
