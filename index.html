@@ -970,13 +970,18 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
               <stop offset="0%" stop-color="#eef6fb" stop-opacity="1"/>
               <stop offset="100%" stop-color="#c3d8e6" stop-opacity="1"/>
             </linearGradient>
-            <pattern id="s_doorTexturePattern" patternUnits="userSpaceOnUse">
-              <image id="s_doorTextureImage" href="" preserveAspectRatio="none"></image>
-            </pattern>
+            <image id="s_doorTextureImage" href="" preserveAspectRatio="none"></image>
+            <pattern id="s_doorTexturePattern" patternUnits="userSpaceOnUse"></pattern>
+            <filter id="s_doorVary" x="0" y="0" width="100%" height="100%">
+              <feTurbulence type="fractalNoise" baseFrequency="0.008 0.014" numOctaves="2" seed="5" stitchTiles="stitch"/>
+              <feColorMatrix type="saturate" values="0"/>
+              <feComponentTransfer><feFuncA type="linear" slope="0.1"/></feComponentTransfer>
+            </filter>
           </defs>
           <g id="s_doorSceneGroup"></g>
           <g clip-path="url(#s_doorClip)">
             <rect id="s_doorLeafRect" fill="#c9cbcd"></rect>
+            <rect id="s_doorVaryRect" filter="url(#s_doorVary)" opacity="0.55"></rect>
             <rect id="s_doorShadeRect" fill="url(#s_doorShadeGradient)"></rect>
           </g>
           <rect id="s_doorOutlineRect" fill="none" stroke="rgba(0,0,0,.25)" stroke-width="1.5"></rect>
@@ -2414,12 +2419,14 @@ const DB = {
       outlineRect: q("doorOutlineRect"),
       shadeRect: q("doorShadeRect"),
       shadeGradient: q("doorShadeGradient"),
+      varyRect: q("doorVaryRect"),
       texturePattern: q("doorTexturePattern"),
       textureImage: q("doorTextureImage"),
       glassGroup: q("doorGlassGroup"),
       handleGroup: q("doorHandleGroup"),
       sceneGroup: q("doorSceneGroup"),
       patternId: prefix + "doorTexturePattern",
+      textureImageId: prefix + "doorTextureImage",
       shadeGradId: prefix + "doorShadeGradient",
       glassGradId: prefix + "glassFillGradient"
     };
@@ -2451,7 +2458,7 @@ const DB = {
     const y = layout.floorY - h; // дверь стоит на полу — выравниваем по низу
     const rx = Math.min(w, h) * 0.015;
 
-    [c.clipRect, c.leafRect, c.outlineRect].forEach((rect) => {
+    [c.clipRect, c.leafRect, c.outlineRect, c.varyRect].forEach((rect) => {
       rect.setAttribute("x", x);
       rect.setAttribute("y", y);
       rect.setAttribute("width", w);
@@ -2472,22 +2479,34 @@ const DB = {
     // же расцветки/текстуры, что и дверь.
     const doorFill = swatch ? `url(#${c.patternId})` : baseHex;
     if (swatch) {
+      // Образец физически 150x200 мм. Плитку кладём в реальном масштабе, но
+      // соседние КОЛОННЫ зеркалим по горизонтали: ширина паттерна = 2 плитки,
+      // вторая — отражение первой. Резкие вертикальные швы превращаются в
+      // плавные отражения (по вертикали образец уже бесшовный). Так повтор
+      // становится гораздо менее заметным без новых фото.
       const { widthMm: sampleW, heightMm: sampleH } = DB.colorSwatchSampleSize;
       const unitsPerMm = w / width;                 // масштаб: единицы SVG на мм двери
       const tileW = sampleW * unitsPerMm;
       const tileH = sampleH * unitsPerMm;
-      c.texturePattern.setAttribute("x", x);
-      c.texturePattern.setAttribute("y", y);
-      c.texturePattern.setAttribute("width", tileW);
-      c.texturePattern.setAttribute("height", tileH);
-      c.textureImage.setAttribute("href", swatch.tileImage || swatch.image);
+      const href = swatch.tileImage || swatch.image;
+      c.textureImage.setAttribute("href", href);
       c.textureImage.setAttribute("x", 0);
       c.textureImage.setAttribute("y", 0);
       c.textureImage.setAttribute("width", tileW);
       c.textureImage.setAttribute("height", tileH);
+      c.texturePattern.setAttribute("x", x);
+      c.texturePattern.setAttribute("y", y);
+      c.texturePattern.setAttribute("width", tileW * 2);
+      c.texturePattern.setAttribute("height", tileH);
+      c.texturePattern.innerHTML =
+        `<use href="#${c.textureImageId}"/>` +
+        `<use href="#${c.textureImageId}" transform="translate(${tileW * 2},0) scale(-1,1)"/>`;
       c.leafRect.setAttribute("fill", `url(#${c.patternId})`);
+      c.varyRect.setAttribute("display", "");
     } else {
       c.leafRect.setAttribute("fill", baseHex);
+      // Для ровной эмали крупную вариацию не накладываем — цвет остаётся чистым.
+      c.varyRect.setAttribute("display", "none");
     }
     c.shadeGradient.innerHTML = `
       <stop offset="0%" stop-color="${shade(baseHex, 25)}" stop-opacity="0.35"/>
