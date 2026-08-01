@@ -3057,17 +3057,27 @@ const DB = {
       const tagPromoPercent = promoPctRaw;
       const perUnit = promoWins ? applyPromo(model.basePrice, rows) : model.basePrice;
       const result = finishOrder(model, perUnit, rows, promoWins, discPctRaw);
+      // Спецификация: Акция всегда применяется, независимо от того, чья
+      // строка попала в rows выше (см. отчёт) — своя разбивка на случай,
+      // когда на калькуляторе выиграла Скидка (тогда в rows строки «Акция»
+      // вообще нет).
+      const orderRows = [`Полотно: ${model.basePrice} ₽`];
       const tagPerUnit = tagPromoPercent
         ? model.basePrice - Math.round((model.basePrice * tagPromoPercent) / 100)
         : model.basePrice;
+      if (tagPromoPercent) orderRows.push(`Акция ${tagPromoPercent}%: -${model.basePrice - tagPerUnit} ₽`);
       return {
         ...result,
         standard: true,
         materialLabel: "", color: "", glassName: "",
         options: [],
-        promoPercent,
         tagPromoPercent,
         totalNoPromo: Math.round(model.basePrice * result.quantity),
+        // Нестандартных размеров у «Матрицы» не бывает — Акция-всегда-
+        // применяется цепочка для Спецификации совпадает с цепочкой Ценника.
+        orderPerUnit: tagPerUnit,
+        orderTotal: Math.round(tagPerUnit * result.quantity),
+        orderRows,
         tagPerUnit,
         tagTotal: Math.round(tagPerUnit * result.quantity),
         tagTotalNoPromo: Math.round(model.basePrice * result.quantity),
@@ -3151,6 +3161,31 @@ const DB = {
     // калькулятор/Спецификацию (perUnit/total выше).
     const perUnitTag = leafPriceTag + optionsSum + glassPrice + patinaPrice;
     const perUnitTagNoPromo = leafPriceTagNoPromo + optionsSum + glassPrice + patinaPrice;
+    // «Спецификация»: Акция всегда применяется независимо от «Скидка, %»
+    // (см. отчёт — она только предпросмотр на калькуляторе, никогда не
+    // сохраняется и не влияет на сохранённую позицию), в отличие от
+    // Ценника — с наценкой за нестандарт, как обычный расчёт. rows для
+    // этой цепочки — своя разбивка (orderRows), а не общая rows выше: если
+    // на калькуляторе выиграла Скидка, в rows вообще нет строки «Акция»
+    // (см. promoWins), но в сохранённой позиции Акция всё равно действует,
+    // и разбивка должна её показывать (см. addCurrentToOrder/отчёт).
+    const orderRows = [`Полотно: ${leafBase} ₽`];
+    let leafPriceOrder = leafBase;
+    if (tagPromoPercent) {
+      const promoAmt = Math.round((leafBase * tagPromoPercent) / 100);
+      leafPriceOrder = leafBase - promoAmt;
+      orderRows.push(`Акция ${tagPromoPercent}%: -${promoAmt} ₽`);
+    }
+    const optionsPromoAmtOrder = tagPromoPercent ? Math.round((optionsSum * tagPromoPercent) / 100) : 0;
+    const optionsSumAfterPromoOrder = optionsSum - optionsPromoAmtOrder;
+    if (!standard) {
+      leafPriceOrder = roundUp10(leafPriceOrder * nsMult);
+      orderRows.push(`Наценка за нестандарт (+${DB.nonStandardPercent}%, округление вверх до 10 ₽): ${leafPriceOrder} ₽`);
+    }
+    optionLines.forEach((l) => orderRows.push(l));
+    if (optionsPromoAmtOrder > 0) orderRows.push(`Акция ${tagPromoPercent}% на опции: -${optionsPromoAmtOrder} ₽`);
+    if (patina) orderRows.push(`Патина (${patina.name}): +${patinaPrice} ₽`);
+    const perUnitOrder = leafPriceOrder + optionsSumAfterPromoOrder + glassPrice + patinaPrice;
     const result = finishOrder(model, perUnit, rows, promoWins, discPctRaw);
     return {
       ...result,
@@ -3160,12 +3195,15 @@ const DB = {
       glassName: glass ? glass.name : "",
       patinaName: patina ? patina.name : "",
       options: optionItems,
-      // Акция — для Спецификации (сохраняется, влияет на итог) и для
-      // «Ценника» (зачёркнутая цена без скидки + жёлтая приставка) — два
-      // разных поля (promoPercent/tagPromoPercent), см. отчёт.
-      promoPercent,
+      // Акция — «настоящий» процент (независимо от «Скидка, %» на
+      // калькуляторе) для Спецификации (сохраняется, влияет на итог) и для
+      // «Ценника» (зачёркнутая цена без скидки + жёлтая приставка) — см. отчёт.
       tagPromoPercent,
       totalNoPromo: Math.round(perUnitNoPromo * result.quantity),
+      // Сохраняемая в Спецификацию цена/разбивка — см. addCurrentToOrder.
+      orderPerUnit: perUnitOrder,
+      orderTotal: Math.round(perUnitOrder * result.quantity),
+      orderRows,
       // «Ценник»: без общей позиционной «Скидка, %» и без наценки за
       // нестандарт (см. addCurrentToTagDraft) — используется только при
       // сохранении позиции в Ценник, калькулятор/Спецификация эти поля не
@@ -3491,19 +3529,25 @@ const DB = {
       thickness: o.thickness,
       standard: o.standard,
       quantity: o.quantity,
-      perUnit: o.perUnit,
       // «Скидка, %» — только предпросмотр на калькуляторе, в Спецификацию
-      // не сохраняется и на итог не влияет (см. отчёт) — берём lineSubtotal
-      // (Акция уже учтена в perUnit, «Скидка» — нет), а не o.total.
-      total: Math.round(o.lineSubtotal),
+      // не сохраняется и на итог не влияет (см. отчёт). Акция, наоборот,
+      // сохраняется и действует всегда, когда выбрана — независимо от
+      // того, победила она Скидку в предпросмотре калькулятора или нет
+      // (см. orderPerUnit/orderTotal/orderRows в computeOrder). Для
+      // разделов без своей Акции (Погонаж/Фурнитура/custom) этих полей
+      // нет — берём обычные perUnit/lineSubtotal/rows, там Скидка и так
+      // не участвует в них (см. finishOrder).
+      perUnit: o.orderPerUnit != null ? o.orderPerUnit : o.perUnit,
+      total: o.orderTotal != null ? o.orderTotal : Math.round(o.lineSubtotal),
       // Цена без всякой скидки (ни Акции, ни «Скидка, %») — нужна на
       // Спецификации, когда «Скидка на заказ, %» побеждает Акцию позиции
       // (см. orderItemFinalTotal).
       totalNoPromo: o.totalNoPromo,
-      promoPercent: o.promoPercent || 0,
-      // Строки про «Скидка, %» — предпросмотр только калькулятора, в
-      // Спецификации им не место (см. отчёт).
-      rows: o.rows.filter((r) => !r.startsWith("Скидка")),
+      // Акция всегда сохраняется по факту выбора (tagPromoPercent — тот же
+      // «настоящий» процент, что и у Ценника), а не только когда она
+      // победила Скидку в предпросмотре калькулятора (см. отчёт).
+      promoPercent: o.tagPromoPercent || 0,
+      rows: (o.orderRows || o.rows).filter((r) => !r.startsWith("Скидка")),
       calcState: captureCalcState()
     };
     if (editingItemId) {
@@ -3526,8 +3570,12 @@ const DB = {
   // крупным заголовком — см. orderItemTitle).
   function orderItemSummaryLine(it) {
     if (isSimpleModelSection(it.section)) {
+      // Высота/толщина у «Матрицы» всегда стандартные (без варианта
+      // «нестандарт» — см. computeOrder), а ширина выбирается и заметно
+      // различается между позициями — размер нужен, как и у остальных
+      // разделов (см. отчёт: «на всех позициях нет размеров»).
       const group = DB.modelGroups.find((g) => g.type === it.section);
-      return `${group ? group.label : "Матрица"} · ${it.quantity} шт.`;
+      return `${group ? group.label : "Матрица"} · ${it.height}×${it.width}×${it.thickness} мм · ${it.quantity} шт.`;
     }
     if (it.section === "погонаж") {
       // У custom-вида (добавлен пользователем) материала нет вовсе —
