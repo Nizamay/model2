@@ -723,20 +723,6 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 .r3-swatches { display: flex; gap: 5px; flex-wrap: wrap; flex: 1 1 auto; }
 .r3-swatch { width: 22px; height: 22px; border-radius: 6px; border: 1px solid rgba(0,0,0,.2); cursor: pointer; padding: 0; }
 .r3-swatch.active { outline: 2px solid var(--accent); outline-offset: 1px; }
-.reset-prices-btn {
-  margin-top: 16px;
-  width: 100%;
-  padding: 11px 14px;
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--warn);
-  background: var(--warn-bg);
-  border: 1px solid var(--warn);
-  border-radius: 8px;
-  cursor: pointer;
-}
-
-.reset-prices-btn:hover { filter: brightness(0.97); }
 </style>
 </head>
 <body>
@@ -5390,11 +5376,6 @@ const DB = {
     };
   }
 
-  // Заводской снимок редактируемых данных (цены, цвета, категории, стекло,
-  // опции). Снимаем ДО загрузки сохранённых цен, поэтому здесь всегда
-  // исходные значения из кода — их используем для сброса.
-  const DB_DEFAULTS = JSON.parse(JSON.stringify(collectPrices()));
-
   function applyPrices(s) {
     if (!s || typeof s !== "object") return;
     // Снимок мог быть сохранён до появления редактируемых типов двери —
@@ -5483,21 +5464,6 @@ const DB = {
       const raw = localStorage.getItem(PRICE_STORE_KEY);
       if (raw) applyPrices(JSON.parse(raw));
     } catch (e) {}
-  }
-
-  // Сброс всех цен, цветов, категорий, стекла и опций к заводским значениям
-  // (восстанавливает в т.ч. полный список цветов плёнок ПВХ и эмали).
-  function resetPrices() {
-    if (!window.confirm("Сбросить цены, цвета и категории к заводским настройкам? Все изменения будут удалены.")) return;
-    applyPrices(JSON.parse(JSON.stringify(DB_DEFAULTS)));
-    try { localStorage.removeItem(PRICE_STORE_KEY); } catch (e) {}
-    populateModels();
-    populateMaterial();
-    populateColors();
-    populateGlass();
-    populateOptions();
-    renderPriceEditor();
-    render();
   }
 
   // --- Редактор цен ----------------------------------------------------
@@ -5897,8 +5863,6 @@ const DB = {
         <div id="furniturePriceRows">${furnitureRows}</div>
       </div></details>`);
 
-    parts.push(`<button type="button" id="resetPricesBtn" class="reset-prices-btn">Сбросить к заводским настройкам</button>`);
-
     el.priceEditor.innerHTML = parts.join("");
     // Поле «Название» не редактируется прямо в узкой строке — клик открывает
     // модалку с полным текстом (см. openNameEditModal/bind()).
@@ -6044,7 +6008,6 @@ const DB = {
 
   // Клик по «удалить»/«добавить» — меняет структуру → перерисовываем редактор
   function onPriceClick(e) {
-    if (e.target.closest("#resetPricesBtn")) { resetPrices(); return; }
     const del = e.target.closest("[data-field='del']");
     const add = e.target.closest("[data-add]");
     if (!del && !add) return;
