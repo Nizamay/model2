@@ -366,6 +366,19 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 /* Раздел «2D картинка». */
 .scene-view-hint { font-size: 13px; color: var(--muted); margin: 0 0 4px; }
 .scene-controls { display: flex; flex-direction: column; gap: 14px; margin-top: 16px; }
+
+.custom-texture-row { display: flex; flex-direction: column; gap: 8px; }
+.custom-texture-row input[type="file"] { font-size: 13px; }
+.custom-texture-active { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.custom-texture-name { font-size: 13px; font-weight: 600; color: var(--ok); }
+.custom-texture-modes { display: flex; gap: 12px; font-size: 13px; }
+.custom-texture-modes label { display: inline-flex; align-items: center; gap: 5px; color: var(--text); font-weight: 400; }
+.custom-texture-modes input { width: auto; }
+.custom-texture-clear {
+  font-size: 13px; padding: 5px 12px; border-radius: 999px;
+  border: 1px solid var(--border); background: var(--bg); color: var(--text); cursor: pointer;
+}
+.custom-texture-hint { font-size: 12px; color: var(--muted); margin: 0; }
 #viewScene .door-preview { padding: 0; border: none; background: transparent; }
 
 .color-preview {
@@ -723,20 +736,6 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 .r3-swatches { display: flex; gap: 5px; flex-wrap: wrap; flex: 1 1 auto; }
 .r3-swatch { width: 22px; height: 22px; border-radius: 6px; border: 1px solid rgba(0,0,0,.2); cursor: pointer; padding: 0; }
 .r3-swatch.active { outline: 2px solid var(--accent); outline-offset: 1px; }
-.reset-prices-btn {
-  margin-top: 16px;
-  width: 100%;
-  padding: 11px 14px;
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--warn);
-  background: var(--warn-bg);
-  border: 1px solid var(--warn);
-  border-radius: 8px;
-  cursor: pointer;
-}
-
-.reset-prices-btn:hover { filter: brightness(0.97); }
 </style>
 </head>
 <body>
@@ -998,6 +997,19 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
         <div class="wall-texture-row">
           <label>Текстура стены</label>
           <div class="wall-textures" id="s_wallTextures"></div>
+        </div>
+        <div class="custom-texture-row">
+          <label for="s_customTexture">Своя текстура двери (плёнка)</label>
+          <input type="file" id="s_customTexture" accept="image/*">
+          <div id="s_customTextureActive" class="custom-texture-active" hidden>
+            <span class="custom-texture-name" id="s_customTextureName">Свой файл активен</span>
+            <div class="custom-texture-modes">
+              <label><input type="radio" name="ctMode" value="tile" checked> Замостить</label>
+              <label><input type="radio" name="ctMode" value="stretch"> Растянуть</label>
+            </div>
+            <button type="button" id="s_customTextureClear" class="custom-texture-clear">Убрать</button>
+          </div>
+          <p class="custom-texture-hint">Файл остаётся у вас в браузере, никуда не загружается. «Замостить» — для образца плёнки, «Растянуть» — для фото целой двери.</p>
         </div>
       </div>
     </div>
@@ -1610,6 +1622,8 @@ const DB = {
     sceneMode: false,
     wallColor: "#e8e2d5",
     wallTexture: "smooth",
+    customTexture: null,          // data-URI своей текстуры двери (или null)
+    customTextureMode: "tile",    // "tile" (образец плёнки) | "stretch" (фото двери)
 
     // --- Погонаж (см. computeOrder/applySectionUI) ---
     trimVid: "короб",
@@ -1743,6 +1757,10 @@ const DB = {
     sceneWallSwatches: document.getElementById("s_wallSwatches"),
     sceneWallColor: document.getElementById("s_wallColor"),
     sceneWallTextures: document.getElementById("s_wallTextures"),
+    customTexture: document.getElementById("s_customTexture"),
+    customTextureActive: document.getElementById("s_customTextureActive"),
+    customTextureName: document.getElementById("s_customTextureName"),
+    customTextureClear: document.getElementById("s_customTextureClear"),
     menuBtn: document.getElementById("menuBtn"),
     menu: document.getElementById("menu"),
     viewTitle: document.getElementById("viewTitle"),
@@ -2474,22 +2492,50 @@ const DB = {
     // одна плитка = физический образец 15x20 см (150x200 мм). Для цветов без
     // образца (эмаль) — ровный цвет.
     const swatch = DB.colorSwatches[state.color];
-    const baseHex = (swatch && swatch.hex) || EMAL_COLOR_HEX[state.color] || "#c9cbcd";
-    // Заливка полотна — используется и для наличника, чтобы коробка была той
-    // же расцветки/текстуры, что и дверь.
-    const doorFill = swatch ? `url(#${c.patternId})` : baseHex;
-    if (swatch) {
-      // Образец физически 150x200 мм. Плитку кладём в реальном масштабе, но
-      // соседние КОЛОННЫ зеркалим по горизонтали: ширина паттерна = 2 плитки,
-      // вторая — отражение первой. Резкие вертикальные швы превращаются в
-      // плавные отражения (по вертикали образец уже бесшовный). Так повтор
-      // становится гораздо менее заметным без новых фото.
-      const { widthMm: sampleW, heightMm: sampleH } = DB.colorSwatchSampleSize;
-      const unitsPerMm = w / width;                 // масштаб: единицы SVG на мм двери
-      const tileW = sampleW * unitsPerMm;
-      const tileH = sampleH * unitsPerMm;
-      const href = swatch.tileImage || swatch.image;
-      c.textureImage.setAttribute("href", href);
+    let baseHex = (swatch && swatch.hex) || EMAL_COLOR_HEX[state.color] || "#c9cbcd";
+    // Масштаб укладки образца (150x200 мм) в реальном размере двери.
+    const { widthMm: sampleW, heightMm: sampleH } = DB.colorSwatchSampleSize;
+    const unitsPerMm = w / width;
+    const tileW = sampleW * unitsPerMm;
+    const tileH = sampleH * unitsPerMm;
+    // Плитка с зеркальными столбцами: резкие вертикальные швы превращаются в
+    // плавные отражения (по вертикали образец уже бесшовный).
+    const mirroredTiles = (tw, th) =>
+      `<use href="#${c.textureImageId}"/>` +
+      `<use href="#${c.textureImageId}" transform="translate(${tw * 2},0) scale(-1,1)"/>`;
+    // doorFill используется и для наличника, чтобы коробка была той же
+    // расцветки/текстуры, что и дверь.
+    let doorFill;
+
+    if (forceScene && state.customTexture) {
+      // Своя текстура пользователя (загружена в разделе «2D картинка»).
+      doorFill = `url(#${c.patternId})`;
+      baseHex = "#b3aca0"; // нейтральный тон для лёгкого затенения/отражения
+      c.textureImage.setAttribute("href", state.customTexture);
+      c.textureImage.setAttribute("x", 0);
+      c.textureImage.setAttribute("y", 0);
+      c.texturePattern.setAttribute("x", x);
+      c.texturePattern.setAttribute("y", y);
+      if (state.customTextureMode === "stretch") {
+        // Фото целой двери — растягиваем на всё полотно, без повторов.
+        c.textureImage.setAttribute("width", w);
+        c.textureImage.setAttribute("height", h);
+        c.texturePattern.setAttribute("width", w);
+        c.texturePattern.setAttribute("height", h);
+        c.texturePattern.innerHTML = `<use href="#${c.textureImageId}"/>`;
+      } else {
+        // Образец плёнки — мостим в масштабе 150x200 мм с зеркалированием.
+        c.textureImage.setAttribute("width", tileW);
+        c.textureImage.setAttribute("height", tileH);
+        c.texturePattern.setAttribute("width", tileW * 2);
+        c.texturePattern.setAttribute("height", tileH);
+        c.texturePattern.innerHTML = mirroredTiles(tileW, tileH);
+      }
+      c.leafRect.setAttribute("fill", doorFill);
+      c.varyRect.setAttribute("display", "none");
+    } else if (swatch) {
+      doorFill = `url(#${c.patternId})`;
+      c.textureImage.setAttribute("href", swatch.tileImage || swatch.image);
       c.textureImage.setAttribute("x", 0);
       c.textureImage.setAttribute("y", 0);
       c.textureImage.setAttribute("width", tileW);
@@ -2498,12 +2544,11 @@ const DB = {
       c.texturePattern.setAttribute("y", y);
       c.texturePattern.setAttribute("width", tileW * 2);
       c.texturePattern.setAttribute("height", tileH);
-      c.texturePattern.innerHTML =
-        `<use href="#${c.textureImageId}"/>` +
-        `<use href="#${c.textureImageId}" transform="translate(${tileW * 2},0) scale(-1,1)"/>`;
-      c.leafRect.setAttribute("fill", `url(#${c.patternId})`);
+      c.texturePattern.innerHTML = mirroredTiles(tileW, tileH);
+      c.leafRect.setAttribute("fill", doorFill);
       c.varyRect.setAttribute("display", "");
     } else {
+      doorFill = baseHex;
       c.leafRect.setAttribute("fill", baseHex);
       // Для ровной эмали крупную вариацию не накладываем — цвет остаётся чистым.
       c.varyRect.setAttribute("display", "none");
@@ -5278,6 +5323,31 @@ const DB = {
       const btn = e.target.closest(".wall-texture");
       if (btn) setWallTexture(btn.dataset.tex);
     });
+    // Загрузка своей текстуры двери (локально в браузере, без отправки).
+    el.customTexture.addEventListener("change", (e) => {
+      const file = e.target.files && e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        state.customTexture = reader.result;
+        el.customTextureName.textContent = file.name;
+        el.customTextureActive.hidden = false;
+        drawDoor(sceneCtx, true);
+      };
+      reader.readAsDataURL(file);
+    });
+    el.customTextureActive.addEventListener("change", (e) => {
+      if (e.target.name === "ctMode") {
+        state.customTextureMode = e.target.value;
+        drawDoor(sceneCtx, true);
+      }
+    });
+    el.customTextureClear.addEventListener("click", () => {
+      state.customTexture = null;
+      el.customTexture.value = "";
+      el.customTextureActive.hidden = true;
+      drawDoor(sceneCtx, true);
+    });
   }
 
   function onWallSwatchClick(e) {
@@ -5390,11 +5460,6 @@ const DB = {
     };
   }
 
-  // Заводской снимок редактируемых данных (цены, цвета, категории, стекло,
-  // опции). Снимаем ДО загрузки сохранённых цен, поэтому здесь всегда
-  // исходные значения из кода — их используем для сброса.
-  const DB_DEFAULTS = JSON.parse(JSON.stringify(collectPrices()));
-
   function applyPrices(s) {
     if (!s || typeof s !== "object") return;
     // Снимок мог быть сохранён до появления редактируемых типов двери —
@@ -5483,21 +5548,6 @@ const DB = {
       const raw = localStorage.getItem(PRICE_STORE_KEY);
       if (raw) applyPrices(JSON.parse(raw));
     } catch (e) {}
-  }
-
-  // Сброс всех цен, цветов, категорий, стекла и опций к заводским значениям
-  // (восстанавливает в т.ч. полный список цветов плёнок ПВХ и эмали).
-  function resetPrices() {
-    if (!window.confirm("Сбросить цены, цвета и категории к заводским настройкам? Все изменения будут удалены.")) return;
-    applyPrices(JSON.parse(JSON.stringify(DB_DEFAULTS)));
-    try { localStorage.removeItem(PRICE_STORE_KEY); } catch (e) {}
-    populateModels();
-    populateMaterial();
-    populateColors();
-    populateGlass();
-    populateOptions();
-    renderPriceEditor();
-    render();
   }
 
   // --- Редактор цен ----------------------------------------------------
@@ -5897,8 +5947,6 @@ const DB = {
         <div id="furniturePriceRows">${furnitureRows}</div>
       </div></details>`);
 
-    parts.push(`<button type="button" id="resetPricesBtn" class="reset-prices-btn">Сбросить к заводским настройкам</button>`);
-
     el.priceEditor.innerHTML = parts.join("");
     // Поле «Название» не редактируется прямо в узкой строке — клик открывает
     // модалку с полным текстом (см. openNameEditModal/bind()).
@@ -6044,7 +6092,6 @@ const DB = {
 
   // Клик по «удалить»/«добавить» — меняет структуру → перерисовываем редактор
   function onPriceClick(e) {
-    if (e.target.closest("#resetPricesBtn")) { resetPrices(); return; }
     const del = e.target.closest("[data-field='del']");
     const add = e.target.closest("[data-add]");
     if (!del && !add) return;
