@@ -379,6 +379,13 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
   border: 1px solid var(--border); background: var(--bg); color: var(--text); cursor: pointer;
 }
 .custom-texture-hint { font-size: 12px; color: var(--muted); margin: 0; }
+
+.prog-texture-row { display: flex; flex-direction: column; gap: 8px; }
+.prog-texture-row select { font-size: 14px; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text); }
+
+.color-thumb { width: 30px; height: 40px; flex: 0 0 auto; border-radius: 4px; border: 1px solid var(--border); background-size: cover; background-position: center; }
+.color-name-line { display: flex; align-items: center; gap: 10px; flex: 1 1 100%; }
+.choice-row .color-name-line .edit-name { flex: 1 1 auto; }
 #viewScene .door-preview { padding: 0; border: none; background: transparent; }
 
 .color-preview {
@@ -997,6 +1004,11 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
         <div class="wall-texture-row">
           <label>Текстура стены</label>
           <div class="wall-textures" id="s_wallTextures"></div>
+        </div>
+        <div class="prog-texture-row">
+          <label for="s_programTexture">Текстура программная</label>
+          <select id="s_programTexture"></select>
+          <p class="custom-texture-hint">Встроенная плёнка/цвет из каталога — ляжет на дверь.</p>
         </div>
         <div class="custom-texture-row">
           <label for="s_customTexture">Своя текстура двери (плёнка)</label>
@@ -1759,6 +1771,7 @@ const DB = {
     sceneWallSwatches: document.getElementById("s_wallSwatches"),
     sceneWallColor: document.getElementById("s_wallColor"),
     sceneWallTextures: document.getElementById("s_wallTextures"),
+    programTexture: document.getElementById("s_programTexture"),
     customTexture: document.getElementById("s_customTexture"),
     customTextureActive: document.getElementById("s_customTextureActive"),
     customTextureName: document.getElementById("s_customTextureName"),
@@ -2263,6 +2276,23 @@ const DB = {
     el.color.innerHTML = allColors.map((c) => `<option value="${c}">${c}</option>`).join("");
     if (!allColors.includes(state.color)) state.color = allColors[0];
     el.color.value = state.color;
+  }
+
+  // Селектор «Текстура программная» в разделе «2D картинка» — все встроенные
+  // плёнки/цвета каталога, сгруппированные по материалу. Выбор кладёт цвет на
+  // дверь (сбрасывая свою загруженную текстуру).
+  function populateProgramTexture() {
+    if (!el.programTexture) return;
+    const html = Object.keys(DB.colors).map((mat) => {
+      const names = Object.values(DB.colors[mat] || {}).flat().sort((a, b) => RU_COLLATOR.compare(a, b));
+      if (!names.length) return "";
+      const label = (DB.materialNames && DB.materialNames[mat]) || mat;
+      return `<optgroup label="${esc(label)}">` +
+        names.map((n) => `<option value="${esc(n)}">${esc(n)}</option>`).join("") +
+        `</optgroup>`;
+    }).join("");
+    el.programTexture.innerHTML = html;
+    el.programTexture.value = state.color;
   }
 
   // Список стекол — только у выбранной модели полотна (своё стекло на
@@ -5350,6 +5380,27 @@ const DB = {
       el.customTextureActive.hidden = true;
       drawDoor(sceneCtx, true);
     });
+    // Выбор встроенной плёнки/цвета для двери прямо в разделе «2D картинка».
+    el.programTexture.addEventListener("change", (e) => {
+      const name = e.target.value;
+      let mat = state.material;
+      for (const m of Object.keys(DB.colors)) {
+        if (Object.values(DB.colors[m] || {}).flat().includes(name)) { mat = m; break; }
+      }
+      state.material = mat;
+      state.color = name;
+      // своя загруженная текстура уступает выбранной программной
+      if (state.customTexture) {
+        state.customTexture = null;
+        el.customTexture.value = "";
+        el.customTextureActive.hidden = true;
+      }
+      // синхронизируем калькулятор
+      el.material.value = mat;
+      populateColors();
+      el.color.value = name;
+      drawDoor(sceneCtx, true);
+    });
   }
 
   function onWallSwatchClick(e) {
@@ -5418,7 +5469,7 @@ const DB = {
       b.classList.toggle("active", b.dataset.view === view)
     );
     if (view === "prices") renderPriceEditor();
-    if (view === "scene") drawDoor(sceneCtx, true);
+    if (view === "scene") { populateProgramTexture(); drawDoor(sceneCtx, true); }
     if (view === "room3d" && window.initRoom3D) window.initRoom3D();
     if (view === "order") renderOrderPage();
     if (view === "history") renderSpecHistoryPage();
@@ -5631,8 +5682,15 @@ const DB = {
   // названию и после переименования просто перестанет находиться.
   function colorRow(mat, cat, i, name) {
     const a = dataAttrs("color", { material: mat, cat: cat, idx: i });
+    const sw = DB.colorSwatches[name];
+    const thumb = (sw && sw.image)
+      ? `style="background-image:url('${sw.image}')"`
+      : `style="background:${(sw && sw.hex) || EMAL_COLOR_HEX[name] || "#cccccc"}"`;
     return `<div class="choice-row">
-      <input type="text" class="edit-name" value="${esc(name)}" data-field="name" ${a}>
+      <div class="color-name-line">
+        <span class="color-thumb" ${thumb}></span>
+        <input type="text" class="edit-name" value="${esc(name)}" data-field="name" ${a}>
+      </div>
       <div class="pitem-del">
         <label class="switch"><input type="checkbox" class="arm-del"><span class="switch-track"></span></label>
         <span class="switch-label">Разрешить удаление</span>
@@ -6357,6 +6415,7 @@ const DB = {
     el.sceneWallColor.value = state.wallColor;
     renderWallSwatches();
     renderWallTextures();
+    populateProgramTexture();
     updateEditBanner();
     bind();
 
