@@ -971,7 +971,7 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
         <svg id="s_doorPreview" class="door-preview-svg scene" viewBox="0 0 360 400" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Дверь на стене">
           <defs>
             <clipPath id="s_doorClip"><rect id="s_doorClipRect"></rect></clipPath>
-            <linearGradient id="s_doorShadeGradient" x1="0%" y1="0%" x2="100%" y2="100%"></linearGradient>
+            <linearGradient id="s_doorShadeGradient" x1="0%" y1="0%" x2="0%" y2="100%"></linearGradient>
             <linearGradient id="s_glassFillGradient" x1="0%" y1="0%" x2="100%" y2="100%">
               <stop offset="0%" stop-color="#eef6fb" stop-opacity="1"/>
               <stop offset="100%" stop-color="#c3d8e6" stop-opacity="1"/>
@@ -2604,10 +2604,12 @@ const DB = {
       // Для ровной эмали крупную вариацию не накладываем — цвет остаётся чистым.
       c.varyRect.setAttribute("display", "none");
     }
+    // Мягкий вертикальный свет (сверху чуть светлее, снизу чуть темнее) —
+    // ровная плоская дверь. Диагональ/сильная тень давали ложную выпуклость.
     c.shadeGradient.innerHTML = `
-      <stop offset="0%" stop-color="${shade(baseHex, 25)}" stop-opacity="0.35"/>
-      <stop offset="55%" stop-color="${baseHex}" stop-opacity="0"/>
-      <stop offset="100%" stop-color="${shade(baseHex, -35)}" stop-opacity="0.35"/>
+      <stop offset="0%" stop-color="${shade(baseHex, 12)}" stop-opacity="0.12"/>
+      <stop offset="50%" stop-color="${baseHex}" stop-opacity="0"/>
+      <stop offset="100%" stop-color="${shade(baseHex, -14)}" stop-opacity="0.12"/>
     `;
 
     const stileW = w * 0.09;
