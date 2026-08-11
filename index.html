@@ -384,16 +384,23 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 .prog-texture-row select { font-size: 14px; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text); }
 
 /* Панель тон-коррекции плёнки в «Изменение цен» */
-.adjust-panel { flex: 1 1 100%; margin-top: 4px; }
+.adjust-panel { flex: 1 1 100%; min-width: 0; margin-top: 4px; }
 .adjust-panel > summary { cursor: pointer; font-size: 13px; color: var(--accent); font-weight: 600; }
-.adjust-body { display: flex; flex-direction: column; gap: 8px; padding: 10px 0 4px; }
-.adjust-preview { width: 100%; max-width: 240px; aspect-ratio: 3/4; object-fit: cover; border-radius: 6px; border: 1px solid var(--border); align-self: center; }
-.adjust-body .arow { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--muted); }
-.adjust-body .arow span { flex: 0 0 92px; }
-.adjust-body .arow input[type="range"] { flex: 1 1 auto; }
+.adjust-body { display: flex; flex-direction: column; gap: 14px; padding: 10px 0 4px; width: 100%; min-width: 0; box-sizing: border-box; }
+.adjust-preview { width: 100%; max-width: 260px; aspect-ratio: 3/4; object-fit: cover; border-radius: 6px; border: 1px solid var(--border); align-self: center; }
+/* Подпись — над ползунком, ползунок во всю ширину */
+.adjust-body .arow { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--muted); min-width: 0; }
+.adjust-body .arow span { font-weight: 600; }
+.adjust-body .arow input[type="range"] { width: 100%; min-width: 0; margin: 0; height: 34px; }
 .adjust-actions { display: flex; gap: 8px; margin-top: 2px; }
-.adjust-actions button { flex: 1 1 0; padding: 8px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font-weight: 600; cursor: pointer; }
+.adjust-actions button { flex: 1 1 0; padding: 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font-weight: 600; cursor: pointer; }
 .adjust-actions .save { background: var(--accent); color: #fff; border-color: var(--accent); }
+/* Крупная кнопка ползунка (удобно на телефоне) */
+.adjust-body input[type="range"].adj { -webkit-appearance: none; appearance: none; background: transparent; }
+.adjust-body input[type="range"].adj::-webkit-slider-runnable-track { height: 6px; background: var(--border); border-radius: 3px; }
+.adjust-body input[type="range"].adj::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 30px; height: 30px; margin-top: -12px; border-radius: 50%; background: var(--accent); border: 3px solid #fff; box-shadow: 0 1px 4px rgba(0,0,0,.35); cursor: pointer; }
+.adjust-body input[type="range"].adj::-moz-range-track { height: 6px; background: var(--border); border-radius: 3px; }
+.adjust-body input[type="range"].adj::-moz-range-thumb { width: 30px; height: 30px; border-radius: 50%; background: var(--accent); border: 3px solid #fff; box-shadow: 0 1px 4px rgba(0,0,0,.35); cursor: pointer; }
 
 /* Полноэкранный просмотр двери в «2D картинка» */
 .fs-btn { margin-top: 10px; padding: 10px 14px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font-weight: 600; cursor: pointer; width: 100%; }
@@ -5767,10 +5774,10 @@ const DB = {
         <summary>Настроить тон плёнки</summary>
         <div class="adjust-body">
           <img class="adjust-preview" data-color="${esc(name)}" src="${src}" style="filter:${filterCss(v)}" alt="">
-          <div class="arow"><span>Оттенок</span><input type="range" class="adj" data-color="${esc(name)}" data-k="h" min="-40" max="40" step="1" value="${v.h}"></div>
-          <div class="arow"><span>Насыщенность</span><input type="range" class="adj" data-color="${esc(name)}" data-k="s" min="0" max="200" step="1" value="${v.s}"></div>
-          <div class="arow"><span>Яркость</span><input type="range" class="adj" data-color="${esc(name)}" data-k="b" min="50" max="150" step="1" value="${v.b}"></div>
-          <div class="arow"><span>Контраст</span><input type="range" class="adj" data-color="${esc(name)}" data-k="c" min="50" max="150" step="1" value="${v.c}"></div>
+          <div class="arow"><span>Оттенок</span><input type="range" class="adj" data-color="${esc(name)}" data-k="h" min="-90" max="90" step="1" value="${v.h}"></div>
+          <div class="arow"><span>Насыщенность</span><input type="range" class="adj" data-color="${esc(name)}" data-k="s" min="0" max="300" step="1" value="${v.s}"></div>
+          <div class="arow"><span>Яркость</span><input type="range" class="adj" data-color="${esc(name)}" data-k="b" min="30" max="200" step="1" value="${v.b}"></div>
+          <div class="arow"><span>Контраст</span><input type="range" class="adj" data-color="${esc(name)}" data-k="c" min="30" max="200" step="1" value="${v.c}"></div>
           <div class="adjust-actions">
             <button type="button" class="save" data-field="saveAdjust" data-color="${esc(name)}">Сохранить</button>
             <button type="button" data-field="resetAdjust" data-color="${esc(name)}">Сбросить</button>
