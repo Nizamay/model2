@@ -383,9 +383,25 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 .prog-texture-row { display: flex; flex-direction: column; gap: 8px; }
 .prog-texture-row select { font-size: 14px; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text); }
 
-.color-thumb { width: 30px; height: 40px; flex: 0 0 auto; border-radius: 4px; border: 1px solid var(--border); background-size: cover; background-position: center; }
-.color-name-line { display: flex; align-items: center; gap: 10px; flex: 1 1 100%; }
-.choice-row .color-name-line .edit-name { flex: 1 1 auto; }
+/* Панель тон-коррекции плёнки в «Изменение цен» */
+.adjust-panel { flex: 1 1 100%; margin-top: 4px; }
+.adjust-panel > summary { cursor: pointer; font-size: 13px; color: var(--accent); font-weight: 600; }
+.adjust-body { display: flex; flex-direction: column; gap: 8px; padding: 10px 0 4px; }
+.adjust-preview { width: 100%; max-width: 240px; aspect-ratio: 3/4; object-fit: cover; border-radius: 6px; border: 1px solid var(--border); align-self: center; }
+.adjust-body .arow { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--muted); }
+.adjust-body .arow span { flex: 0 0 92px; }
+.adjust-body .arow input[type="range"] { flex: 1 1 auto; }
+.adjust-actions { display: flex; gap: 8px; margin-top: 2px; }
+.adjust-actions button { flex: 1 1 0; padding: 8px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font-weight: 600; cursor: pointer; }
+.adjust-actions .save { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+/* Полноэкранный просмотр двери в «2D картинка» */
+.fs-btn { margin-top: 10px; padding: 10px 14px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font-weight: 600; cursor: pointer; width: 100%; }
+.fs-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.92); z-index: 9999; display: flex; align-items: center; justify-content: center; }
+.fs-overlay[hidden] { display: none; }
+.fs-overlay .fs-body { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; padding: 14px; box-sizing: border-box; overflow: auto; }
+.fs-overlay .fs-body svg { max-width: 100%; max-height: 100%; }
+.fs-close { position: absolute; top: 14px; right: 16px; width: 46px; height: 46px; border-radius: 50%; border: none; background: rgba(255,255,255,.92); font-size: 22px; line-height: 1; cursor: pointer; }
 #viewScene .door-preview { padding: 0; border: none; background: transparent; }
 
 .color-preview {
@@ -994,6 +1010,11 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
           <g id="s_doorGlassGroup"></g>
           <g id="s_doorHandleGroup"></g>
         </svg>
+      </div>
+      <button type="button" id="s_fsBtn" class="fs-btn">⛶ Во весь экран</button>
+      <div id="s_fullscreen" class="fs-overlay" hidden>
+        <button type="button" class="fs-close" id="s_fsClose" aria-label="Закрыть">✕</button>
+        <div class="fs-body" id="s_fsBody"></div>
       </div>
       <div class="scene-controls">
         <div class="wall-color-row">
@@ -2604,6 +2625,9 @@ const DB = {
       // Для ровной эмали крупную вариацию не накладываем — цвет остаётся чистым.
       c.varyRect.setAttribute("display", "none");
     }
+    // Тон-коррекция плёнки (оттенок/насыщенность/яркость/контраст) —
+    // задаётся в «Изменение цен» и хранится в DB.colorAdjust.
+    c.leafRect.style.filter = filterCss(adjOf(state.color));
     // Мягкий вертикальный свет (сверху чуть светлее, снизу чуть темнее) —
     // ровная плоская дверь. Диагональ/сильная тень давали ложную выпуклость.
     c.shadeGradient.innerHTML = `
@@ -5422,6 +5446,26 @@ const DB = {
       el.color.value = name;
       drawDoor(sceneCtx, true);
     });
+
+    // Полноэкранный просмотр двери в «2D картинка».
+    const fsBtn = document.getElementById("s_fsBtn");
+    const fsOverlay = document.getElementById("s_fullscreen");
+    const fsBody = document.getElementById("s_fsBody");
+    const fsClose = document.getElementById("s_fsClose");
+    if (fsBtn && fsOverlay && fsBody && fsClose) {
+      const closeFs = () => { fsOverlay.hidden = true; fsBody.innerHTML = ""; };
+      fsBtn.addEventListener("click", () => {
+        const svg = document.getElementById("s_doorPreview");
+        if (!svg) return;
+        const clone = svg.cloneNode(true);
+        clone.removeAttribute("id");
+        fsBody.innerHTML = "";
+        fsBody.appendChild(clone);
+        fsOverlay.hidden = false;
+      });
+      fsClose.addEventListener("click", closeFs);
+      fsOverlay.addEventListener("click", (e) => { if (e.target === fsOverlay) closeFs(); });
+    }
   }
 
   function onWallSwatchClick(e) {
@@ -5515,6 +5559,7 @@ const DB = {
         patina: Array.isArray(m.patina) ? m.patina.map((p) => ({ ...p })) : undefined
       })),
       colors: DB.colors,
+      colorAdjust: DB.colorAdjust || {},
       categorySurcharge: DB.categorySurcharge,
       categoryNames: DB.categoryNames,
       materialNames: DB.materialNames,
@@ -5565,6 +5610,7 @@ const DB = {
       }
     }
     if (s.colors) DB.colors = s.colors;
+    DB.colorAdjust = (s.colorAdjust && typeof s.colorAdjust === "object") ? s.colorAdjust : (DB.colorAdjust || {});
     if (s.categorySurcharge) DB.categorySurcharge = s.categorySurcharge;
     if (s.categoryNames) DB.categoryNames = s.categoryNames;
     // Снимок мог быть сохранён до появления пользовательских материалов —
@@ -5701,22 +5747,44 @@ const DB = {
   // Примечание: переименование здесь не переименовывает ключ в
   // DB.colorSwatches — образец текстуры для ПВХ подвязан к точному прежнему
   // названию и после переименования просто перестанет находиться.
+  // Тон-коррекция плёнки: значения по умолчанию и CSS-фильтр из них.
+  function adjOf(name) {
+    const store = (DB.colorAdjust || (DB.colorAdjust = {}));
+    const v = store[name] || {};
+    return { h: v.h || 0, s: (v.s == null ? 100 : v.s), b: (v.b == null ? 100 : v.b), c: (v.c == null ? 100 : v.c) };
+  }
+  function filterCss(v) {
+    return `hue-rotate(${v.h}deg) saturate(${v.s}%) brightness(${v.b}%) contrast(${v.c}%)`;
+  }
+
   function colorRow(mat, cat, i, name) {
     const a = dataAttrs("color", { material: mat, cat: cat, idx: i });
     const sw = DB.colorSwatches[name];
-    const thumb = (sw && sw.image)
-      ? `style="background-image:url('${sw.image}')"`
-      : `style="background:${(sw && sw.hex) || EMAL_COLOR_HEX[name] || "#cccccc"}"`;
+    const src = sw && (sw.door || sw.image);
+    const v = adjOf(name);
+    const panel = src ? `
+      <details class="adjust-panel">
+        <summary>Настроить тон плёнки</summary>
+        <div class="adjust-body">
+          <img class="adjust-preview" data-color="${esc(name)}" src="${src}" style="filter:${filterCss(v)}" alt="">
+          <div class="arow"><span>Оттенок</span><input type="range" class="adj" data-color="${esc(name)}" data-k="h" min="-40" max="40" step="1" value="${v.h}"></div>
+          <div class="arow"><span>Насыщенность</span><input type="range" class="adj" data-color="${esc(name)}" data-k="s" min="0" max="200" step="1" value="${v.s}"></div>
+          <div class="arow"><span>Яркость</span><input type="range" class="adj" data-color="${esc(name)}" data-k="b" min="50" max="150" step="1" value="${v.b}"></div>
+          <div class="arow"><span>Контраст</span><input type="range" class="adj" data-color="${esc(name)}" data-k="c" min="50" max="150" step="1" value="${v.c}"></div>
+          <div class="adjust-actions">
+            <button type="button" class="save" data-field="saveAdjust" data-color="${esc(name)}">Сохранить</button>
+            <button type="button" data-field="resetAdjust" data-color="${esc(name)}">Сбросить</button>
+          </div>
+        </div>
+      </details>` : "";
     return `<div class="choice-row">
-      <div class="color-name-line">
-        <span class="color-thumb" ${thumb}></span>
-        <input type="text" class="edit-name" value="${esc(name)}" data-field="name" ${a}>
-      </div>
+      <input type="text" class="edit-name" value="${esc(name)}" data-field="name" ${a}>
       <div class="pitem-del">
         <label class="switch"><input type="checkbox" class="arm-del"><span class="switch-track"></span></label>
         <span class="switch-label">Разрешить удаление</span>
         <button type="button" class="row-del" data-field="del" ${a} disabled>Удалить</button>
       </div>
+      ${panel}
     </div>`;
   }
 
@@ -6172,7 +6240,39 @@ const DB = {
   }
 
   // Клик по «удалить»/«добавить» — меняет структуру → перерисовываем редактор
+  // Считать значения ползунков тон-коррекции из панели.
+  function readAdjustPanel(panel) {
+    const g = (k) => { const el = panel.querySelector(`.adj[data-k="${k}"]`); return el ? Number(el.value) : 0; };
+    return { h: g("h"), s: g("s"), b: g("b"), c: g("c") };
+  }
+  // Живое превью при движении ползунков (без сохранения).
+  function onAdjustInput(e) {
+    const inp = e.target;
+    if (!inp.classList || !inp.classList.contains("adj")) return;
+    const body = inp.closest(".adjust-body");
+    if (!body) return;
+    const img = body.querySelector(".adjust-preview");
+    if (img) img.style.filter = filterCss(readAdjustPanel(body));
+  }
+
   function onPriceClick(e) {
+    const saveAdj = e.target.closest('[data-field="saveAdjust"]');
+    if (saveAdj) {
+      const body = saveAdj.closest(".adjust-body");
+      (DB.colorAdjust || (DB.colorAdjust = {}))[saveAdj.dataset.color] = readAdjustPanel(body);
+      savePrices();
+      render();
+      saveAdj.textContent = "Сохранено ✓";
+      return;
+    }
+    const resetAdj = e.target.closest('[data-field="resetAdjust"]');
+    if (resetAdj) {
+      if (DB.colorAdjust) delete DB.colorAdjust[resetAdj.dataset.color];
+      savePrices();
+      renderPriceEditor();
+      render();
+      return;
+    }
     const del = e.target.closest("[data-field='del']");
     const add = e.target.closest("[data-add]");
     if (!del && !add) return;
@@ -6454,7 +6554,7 @@ const DB = {
     document.addEventListener("click", (e) => {
       if (!el.menu.hidden && !el.menu.contains(e.target) && e.target !== el.menuBtn) toggleMenu(false);
     });
-    el.priceEditor.addEventListener("input", (e) => { onPriceInput(e); onModelSearch(e); onTrimSearch(e); onFurnitureSearch(e); });
+    el.priceEditor.addEventListener("input", (e) => { onPriceInput(e); onAdjustInput(e); onModelSearch(e); onTrimSearch(e); onFurnitureSearch(e); });
     el.priceEditor.addEventListener("click", onPriceClick);
     el.priceEditor.addEventListener("click", (e) => {
       const input = e.target.closest("input.edit-name[data-field='name']");
