@@ -72,16 +72,19 @@ h1 { font-size: 20px; margin: 0 0 4px; }
 .topbar h1 { margin: 0; }
 
 .menu-btn {
+  position: fixed; top: 10px; right: 12px; z-index: 1001;
   flex: 0 0 auto;
-  width: 40px; height: 40px;
+  width: 44px; height: 44px;
   display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 4px;
   background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0,0,0,.18);
   cursor: pointer; padding: 0;
 }
 .menu-btn span { display: block; width: 18px; height: 2px; background: var(--text); border-radius: 2px; }
+.topbar h1 { padding-right: 56px; }
 
 .menu {
-  position: absolute; top: 46px; right: 0; z-index: 10;
+  position: fixed; top: 60px; right: 12px; z-index: 1000;
   min-width: 200px; background: var(--card-bg);
   border: 1px solid var(--border); border-radius: 10px;
   box-shadow: 0 8px 24px rgba(0,0,0,.16); overflow: hidden;
@@ -105,7 +108,7 @@ h1 { font-size: 20px; margin: 0 0 4px; }
 .price-group > summary::-webkit-details-marker { display: none; }
 .price-group > summary::after { content: "▸"; color: var(--muted); transition: transform .15s; }
 .price-group[open] > summary::after { transform: rotate(90deg); }
-.price-body { padding: 8px 14px 14px; display: flex; flex-direction: column; gap: 8px; }
+.price-body { padding: 8px 8px 14px; display: flex; flex-direction: column; gap: 8px; }
 
 /* Название читается целиком на своей строке (как в «Фурнитуре»/«Опциях»
    choice-row), цена — под ним: на узких экранах и при глубокой вложенности
@@ -398,16 +401,16 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 /* Крупная кнопка ползунка (удобно на телефоне) */
 .adjust-body input[type="range"].adj { -webkit-appearance: none; appearance: none; background: transparent; }
 .adjust-body input[type="range"].adj::-webkit-slider-runnable-track { height: 6px; background: var(--border); border-radius: 3px; }
-.adjust-body input[type="range"].adj::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 30px; height: 30px; margin-top: -12px; border-radius: 50%; background: var(--accent); border: 3px solid #fff; box-shadow: 0 1px 4px rgba(0,0,0,.35); cursor: pointer; }
+.adjust-body input[type="range"].adj::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 24px; height: 24px; margin-top: -9px; border-radius: 50%; background: var(--accent); border: 3px solid #fff; box-shadow: 0 1px 4px rgba(0,0,0,.35); cursor: pointer; }
 .adjust-body input[type="range"].adj::-moz-range-track { height: 6px; background: var(--border); border-radius: 3px; }
-.adjust-body input[type="range"].adj::-moz-range-thumb { width: 30px; height: 30px; border-radius: 50%; background: var(--accent); border: 3px solid #fff; box-shadow: 0 1px 4px rgba(0,0,0,.35); cursor: pointer; }
+.adjust-body input[type="range"].adj::-moz-range-thumb { width: 24px; height: 24px; border-radius: 50%; background: var(--accent); border: 3px solid #fff; box-shadow: 0 1px 4px rgba(0,0,0,.35); cursor: pointer; }
 
 /* Полноэкранный просмотр двери в «2D картинка» */
 .fs-btn { margin-top: 10px; padding: 10px 14px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font-weight: 600; cursor: pointer; width: 100%; }
 .fs-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.92); z-index: 9999; display: flex; align-items: center; justify-content: center; }
 .fs-overlay[hidden] { display: none; }
-.fs-overlay .fs-body { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; padding: 14px; box-sizing: border-box; overflow: auto; }
-.fs-overlay .fs-body svg { max-width: 100%; max-height: 100%; }
+.fs-overlay .fs-body { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; box-sizing: border-box; overflow: hidden; }
+.fs-overlay .fs-body svg { height: 100%; width: auto; max-width: none; max-height: none; }
 .fs-close { position: absolute; top: 14px; right: 16px; width: 46px; height: 46px; border-radius: 50%; border: none; background: rgba(255,255,255,.92); font-size: 22px; line-height: 1; cursor: pointer; }
 #viewScene .door-preview { padding: 0; border: none; background: transparent; }
 
@@ -1013,7 +1016,7 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
             <rect id="s_doorVaryRect" filter="url(#s_doorVary)" opacity="0.55"></rect>
             <rect id="s_doorShadeRect" fill="url(#s_doorShadeGradient)"></rect>
           </g>
-          <rect id="s_doorOutlineRect" fill="none" stroke="rgba(0,0,0,.25)" stroke-width="1.5"></rect>
+          <rect id="s_doorOutlineRect" fill="none" stroke="rgba(0,0,0,.22)" stroke-width="0.6"></rect>
           <g id="s_doorGlassGroup"></g>
           <g id="s_doorHandleGroup"></g>
         </svg>
@@ -2634,7 +2637,8 @@ const DB = {
     }
     // Тон-коррекция плёнки (оттенок/насыщенность/яркость/контраст) —
     // задаётся в «Изменение цен» и хранится в DB.colorAdjust.
-    c.leafRect.style.filter = filterCss(adjOf(state.color));
+    const doorFilter = filterCss(adjOf(state.color));
+    c.leafRect.style.filter = doorFilter;
     // Мягкий вертикальный свет (сверху чуть светлее, снизу чуть темнее) —
     // ровная плоская дверь. Диагональ/сильная тень давали ложную выпуклость.
     c.shadeGradient.innerHTML = `
@@ -2697,7 +2701,7 @@ const DB = {
     // Сцена «на стене» рисуется ПОЗАДИ полотна (группа сцены идёт раньше в
     // DOM), поэтому стена и наличник не перекрывают дверь.
     c.sceneGroup.innerHTML = sceneMode
-      ? buildScene(layout, { x: x, y: y, w: w, h: h }, baseHex, doorFill, state.wallColor, state.wallTexture, c.pfx)
+      ? buildScene(layout, { x: x, y: y, w: w, h: h }, baseHex, doorFill, state.wallColor, state.wallTexture, c.pfx, doorFilter)
       : "";
   }
 
@@ -2909,7 +2913,7 @@ const DB = {
     return noise("paint", 0.15); // smooth (гладкая окраска) — почти без фактуры
   }
 
-  function buildScene(layout, door, baseHex, doorFill, wallColor, wallTexture, pfx) {
+  function buildScene(layout, door, baseHex, doorFill, wallColor, wallTexture, pfx, doorFilter) {
     const W = layout.vbW;
     const H = layout.vbH;
     const floorY = layout.floorY;
@@ -2970,27 +2974,27 @@ const DB = {
     const ow = door.w + casing * 2, oh = door.h + casing;
     // Тень коробки на стену (падает вправо-вниз).
     s += `<rect x="${ox + 3}" y="${oy + 3}" width="${ow}" height="${oh}" rx="2" fill="rgba(20,12,4,0.20)" filter="url(#${idf("soft")})"/>`;
-    // Лицевые доски коробки — той же расцветки/текстуры, что и полотно
-    // (текстура-паттерн задана в userSpaceOnUse и продолжается на коробке
-    // без разрыва).
+    // Лицевые доски коробки — та же текстура И ТОТ ЖЕ ТОН, что у полотна
+    // (тон-фильтр применяем группой, чтобы наличник совпадал с дверью).
+    const df = doorFilter || "none";
+    s += `<g style="filter:${df}">`;
     s += `<rect x="${ox}" y="${oy}" width="${casing}" height="${oh}" fill="${doorFill}"/>`;
     s += `<rect x="${door.x + door.w}" y="${oy}" width="${casing}" height="${oh}" fill="${doorFill}"/>`;
     s += `<rect x="${ox}" y="${oy}" width="${ow}" height="${casing}" fill="${doorFill}"/>`;
-    // Объёмное затенение профиля: освещённая сторона (слева/сверху) чуть
-    // светлее, теневая (справа) чуть темнее — коробка читается рельефом,
-    // оставаясь в цвете двери.
-    s += `<rect x="${ox}" y="${oy}" width="${casing}" height="${oh}" fill="#ffffff" opacity="0.08"/>`;
-    s += `<rect x="${ox}" y="${oy}" width="${ow}" height="${casing}" fill="#ffffff" opacity="0.06"/>`;
-    s += `<rect x="${door.x + door.w}" y="${oy}" width="${casing}" height="${oh}" fill="#000000" opacity="0.16"/>`;
-    // Блик на внешней грани (со стороны света) и тень на внутренней.
-    s += `<rect x="${ox}" y="${oy}" width="1.4" height="${oh}" fill="#ffffff" opacity="0.6"/>`;
-    s += `<rect x="${ox}" y="${oy}" width="${ow}" height="1.4" fill="#ffffff" opacity="0.6"/>`;
-    s += `<rect x="${ox + ow - 1.6}" y="${oy}" width="1.6" height="${oh}" fill="rgba(0,0,0,0.20)"/>`;
-    // Косой стык (ус) в верхних углах коробки.
-    s += `<line x1="${ox}" y1="${oy}" x2="${door.x}" y2="${door.y}" stroke="rgba(0,0,0,0.22)" stroke-width="0.8"/>`;
-    s += `<line x1="${ox + ow}" y1="${oy}" x2="${door.x + door.w}" y2="${door.y}" stroke="rgba(0,0,0,0.22)" stroke-width="0.8"/>`;
-    // Теневая четверть между коробкой и полотном (полотно чуть утоплено).
-    s += `<rect x="${door.x - 2}" y="${door.y - 2}" width="${door.w + 4}" height="${door.h + 2}" fill="none" stroke="rgba(0,0,0,0.24)" stroke-width="2"/>`;
+    s += `</g>`;
+    // Лёгкий, мягкий рельеф профиля (без сильных перепадов тона).
+    s += `<rect x="${ox}" y="${oy}" width="${casing}" height="${oh}" fill="#ffffff" opacity="0.04"/>`;
+    s += `<rect x="${ox}" y="${oy}" width="${ow}" height="${casing}" fill="#ffffff" opacity="0.03"/>`;
+    s += `<rect x="${door.x + door.w}" y="${oy}" width="${casing}" height="${oh}" fill="#000000" opacity="0.07"/>`;
+    // Тонкий чёткий кант на внешней грани (свет) и внутренней (тень).
+    s += `<rect x="${ox}" y="${oy}" width="0.6" height="${oh}" fill="#ffffff" opacity="0.55" shape-rendering="crispEdges"/>`;
+    s += `<rect x="${ox}" y="${oy}" width="${ow}" height="0.6" fill="#ffffff" opacity="0.55" shape-rendering="crispEdges"/>`;
+    s += `<rect x="${ox + ow - 0.6}" y="${oy}" width="0.6" height="${oh}" fill="rgba(0,0,0,0.18)" shape-rendering="crispEdges"/>`;
+    // Косой стык (ус) в верхних углах коробки — тонкий.
+    s += `<line x1="${ox}" y1="${oy}" x2="${door.x}" y2="${door.y}" stroke="rgba(0,0,0,0.18)" stroke-width="0.4"/>`;
+    s += `<line x1="${ox + ow}" y1="${oy}" x2="${door.x + door.w}" y2="${door.y}" stroke="rgba(0,0,0,0.18)" stroke-width="0.4"/>`;
+    // Тонкая чёткая теневая четверть между коробкой и полотном.
+    s += `<rect x="${door.x - 1}" y="${door.y - 1}" width="${door.w + 2}" height="${door.h + 1}" fill="none" stroke="rgba(0,0,0,0.22)" stroke-width="0.6"/>`;
 
     return s;
   }
@@ -6275,8 +6279,15 @@ const DB = {
     const resetAdj = e.target.closest('[data-field="resetAdjust"]');
     if (resetAdj) {
       if (DB.colorAdjust) delete DB.colorAdjust[resetAdj.dataset.color];
+      // Сбрасываем ползунки и превью на месте, без перерисовки страницы.
+      const body = resetAdj.closest(".adjust-body");
+      if (body) {
+        const def = { h: 0, s: 100, b: 100, c: 100 };
+        body.querySelectorAll(".adj").forEach((r) => { r.value = def[r.dataset.k]; });
+        const img = body.querySelector(".adjust-preview");
+        if (img) img.style.filter = filterCss(def);
+      }
       savePrices();
-      renderPriceEditor();
       render();
       return;
     }
