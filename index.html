@@ -1151,10 +1151,12 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
         <button type="button" id="restoreTagBtn" class="btn-save">✏️ Вернуть для изменения</button>
       </div>
       <div class="order-toolbar">
-        <button type="button" id="tagPrintBtn">🖨️ Печать</button>
+        <button type="button" id="tagShareBtn">📤 Поделиться</button>
         <button type="button" id="tagImageBtn">🖼️ Скачать как картинку</button>
+        <button type="button" id="tagPrintBtn">🖨️ Печать</button>
         <button type="button" id="tagDownloadBtn">💾 Скачать файл</button>
       </div>
+      <p class="order-note">«Поделиться» отправляет ценник картинкой в системное меню — там же WhatsApp, Telegram, Max, imo, Email и другие приложения. «Скачать как картинку» и «Печать» — для сохранения на телефон или компьютер.</p>
     </div>
 
     <div id="viewTagList" hidden>
@@ -1838,6 +1840,7 @@ const DB = {
     backToTagListBtn: document.getElementById("backToTagListBtn"),
     restoreTagBtn: document.getElementById("restoreTagBtn"),
     tagPrintBtn: document.getElementById("tagPrintBtn"),
+    tagShareBtn: document.getElementById("tagShareBtn"),
     tagImageBtn: document.getElementById("tagImageBtn"),
     tagDownloadBtn: document.getElementById("tagDownloadBtn"),
     viewTagList: document.getElementById("viewTagList"),
@@ -5028,7 +5031,17 @@ const DB = {
       clone.style.top = "";
       const scale = 3; // выше разрешение — не размажется при печати фото
 
-      const cssText = Array.from(document.querySelectorAll("style")).map((s) => s.textContent).join("\n");
+      // ВАЖНО: этот CSS попадает внутрь <style> строящегося SVG (XML). В нём
+      // есть комментарии с литералами вроде «<input>», а также селекторы
+      // могут содержать «&»/«<». В XML такие символы обрывают разбор, и
+      // картинка не рендерится (img.onerror → «Не удалось создать картинку»).
+      // Оборачиваем CSS в CDATA, чтобы содержимое не парсилось как разметка;
+      // единственное, что ломает CDATA, — литерал «]]>», в CSS его не бывает,
+      // но на всякий случай экранируем.
+      const cssText = Array.from(document.querySelectorAll("style"))
+        .map((s) => s.textContent)
+        .join("\n")
+        .replace(/\]\]>/g, "]]]]><![CDATA[>");
       // foreignObject требует строго валидный XML — обычный outerHTML не
       // закрывает void-элементы (<img>) сам закрывающим слэшем, из-за чего
       // вся SVG-строка не парсится и картинка не рендерится. XMLSerializer
@@ -5037,7 +5050,7 @@ const DB = {
       const svgMarkup = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">
         <foreignObject width="100%" height="100%">
           <div xmlns="http://www.w3.org/1999/xhtml" style="width:${width}px; ${tagRootCssVars()} background:#fff; font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
-            <style>${cssText}</style>
+            <style><![CDATA[${cssText}]]></style>
             ${cloneXml}
           </div>
         </foreignObject>
@@ -5074,16 +5087,54 @@ const DB = {
     setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
   }
 
-  async function downloadTagImage() {
+  // Рендерит текущий ценник в PNG-Blob (общий код для «Скачать как картинку»
+  // и «Поделиться»). Возвращает null, если рендерить нечего.
+  async function currentTagPngBlob() {
     const docEl = el.tagDocHolder.querySelector(".tag-doc-group");
-    if (!docEl) return;
+    if (!docEl) return null;
+    return await tagDocToPngBlob(docEl);
+  }
+
+  async function downloadTagImage() {
     try {
-      const blob = await tagDocToPngBlob(docEl);
+      const blob = await currentTagPngBlob();
+      if (!blob) return;
       downloadBlob(blob, "tsennik.png");
     } catch (e) {
       console.error("tag image export failed", e);
       alert("Не удалось создать картинку в этом браузере. Можно сделать скриншот страницы вручную.");
     }
+  }
+
+  // «Поделиться» ценником: отправляем именно КАРТИНКУ (PNG) через системное
+  // меню — она нормально предпросматривается и пересылается в любом
+  // мессенджере (в отличие от HTML-файла, который Telegram и др. не
+  // показывают). Использует Web Share API уровня 2 (share с файлами); если
+  // он недоступен (десктоп/старый браузер) — просто скачиваем картинку.
+  async function shareTagImage() {
+    let blob;
+    try {
+      blob = await currentTagPngBlob();
+    } catch (e) {
+      console.error("tag image for share failed", e);
+    }
+    if (!blob) {
+      alert("Не удалось подготовить картинку для отправки. Попробуйте «Скачать как картинку».");
+      return;
+    }
+    const file = new File([blob], "tsennik.png", { type: "image/png" });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      try {
+        await navigator.share({ files: [file], title: "Ценник" });
+        return;
+      } catch (e) {
+        // Пользователь закрыл системное меню — это не ошибка, ничего не делаем.
+        if (e && e.name === "AbortError") return;
+        console.error("tag share failed", e);
+      }
+    }
+    // Фолбэк: отправка файлов не поддерживается — сохраняем картинку.
+    downloadBlob(blob, "tsennik.png");
   }
 
   // Пакетный экспорт выбранных сохранённых ценников — по картинке на
@@ -5348,6 +5399,7 @@ const DB = {
     el.backToTagListBtn.addEventListener("click", () => { viewingTagId = null; setView("tagList"); });
     el.restoreTagBtn.addEventListener("click", () => { if (viewingTagId != null) restoreTagFromHistory(viewingTagId); });
     el.tagPrintBtn.addEventListener("click", printCurrentTagDoc);
+    el.tagShareBtn.addEventListener("click", shareTagImage);
     el.tagImageBtn.addEventListener("click", downloadTagImage);
     el.tagDownloadBtn.addEventListener("click", downloadTagFile);
     el.tagDocHolder.addEventListener("input", (e) => {
