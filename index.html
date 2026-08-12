@@ -563,8 +563,13 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
    ширины контейнера даёт ровно 100% (ценник как был) и 33.333% (треть)
    соответственно. Группа при этом физически шире страницы — это
    ожидаемо (переставка «добавляется сбоку»), см. overflow-x на body. */
-.tag-doc-group { display: flex; align-items: stretch; }
-.tag-doc-group-with-promo { width: 133.333%; }
+.tag-doc-group { display: flex; align-items: stretch; max-width: 480px; margin-left: auto; margin-right: auto; }
+/* С Акцией жёлтая приставка добавляется СБОКУ, но вся группа (ценник +
+   приставка) должна помещаться по ширине контейнера/экрана — иначе правый
+   край уезжает за экран (см. отчёт заказчика). Поэтому группа занимает
+   100% контейнера, а ценник и приставка делят её как 75%/25%. Пропорции
+   ценник:приставка остаются те же, что и на картинке в мессенджер. */
+.tag-doc-group-with-promo { width: 100%; }
 /* Двойная рамка-окантовка вокруг самого ценника — border-style: double даёт
    ровно две параллельные линии с зазором средствами одного border, без
    лишней разметки. Углы прямые (без border-radius), по образцу. Ширина
@@ -752,7 +757,12 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
      при большем числе позиций в «Сумме комплекта» и небольшом листе
      (А5) документ может перейти на следующую страницу — это лучше, чем
      обрезать дату/подпись (см. предыдущий отчёт). */
-  #viewTag .tag-doc-group { width: 100%; max-width: 100%; }
+  /* Компактная карточка по центру листа, а не во всю ширину страницы:
+     печатается/сохраняется в том же узком виде, что и картинка для
+     мессенджеров (см. отчёт заказчика — раньше растягивалось на весь
+     лист). Формат/ориентация листа по-прежнему выбираются в диалоге
+     печати. */
+  #viewTag .tag-doc-group { width: 100%; max-width: 480px; margin: 0 auto; }
   #viewTag .tag-doc { border: none; overflow: visible; }
   #viewTag .tag-promo-tab-text [contenteditable] { outline: none; }
 }
@@ -5059,14 +5069,19 @@ const DB = {
       const svgUrl = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svgMarkup);
       const img = new Image();
       img.onload = () => {
+        // Белое поле вокруг ценника: мессенджеры (Telegram и др.) скругляют
+        // углы картинки при показе — без поля скругление «съедало» бы углы
+        // самого ценника (см. отчёт заказчика). С полем скругляется белый
+        // отступ, а прямые углы карточки остаются целыми.
+        const pad = Math.round(width * 0.05);
         const canvas = document.createElement("canvas");
-        canvas.width = width * scale;
-        canvas.height = height * scale;
+        canvas.width = (width + pad * 2) * scale;
+        canvas.height = (height + pad * 2) * scale;
         const ctx = canvas.getContext("2d");
         ctx.fillStyle = "#fff";
         ctx.fillRect(0, 0, canvas.width, canvas.height);
         ctx.scale(scale, scale);
-        ctx.drawImage(img, 0, 0, width, height);
+        ctx.drawImage(img, pad, pad, width, height);
         canvas.toBlob((blob) => {
           if (blob) resolve(blob); else reject(new Error("canvas.toBlob returned null"));
         }, "image/png");
