@@ -65,6 +65,11 @@ body {
   flex-direction: column;
   gap: 18px;
 }
+/* На телефонах уменьшаем боковые поля карточки — меньше пустых «рамок» по
+   краям, больше места контенту (подписи и кнопки не обрезаются). */
+@media (max-width: 500px) {
+  .calc-card { padding: 20px 12px; }
+}
 
 h1 { font-size: 20px; margin: 0 0 4px; }
 
@@ -396,8 +401,12 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 .adjust-body .arow span { font-weight: 600; }
 .adjust-body .arow input[type="range"] { width: 100%; min-width: 0; margin: 0; height: 34px; }
 .adjust-actions { display: flex; gap: 8px; margin-top: 2px; }
-.adjust-actions button { flex: 1 1 0; padding: 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font-weight: 600; cursor: pointer; }
+.adjust-actions button { flex: 1 1 0; min-width: 0; padding: 10px 6px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font-weight: 600; cursor: pointer; }
 .adjust-actions .save { background: var(--accent); color: #fff; border-color: var(--accent); }
+/* Кнопка «Сбросить» со «взводом»: первый тап переводит её в состояние
+   подтверждения (красная «Точно?»), только второй тап сбрасывает — защита
+   от случайного сброса. */
+.adjust-actions button.confirm { background: var(--danger); color: #fff; border-color: var(--danger); }
 /* Крупная кнопка ползунка (удобно на телефоне) */
 .adjust-body input[type="range"].adj { -webkit-appearance: none; appearance: none; background: transparent; }
 .adjust-body input[type="range"].adj::-webkit-slider-runnable-track { height: 6px; background: var(--border); border-radius: 3px; }
@@ -2548,8 +2557,15 @@ const DB = {
       w = h * aspect;
     }
 
+    // Зазор снизу: настоящее дверное полотно висит на ~1–1.5 см над полом,
+    // чтобы не шоркать по полу/коврику. Коробка при этом достаёт до пола.
+    // В 2D показываем это так: полотно приподнято на gap, коробка доходит до
+    // пола, под полотном — узкая тёмная щель. Если из-за зазора верх выходит
+    // за отступ — слегка ужимаем высоту полотна (пропорции сохраняем).
+    let gap = Math.max(3, h * 0.014);
+    if (h + gap > availH) { h = availH - gap; w = h * aspect; }
     const x = layout.doorCenterX - w / 2;
-    const y = layout.floorY - h; // дверь стоит на полу — выравниваем по низу
+    const y = layout.floorY - gap - h; // низ полотна — на gap выше пола
     const rx = Math.min(w, h) * 0.015;
 
     [c.clipRect, c.leafRect, c.outlineRect, c.varyRect].forEach((rect) => {
@@ -2714,7 +2730,7 @@ const DB = {
     // Сцена «на стене» рисуется ПОЗАДИ полотна (группа сцены идёт раньше в
     // DOM), поэтому стена и наличник не перекрывают дверь.
     c.sceneGroup.innerHTML = sceneMode
-      ? buildScene(layout, { x: x, y: y, w: w, h: h }, baseHex, doorFill, state.wallColor, state.wallTexture, c.pfx, doorFilter)
+      ? buildScene(layout, { x: x, y: y, w: w, h: h }, baseHex, doorFill, state.wallColor, state.wallTexture, c.pfx, doorFilter, gap)
       : "";
   }
 
@@ -2926,7 +2942,8 @@ const DB = {
     return noise("paint", 0.15); // smooth (гладкая окраска) — почти без фактуры
   }
 
-  function buildScene(layout, door, baseHex, doorFill, wallColor, wallTexture, pfx, doorFilter) {
+  function buildScene(layout, door, baseHex, doorFill, wallColor, wallTexture, pfx, doorFilter, gap) {
+    gap = gap || 0;
     const W = layout.vbW;
     const H = layout.vbH;
     const floorY = layout.floorY;
@@ -2973,36 +2990,46 @@ const DB = {
     s += `<rect x="0" y="${floorY - 9}" width="${W}" height="2" fill="#ffffff" opacity="0.6"/>`;
     s += `<rect x="0" y="${floorY - 2}" width="${W}" height="2" fill="rgba(0,0,0,0.14)"/>`;
 
-    // --- Отражение полотна на глянцевом полу (перед тенью).
-    const reflH = Math.min(floorH * 0.85, door.h * 0.5);
-    s += `<rect x="${door.x}" y="${floorY}" width="${door.w}" height="${reflH}" fill="url(#${idf("doorRefl")})"/>`;
+    // Отражение полотна на полу убрано: оно выглядело нереалистично и
+    // создавало ложное ощущение «выпуклости» двери снизу (см. отчёт
+    // заказчика). Достаточно узкой щели под полотном и лёгкой тени.
 
-    // --- Контактная тень под полотном (смещена вправо — свет слева).
-    s += softShadow(door.x + door.w / 2 + 4, floorY + 4, door.w * 0.52, 7, 0.34, true, pfx);
+    // --- Зазор под полотном: полотно висит на gap выше пола (см. drawDoor).
+    //     Рисуем в этой щели тёмную полосу (тень порога) — так читается, что
+    //     низ двери приподнят над полом, а не шоркает по нему.
+    if (gap > 0) {
+      const gapY = door.y + door.h; // низ полотна
+      s += `<rect x="${door.x}" y="${gapY}" width="${door.w}" height="${gap}" fill="rgba(20,14,6,0.55)"/>`;
+      // Мягкая контактная тень на полу прямо под щелью — совсем лёгкая.
+      s += `<rect x="${door.x}" y="${floorY}" width="${door.w}" height="3" fill="rgba(20,12,4,0.22)" filter="url(#${idf("soft")})"/>`;
+    }
 
     // --- Наличник (дверная коробка) с объёмным профилем. Рисуется до
     //     полотна, поэтому виден только выступающий кант.
     const casing = 12;
     const ox = door.x - casing, oy = door.y - casing;
     const ow = door.w + casing * 2, oh = door.h + casing;
+    // Боковые доски коробки достают до пола (полотно приподнято на gap, а
+    // коробка стоит на полу) — поэтому по высоте они длиннее полотна на gap.
+    const ohSide = oh + gap;
     // Тень коробки на стену (падает вправо-вниз).
-    s += `<rect x="${ox + 3}" y="${oy + 3}" width="${ow}" height="${oh}" rx="2" fill="rgba(20,12,4,0.20)" filter="url(#${idf("soft")})"/>`;
+    s += `<rect x="${ox + 3}" y="${oy + 3}" width="${ow}" height="${ohSide}" rx="2" fill="rgba(20,12,4,0.20)" filter="url(#${idf("soft")})"/>`;
     // Лицевые доски коробки — та же текстура И ТОТ ЖЕ ТОН, что у полотна
     // (тон-фильтр применяем группой, чтобы наличник совпадал с дверью).
     const df = doorFilter || "none";
     s += `<g style="filter:${df}">`;
-    s += `<rect x="${ox}" y="${oy}" width="${casing}" height="${oh}" fill="${doorFill}"/>`;
-    s += `<rect x="${door.x + door.w}" y="${oy}" width="${casing}" height="${oh}" fill="${doorFill}"/>`;
+    s += `<rect x="${ox}" y="${oy}" width="${casing}" height="${ohSide}" fill="${doorFill}"/>`;
+    s += `<rect x="${door.x + door.w}" y="${oy}" width="${casing}" height="${ohSide}" fill="${doorFill}"/>`;
     s += `<rect x="${ox}" y="${oy}" width="${ow}" height="${casing}" fill="${doorFill}"/>`;
     s += `</g>`;
     // Лёгкий, мягкий рельеф профиля (без сильных перепадов тона).
-    s += `<rect x="${ox}" y="${oy}" width="${casing}" height="${oh}" fill="#ffffff" opacity="0.04"/>`;
+    s += `<rect x="${ox}" y="${oy}" width="${casing}" height="${ohSide}" fill="#ffffff" opacity="0.04"/>`;
     s += `<rect x="${ox}" y="${oy}" width="${ow}" height="${casing}" fill="#ffffff" opacity="0.03"/>`;
-    s += `<rect x="${door.x + door.w}" y="${oy}" width="${casing}" height="${oh}" fill="#000000" opacity="0.07"/>`;
+    s += `<rect x="${door.x + door.w}" y="${oy}" width="${casing}" height="${ohSide}" fill="#000000" opacity="0.07"/>`;
     // Тонкий чёткий кант на внешней грани (свет) и внутренней (тень).
-    s += `<rect x="${ox}" y="${oy}" width="0.6" height="${oh}" fill="#ffffff" opacity="0.55" shape-rendering="crispEdges"/>`;
+    s += `<rect x="${ox}" y="${oy}" width="0.6" height="${ohSide}" fill="#ffffff" opacity="0.55" shape-rendering="crispEdges"/>`;
     s += `<rect x="${ox}" y="${oy}" width="${ow}" height="0.6" fill="#ffffff" opacity="0.55" shape-rendering="crispEdges"/>`;
-    s += `<rect x="${ox + ow - 0.6}" y="${oy}" width="0.6" height="${oh}" fill="rgba(0,0,0,0.18)" shape-rendering="crispEdges"/>`;
+    s += `<rect x="${ox + ow - 0.6}" y="${oy}" width="0.6" height="${ohSide}" fill="rgba(0,0,0,0.18)" shape-rendering="crispEdges"/>`;
     // Косой стык (ус) в верхних углах коробки — тонкий.
     s += `<line x1="${ox}" y1="${oy}" x2="${door.x}" y2="${door.y}" stroke="rgba(0,0,0,0.18)" stroke-width="0.4"/>`;
     s += `<line x1="${ox + ow}" y1="${oy}" x2="${door.x + door.w}" y2="${door.y}" stroke="rgba(0,0,0,0.18)" stroke-width="0.4"/>`;
@@ -6333,6 +6360,7 @@ const DB = {
     if (img) img.style.filter = filterCss(readAdjustPanel(body));
   }
 
+  let resetArmTimer = null;
   function onPriceClick(e) {
     const saveAdj = e.target.closest('[data-field="saveAdjust"]');
     if (saveAdj) {
@@ -6345,6 +6373,25 @@ const DB = {
     }
     const resetAdj = e.target.closest('[data-field="resetAdjust"]');
     if (resetAdj) {
+      // Защита от случайного сброса: первый тап «взводит» кнопку («Точно?»),
+      // и только второй — сбрасывает. Через 3.5 с без второго тапа кнопка
+      // возвращается в обычное состояние.
+      if (resetAdj.dataset.armed !== "1") {
+        resetAdj.dataset.armed = "1";
+        resetAdj.classList.add("confirm");
+        resetAdj.textContent = "Точно?";
+        clearTimeout(resetArmTimer);
+        resetArmTimer = setTimeout(() => {
+          resetAdj.dataset.armed = "";
+          resetAdj.classList.remove("confirm");
+          resetAdj.textContent = "Сбросить";
+        }, 3500);
+        return;
+      }
+      clearTimeout(resetArmTimer);
+      resetAdj.dataset.armed = "";
+      resetAdj.classList.remove("confirm");
+      resetAdj.textContent = "Сбросить";
       if (DB.colorAdjust) delete DB.colorAdjust[resetAdj.dataset.color];
       // Сбрасываем ползунки и превью на месте, без перерисовки страницы.
       const body = resetAdj.closest(".adjust-body");
