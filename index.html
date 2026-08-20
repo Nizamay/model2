@@ -2406,15 +2406,18 @@ const DB = {
             </label>`;
         }
         state.options[opt.id] = 0;
+        // Пункт 0 («Нет») — служебный, не рисуем его отдельной кнопкой:
+        // «ничего не нажато» уже и есть «Нет» (см. клик-обработчик ниже —
+        // по умолчанию ни один вариант не активен, клик активирует, повторный
+        // клик по уже активному снимает выбор целиком, без отдельной кнопки
+        // «Нет» для этого).
         const choices = opt.choices
-          .map(
-            (c, i) => `
+          .map((c, i) => (i === 0 ? "" : `
               <label class="option-choice">
-                <input type="radio" name="opt-${opt.id}" data-opt="${opt.id}" data-kind="radio" value="${i}" ${i === 0 ? "checked" : ""}>
+                <input type="radio" name="opt-${opt.id}" data-opt="${opt.id}" data-kind="radio" value="${i}">
                 <span>${c.label}</span>
                 <span class="option-price">${c.price ? "+" + c.price + " ₽" : ""}</span>
-              </label>`
-          )
+              </label>`))
           .join("");
         return `
           <div class="option-group">
@@ -5362,20 +5365,21 @@ const DB = {
     });
     // Радиокнопки (например, «Кромка») нельзя снять повторным нажатием на
     // уже выбранный вариант — это стандартное поведение <input type=radio>,
-    // change при этом не срабатывает вовсе, виден только фокус-контур («не
-    // закрывается, обводится синим квадратом», см. отчёт). Ловим такой
-    // повторный клик отдельно и сбрасываем группу на первый пункт («Нет»).
+    // change при этом не срабатывает вовсе, виден только фокус-контур. По
+    // умолчанию ни одна кнопка группы не активна (см. populateOptions —
+    // пункт «Нет» не рисуется отдельной кнопкой); клик активирует нужный
+    // вариант как обычно (сработает стандартный change), а повторный клик
+    // по уже активному варианту снимает его целиком — target.checked=false
+    // напрямую, без переключения на какую-либо другую (в т.ч. скрытую)
+    // кнопку группы (см. отчёт: «нажал — активный, нажал — неактивный»).
     el.options.addEventListener("click", (e) => {
       const target = e.target;
       if (target.dataset.kind !== "radio") return;
       const optId = target.dataset.opt;
       const clickedValue = Number(target.value);
-      if (clickedValue !== 0 && state.options[optId] === clickedValue) {
+      if (state.options[optId] === clickedValue) {
         state.options[optId] = 0;
-        const noneRadio = el.options.querySelector(
-          `input[data-opt="${CSS.escape(optId)}"][data-kind="radio"][value="0"]`
-        );
-        if (noneRadio) noneRadio.checked = true;
+        target.checked = false;
         render();
       }
     });
