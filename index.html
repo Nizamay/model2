@@ -5360,6 +5360,25 @@ const DB = {
       }
       render();
     });
+    // Радиокнопки (например, «Кромка») нельзя снять повторным нажатием на
+    // уже выбранный вариант — это стандартное поведение <input type=radio>,
+    // change при этом не срабатывает вовсе, виден только фокус-контур («не
+    // закрывается, обводится синим квадратом», см. отчёт). Ловим такой
+    // повторный клик отдельно и сбрасываем группу на первый пункт («Нет»).
+    el.options.addEventListener("click", (e) => {
+      const target = e.target;
+      if (target.dataset.kind !== "radio") return;
+      const optId = target.dataset.opt;
+      const clickedValue = Number(target.value);
+      if (clickedValue !== 0 && state.options[optId] === clickedValue) {
+        state.options[optId] = 0;
+        const noneRadio = el.options.querySelector(
+          `input[data-opt="${CSS.escape(optId)}"][data-kind="radio"][value="0"]`
+        );
+        if (noneRadio) noneRadio.checked = true;
+        render();
+      }
+    });
     el.discount.addEventListener("input", () => {
       state.discount = el.discount.value;
       render();
