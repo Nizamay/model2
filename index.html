@@ -1528,7 +1528,12 @@ const DB = {
     id: "m" + i,
     name,
     type: PVH_ONLY_MODELS.has(name) ? "сборное" : "щитовое",
-    basePrice: 5000,
+    // У «Щитовые» облицовка бывает и плёнкой ПВХ, и эмалью — цена
+    // назначается отдельно на каждый материал (см. modelBasePrice), а не
+    // одна на модель, как раньше. У «Сборные» материал всегда только ПВХ
+    // (pvhOnly), им отдельная цена под эмаль не нужна — там как и раньше
+    // просто число.
+    basePrice: PVH_ONLY_MODELS.has(name) ? 5000 : { "пвх": 5000, "эмаль": 5000 },
     pvhOnly: PVH_ONLY_MODELS.has(name),
     // Своё стекло на модель (id/название/цена, редактируется в редакторе
     // цен) — см. DEFAULT_GLASSES выше и populateGlass/computeOrder ниже.
@@ -1880,6 +1885,19 @@ const DB = {
 
   function getModel(id) {
     return DB.models.find((m) => m.id === id);
+  }
+
+  // «Щитовые» — цена полотна отдельная на каждый материал облицовки (ПВХ/
+  // эмаль), поэтому m.basePrice для них — объект {материал: цена}, а не
+  // одно число (см. availableMaterials — у «Щитовые» доступны оба). У
+  // остальных типов (Сборные — только ПВХ, Матрица/пользовательские —
+  // готовая цена без материала вовсе) m.basePrice как и раньше — число.
+  // typeof-проверка — подстраховка для уже сохранённых в браузере данных
+  // (localStorage), созданных до этого разделения, где у «Щитовые» тоже
+  // было одно число на модель (см. applyPrices — миграция там же).
+  function modelBasePrice(model, material) {
+    if (typeof model.basePrice === "number") return model.basePrice;
+    return (model.basePrice && model.basePrice[material]) || 0;
   }
 
   function roundUp10(value) {
@@ -3308,7 +3326,7 @@ const DB = {
 
     const category = findCategory(state.material, state.color);
     const surcharge = category != null ? (DB.categorySurcharge[state.material][category] || 0) : 0;
-    const leafBase = model.basePrice + surcharge;
+    const leafBase = modelBasePrice(model, state.material) + surcharge;
     // Название модели уже вынесено отдельным крупным заголовком — здесь не повторяем его.
     rows.push(`Полотно: ${leafBase} ₽`);
 
@@ -5930,6 +5948,18 @@ const DB = {
   // Строка стекла внутри конкретной модели полотна (своё стекло на модель —
   // см. DB.models[i].glasses/populateGlass). Формат тот же, что у
   // colorRow/choiceRow: название + цена + безопасное удаление своим тумблером.
+  // Цена конкретной модели «Щитовые» на конкретный материал облицовки
+  // (ПВХ/эмаль) — ровно два фиксированных поля, без добавления/удаления
+  // (см. modelBasePrice/computeOrder — m.basePrice для «Щитовые» это
+  // {материал: цена}, а не одно число).
+  function modelMaterialPriceRow(modelId, material, price) {
+    const a = dataAttrs("modelMaterialPrice", { model: modelId, material });
+    return `<label class="pitem-field">
+      <span>Цена — ${esc(DB.materialNames[material] || material)}</span>
+      <span class="price-input-wrap"><input type="number" enterkeyhint="enter" step="10" min="0" value="${price}" data-field="price" ${a}></span>
+    </label>`;
+  }
+
   function modelGlassRow(modelId, g) {
     const a = dataAttrs("modelGlass", { model: modelId, id: g.id });
     return `<div class="choice-row">
@@ -6122,21 +6152,35 @@ const DB = {
       const itemsHtml = items
         .map((m) => {
           let extraBody = "";
+          // «Щитовые» — облицовка бывает и ПВХ, и эмалью (и любым другим
+          // материалом, добавленным через «Пленка ПВХ и эмаль» → «Добавить
+          // материал», см. availableMaterials) — цена своя на каждый, без
+          // общего поля «Цена» (см. modelBasePrice/computeOrder). У
+          // остальных типов — как раньше, одно число, общее поле «Цена»
+          // (ниже, через priceVal у editItem).
+          const isSchit = g.type === "щитовое";
+          if (isSchit) {
+            let priceHtml = "";
+            Object.keys(DB.categorySurcharge).forEach((mat) => {
+              priceHtml += modelMaterialPriceRow(m.id, mat, modelBasePrice(m, mat));
+            });
+            extraBody = priceHtml;
+          }
           if (!isSimpleModelSection(g.type)) {
             let glassHtml = `<div class="choice-head">Стекло</div>`;
             modelGlasses(m).forEach((gl) => { glassHtml += modelGlassRow(m.id, gl); });
             glassHtml += addBtn("modelGlass", { model: m.id }, "Добавить стекло");
-            extraBody = glassHtml;
+            extraBody += glassHtml;
           }
           // Патина — только «Щитовые», ровно два фиксированных цвета
           // (Золото/Серебро), без кнопки добавления — только цена и
           // безопасное удаление на каждую модель (см. DEFAULT_PATINA).
-          if (g.type === "щитовое") {
+          if (isSchit) {
             let patinaHtml = `<div class="choice-head">Патина</div>`;
             modelPatina(m).forEach((p) => { patinaHtml += modelPatinaRow(m.id, p); });
             extraBody += patinaHtml;
           }
-          return editItem("model", { id: m.id }, m.name, m.basePrice, { search: true, isOpen, extraBody });
+          return editItem("model", { id: m.id }, m.name, m.basePrice, { search: true, isOpen, extraBody, noPrice: isSchit });
         })
         .join("") + addBtn("model", { type: g.type }, "Добавить модель");
       return editItem("modelGroup", { type: g.type }, g.label, 0, { noPrice: true, extraBody: itemsHtml, isOpen, noDelete: !g.custom });
@@ -6291,6 +6335,22 @@ const DB = {
       case "model": {
         const m = DB.models.find((x) => x.id === d.id); if (!m) break;
         if (isName) m.name = val; else m.basePrice = val;
+        refresh = populateModels; break;
+      }
+      case "modelMaterialPrice": {
+        const m = DB.models.find((x) => x.id === d.model); if (!m) break;
+        // basePrice у «Щитовые» — объект {материал: цена} (см.
+        // modelBasePrice); значение по каждому материалу правится
+        // отдельно. Если тут ещё старое число (модель создана до
+        // разделения цены по материалам) — сперва разносим его по всем
+        // материалам как было (см. modelBasePrice), а не начинаем с пустого
+        // объекта, иначе правка одного материала обнулила бы остальные.
+        if (typeof m.basePrice !== "object" || !m.basePrice) {
+          const legacy = typeof m.basePrice === "number" ? m.basePrice : 0;
+          m.basePrice = {};
+          Object.keys(DB.categorySurcharge).forEach((mat) => { m.basePrice[mat] = legacy; });
+        }
+        m.basePrice[d.material] = val;
         refresh = populateModels; break;
       }
       case "modelGlass": {
@@ -6560,7 +6620,11 @@ const DB = {
           const type = d.type;
           const simple = isSimpleModelSection(type);
           DB.models.push({
-            id: uid("m"), name: "Новая модель", type, basePrice: 0, pvhOnly: type === "сборное",
+            id: uid("m"), name: "Новая модель", type,
+            // «Щитовые» — цена отдельная на каждый материал (см.
+            // modelBasePrice), остальным — как раньше, одно число.
+            basePrice: type === "щитовое" ? {} : 0,
+            pvhOnly: type === "сборное",
             glasses: simple ? undefined : [],
             patina: type === "щитовое" ? DEFAULT_PATINA.map((p) => ({ ...p })) : undefined
           });
