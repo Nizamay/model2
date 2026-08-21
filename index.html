@@ -6172,12 +6172,14 @@ const DB = {
             glassHtml += addBtn("modelGlass", { model: m.id }, "Добавить стекло");
             extraBody += glassHtml;
           }
-          // Патина — только «Щитовые», ровно два фиксированных цвета
-          // (Золото/Серебро), без кнопки добавления — только цена и
-          // безопасное удаление на каждую модель (см. DEFAULT_PATINA).
+          // Патина — только «Щитовые», по умолчанию два цвета (Золото/
+          // Серебро, см. DEFAULT_PATINA), но можно добавлять свои и удалять
+          // не только до нуля — «Добавить патина» на случай, если оба
+          // стандартных цвета удалили (см. отчёт), как у Стекла выше.
           if (isSchit) {
             let patinaHtml = `<div class="choice-head">Патина</div>`;
             modelPatina(m).forEach((p) => { patinaHtml += modelPatinaRow(m.id, p); });
+            patinaHtml += addBtn("modelPatina", { model: m.id }, "Добавить патину");
             extraBody += patinaHtml;
           }
           return editItem("model", { id: m.id }, m.name, m.basePrice, { search: true, isOpen, extraBody, noPrice: isSchit });
@@ -6634,6 +6636,11 @@ const DB = {
           const m = DB.models.find((x) => x.id === d.model);
           if (m) (m.glasses = m.glasses || []).push({ id: uid("g"), name: "Новое стекло", price: 0 });
           populateGlass(); break;
+        }
+        case "modelPatina": {
+          const m = DB.models.find((x) => x.id === d.model);
+          if (m) (m.patina = m.patina || []).push({ id: uid("p"), name: "Новая патина", price: 0 });
+          populatePatina(); break;
         }
         case "option":
           DB.options[d.material].push({ id: uid("opt"), name: "Новая опция", kind: "checkbox", price: 0 });
