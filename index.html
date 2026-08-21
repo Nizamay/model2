@@ -1603,8 +1603,14 @@ const DB = {
       { id: "reinforce", name: "Усиление конструкции", kind: "checkbox", price: 2400 },
       {
         id: "edge", name: "Кромка", kind: "radio",
+        // Служебного пункта «Нет» здесь больше нет (см. populateOptions —
+        // «ничего не выбрано» это отдельное состояние state.options.edge,
+        // не завязанное на позицию в этом массиве): раньше «Нет» был
+        // спрятанным нулевым элементом, и если его удаляли в редакторе
+        // цен (ничто этого не запрещало), следующий вариант тихо занимал
+        // его место — невидимый и включённый в цену по умолчанию, без
+        // возможности его снять (см. отчёт).
         choices: [
-          { label: "Нет", price: 0 },
           { label: "AL, 2 стороны", price: 2000 },
           { label: "AL, 4 стороны", price: 4000 },
           { label: "ПВХ 2мм, 2 стороны", price: 1300 },
@@ -1617,7 +1623,6 @@ const DB = {
       {
         id: "edge", name: "Кромка", kind: "radio",
         choices: [
-          { label: "Нет", price: 0 },
           { label: "AL, 2 стороны", price: 3100 },
           { label: "AL, 4 стороны", price: 6300 }
         ]
@@ -2405,14 +2410,19 @@ const DB = {
               <span class="option-price">+${opt.price} ₽</span>
             </label>`;
         }
-        state.options[opt.id] = 0;
-        // Пункт 0 («Нет») — служебный, не рисуем его отдельной кнопкой:
-        // «ничего не нажато» уже и есть «Нет» (см. клик-обработчик ниже —
-        // по умолчанию ни один вариант не активен, клик активирует, повторный
-        // клик по уже активному снимает выбор целиком, без отдельной кнопки
-        // «Нет» для этого).
+        // «Ничего не выбрано» — отдельное значение (null), не завязанное на
+        // позицию в choices (раньше им был индекс 0, а нулевой пункт
+        // «Нет» прятался из вёрстки — если его удаляли в редакторе цен,
+        // следующий вариант тихо занимал его место и включался в цену по
+        // умолчанию, без возможности его снять, см. отчёт). По умолчанию
+        // ни один вариант не активен; клик активирует, повторный клик по
+        // уже активному снимает выбор целиком (см. клик-обработчик ниже).
+        state.options[opt.id] = null;
+        // Точечная защита от уже сохранённого где-то в данных старого
+        // служебного пункта «Нет» (по содержимому, не по позиции) — чтобы
+        // он не показывался лишней бесполезной кнопкой «+0 ₽».
         const choices = opt.choices
-          .map((c, i) => (i === 0 ? "" : `
+          .map((c, i) => ((c.label === "Нет" && !c.price) ? "" : `
               <label class="option-choice">
                 <input type="radio" name="opt-${opt.id}" data-opt="${opt.id}" data-kind="radio" value="${i}">
                 <span>${c.label}</span>
@@ -2444,7 +2454,8 @@ const DB = {
           items.push({ name: opt.name, price: opt.price });
         }
       } else {
-        const idx = state.options[opt.id] || 0;
+        const idx = state.options[opt.id];
+        if (idx == null) return;
         const choice = opt.choices[idx];
         if (choice && choice.price) {
           sum += choice.price;
@@ -5378,7 +5389,7 @@ const DB = {
       const optId = target.dataset.opt;
       const clickedValue = Number(target.value);
       if (state.options[optId] === clickedValue) {
-        state.options[optId] = 0;
+        state.options[optId] = null;
         target.checked = false;
         render();
       }
