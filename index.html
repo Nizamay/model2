@@ -645,12 +645,33 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
    только если в ценнике есть позиция полотна двери/фурнитуры — для
    ценника из одного погонажа (без полотна) не рендерится, см. tagDocHtml. */
 .tag-model-title { font-weight: 900; font-size: clamp(19px, 8cqw, 32px); padding: 10px 14px 0; line-height: 1.15; }
-.tag-model-cols { display: flex; flex-wrap: wrap; gap: 10px 22px; padding: 12px 14px 0; }
+/* Верхняя часть карточки — левая половина (название уже отдельным
+   заголовком выше, тут остальное: материал/высота/ширина, как и раньше,
+   см. .tag-model-cols) и, только у «2 варианта» ценника, отдельным правым
+   блоком — цены по категориям (см. tag-model-categories/tagCategoryPriceHtml),
+   без опции — только .tag-model-cols, как раньше, во всю ширину. */
+.tag-model-top { display: flex; align-items: flex-start; }
+.tag-model-cols { display: flex; flex-wrap: wrap; gap: 10px 22px; padding: 12px 14px 0; flex: 1 1 auto; min-width: 0; }
 .tag-model-col { flex: 1 1 150px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
 .tag-model-field { display: flex; gap: 6px; align-items: flex-start; min-width: 0; }
 .tag-model-field-body { display: flex; flex-direction: column; min-width: 0; }
 .tag-model-field-label { font-weight: 700; font-size: clamp(10px, 3cqw, 12px); }
 .tag-model-field-value { font-size: clamp(11px, 3.4cqw, 13px); color: var(--muted); word-break: break-word; }
+/* «2 вариант» ценника — компактный блок цен по категориям (без галочек,
+   сокращённая подпись «N к-я» вместо «Категория N» — экономия места,
+   чтобы не увеличивать размер ценника, см. отчёт), справа от основных
+   характеристик, сгруппировано по материалу (см. tagCategoryPriceHtml).
+   Без разделительной линии — отступ (padding вместо border) и тот же шаг
+   между группами (10px), что и между полями слева (.tag-model-col),
+   чтобы обе половины смотрелись одним ритмом, а не двумя разными блоками. */
+.tag-model-categories {
+  flex: 0 1 40%; min-width: 0; padding: 12px 14px 0 0; display: flex; flex-direction: column; gap: 10px;
+}
+.tag-cat-group { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.tag-cat-material { font-weight: 700; font-size: clamp(10px, 3cqw, 12px); }
+.tag-cat-row { display: flex; justify-content: space-between; gap: 6px; font-size: clamp(11px, 3.4cqw, 13px); color: var(--muted); }
+.tag-cat-num { flex: 0 0 auto; }
+.tag-cat-price { flex: 0 0 auto; font-weight: 600; color: var(--text); }
 .tag-model-price { font-weight: 900; font-size: clamp(26px, 10cqw, 40px); text-align: center; padding: 14px 14px 4px; }
 /* Акция: цена полотна зачёркнута жирной чертой, а цена со скидкой — в
    правом столбце характеристик (см. tagLeafCardHtml), крупнее основной
@@ -1010,7 +1031,10 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
         <button type="button" id="goToOrderBtn" class="btn-goto">Перейти в спецификацию →</button>
       </div>
       <div class="result-actions">
-        <button type="button" id="saveTagBtn" class="btn-save">🏷️ Сохранить в ценник</button>
+        <button type="button" id="saveTagBtn" class="btn-save" title="Обычный ценник — цена выбранного цвета/эмали">🏷️ Ценник · 1 вариант</button>
+        <button type="button" id="saveTag2Btn" class="btn-save" hidden title="Ценник с ценами по всем категориям плёнки/эмали (только Сборные и Щитовые)">🏷️ Ценник · 2 вариант</button>
+      </div>
+      <div class="result-actions">
         <button type="button" id="goToTagsBtn" class="btn-goto">Перейти в ценник →</button>
       </div>
     </div>
@@ -1814,6 +1838,7 @@ const DB = {
     editBannerText: document.getElementById("editBannerText"),
     cancelEditBtn: document.getElementById("cancelEditBtn"),
     saveTagBtn: document.getElementById("saveTagBtn"),
+    saveTag2Btn: document.getElementById("saveTag2Btn"),
     goToTagsBtn: document.getElementById("goToTagsBtn"),
     specEditingBanner: document.getElementById("specEditingBanner"),
     specNumber: document.getElementById("specNumber"),
@@ -2030,6 +2055,7 @@ const DB = {
     el.sizeModeField.hidden = isMatrix || isTrim || isFurniture;
     el.sizeFreeGroup.hidden = isStdSize || isTrim || isFurniture;
     el.sizeMatrixRow.hidden = !isStdSize || isTrim || isFurniture;
+    updateTagVariant2Visibility();
 
     el.trimLengthThicknessRow.hidden = !isTrim;
     el.trimDoor42Field.hidden = !isTrim;
@@ -3721,6 +3747,11 @@ const DB = {
   // только один из них.
   let editingItemId = null;
   let editingTagItemId = null;
+  // Вариант ценника у позиции, которая сейчас редактируется (см.
+  // beginEditTagItem/addCurrentToTagDraft) — во время редактирования кнопка
+  // «2 вариант» прячется (см. updateTagVariant2Visibility), сохранение идёт
+  // тем же вариантом, каким позиция была изначально сохранена.
+  let editingTagVariant = 1;
 
   function updateEditBanner() {
     const editingOrder = editingItemId != null;
@@ -3730,7 +3761,17 @@ const DB = {
       ? "✏️ Редактирование позиции ценника — после сохранения вернётесь в ценник."
       : "✏️ Редактирование позиции спецификации — после сохранения вернётесь в спецификацию.";
     el.saveToOrderBtn.textContent = editingOrder ? "💾 Сохранить изменения" : "Сохранить в спецификацию";
-    el.saveTagBtn.textContent = editingTag ? "💾 Сохранить изменения" : "🏷️ Сохранить в ценник";
+    el.saveTagBtn.textContent = editingTag ? "💾 Сохранить изменения" : "🏷️ Ценник · 1 вариант";
+    updateTagVariant2Visibility();
+  }
+
+  // Кнопка «2 вариант» (цены по всем категориям плёнки/эмали) — только для
+  // Сборные/Щитовые (см. отчёт) и только когда не идёт редактирование уже
+  // сохранённой позиции (там сохраняем тем же вариантом, каким она была
+  // создана, см. editingTagVariant).
+  function updateTagVariant2Visibility() {
+    el.saveTag2Btn.hidden = editingTagItemId != null
+      || !(state.section === "щитовое" || state.section === "сборное");
   }
 
   function beginEditItem(id) {
@@ -4284,7 +4325,7 @@ const DB = {
     return leafDisplayName(o.model.name, o.glassName);
   }
 
-  function addCurrentToTagDraft() {
+  function addCurrentToTagDraft(variant) {
     const o = computeOrder();
     if (!o.model) return;
     if (!editingTagItemId && !tagItems.length && !tagDate) {
@@ -4292,6 +4333,13 @@ const DB = {
     }
     const record = {
       id: editingTagItemId || uid("tagitem"),
+      // «2 вариант» — цены по всем категориям плёнки/эмали вместо одной
+      // выбранной (см. tagCategoryPriceRows/tagLeafCardHtml) — только для
+      // Сборные/Щитовые, кнопка «2 вариант» больше нигде не показывается
+      // (см. updateTagVariant2Visibility), но подстраховываемся и тут.
+      priceTableVariant: editingTagItemId
+        ? editingTagVariant
+        : (variant === 2 && (o.section === "щитовое" || o.section === "сборное") ? 2 : 1),
       section: o.section,
       label: tagItemLabel(o),
       material: o.materialLabel, color: o.color, glassName: o.glassName, patinaName: o.patinaName,
@@ -4342,6 +4390,7 @@ const DB = {
     const item = tagItems.find((it) => it.id === id);
     if (!item || !item.calcState) return;
     editingTagItemId = id;
+    editingTagVariant = item.priceTableVariant || 1;
     editingItemId = null;
     restoreCalcState(item.calcState);
     updateEditBanner();
@@ -4468,6 +4517,39 @@ const DB = {
   // колонкой — так не растягивает карточку переносом на новую строку на
   // узких экранах, см. отчёт со скриншотом с оранжевой разметкой), крупнее
   // основной цены полотна.
+  // «2 вариант» ценника (см. addCurrentToTagDraft/updateTagVariant2Visibility) —
+  // вместо цены одного выбранного цвета показывает цены по всем категориям
+  // плёнки ПВХ (и, для «Щитовые», ещё и эмали — полотно может быть в любом
+  // из двух материалов), сгруппированные по материалу, компактно (без
+  // галочек, сокращённая подпись категории — по просьбе заказчика: место
+  // ограничено, размеры ценника меняться не должны, см. отчёт). Категория 0
+  // у ПВХ — служебная (см. DB.categorySurcharge, наценка ещё не
+  // согласована), покупателю не показываем, начинаем с категории 1. Считает
+  // напрямую по DB (та же формула, что и computeOrder: modelBasePrice +
+  // surcharge) — никак не завязано на то, какой конкретно цвет был выбран
+  // при сохранении позиции, само сохранение/итоги/алгоритмы расчёта не
+  // трогает. Это отдельный правый блок карточки (см. tagLeafCardHtml), а не
+  // третья колонка внутри .tag-model-cols — так исходная левая часть
+  // (название/материал/высота/ширина) остаётся ровно такой же, как раньше.
+  function tagCategoryPriceHtml(it) {
+    if (it.priceTableVariant !== 2) return "";
+    const model = it.calcState && it.calcState.modelId ? getModel(it.calcState.modelId) : null;
+    if (!model) return "";
+    const materials = it.section === "щитовое" ? ["пвх", "эмаль"] : ["пвх"];
+    let html = "";
+    materials.forEach((mat) => {
+      const surcharge = DB.categorySurcharge[mat] || {};
+      const cats = Object.keys(surcharge).map(Number).filter((cat) => cat >= 1).sort((a, b) => a - b);
+      if (!cats.length) return;
+      const rows = cats.map((cat) => {
+        const price = modelBasePrice(model, mat) + (surcharge[cat] || 0);
+        return `<div class="tag-cat-row"><span class="tag-cat-num">${cat} к-я</span><span class="tag-cat-price">${esc(tagMoney(price))}</span></div>`;
+      }).join("");
+      html += `<div class="tag-cat-group"><div class="tag-cat-material">${esc(DB.materialNames[mat] || mat)}</div>${rows}</div>`;
+    });
+    return html;
+  }
+
   function tagLeafCardHtml(it) {
     const { heightText, widthText } = tagLeafDims(it);
     const optionFields = (it.options || []).map((opt) => tagModelFieldHtml(opt.name, "Да")).join("");
@@ -4487,10 +4569,14 @@ const DB = {
       promoField,
     ].filter(Boolean).join("");
     const priceValue = hasPromo ? it.totalNoPromo - tagOptionsTotal(it) : it.total - tagOptionsTotal(it);
+    const categoryHtml = tagCategoryPriceHtml(it);
     return `<div class="tag-model-title">${esc(it.label)}</div>
-      <div class="tag-model-cols">
-        ${leftFields ? `<div class="tag-model-col">${leftFields}</div>` : ""}
-        ${rightFields ? `<div class="tag-model-col">${rightFields}</div>` : ""}
+      <div class="tag-model-top">
+        <div class="tag-model-cols">
+          ${leftFields ? `<div class="tag-model-col">${leftFields}</div>` : ""}
+          ${rightFields ? `<div class="tag-model-col">${rightFields}</div>` : ""}
+        </div>
+        ${categoryHtml ? `<div class="tag-model-categories">${categoryHtml}</div>` : ""}
       </div>
       <div class="tag-model-price${hasPromo ? " tag-model-price-crossed" : ""}">${esc(tagMoney(priceValue))}</div>`;
   }
@@ -4915,11 +5001,20 @@ const DB = {
   .tag-header-sub { text-align: center; font-size: 12px; color: #666; padding: 10px 14px 0; line-height: 1.5; }
   .tag-check { display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px; margin-top: 2px; border: 1.5px solid #c81e1e; border-radius: 2px; color: #c81e1e; font-size: 11px; font-weight: 900; flex: 0 0 auto; }
   .tag-model-title { font-weight: 900; font-size: 26px; padding: 10px 14px 0; }
-  .tag-model-cols { display: flex; flex-wrap: wrap; gap: 10px 22px; padding: 12px 14px 0; }
+  .tag-model-top { display: flex; align-items: flex-start; }
+  .tag-model-cols { display: flex; flex-wrap: wrap; gap: 10px 22px; padding: 12px 14px 0; flex: 1 1 auto; min-width: 0; }
   .tag-model-col { flex: 1 1 150px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
   .tag-model-field { display: flex; gap: 6px; align-items: flex-start; min-width: 0; }
   .tag-model-field-label { font-weight: 700; font-size: 11px; }
   .tag-model-field-value { font-size: 12px; color: #666; }
+  .tag-model-categories {
+    flex: 0 1 40%; min-width: 0; padding: 12px 14px 0 0; display: flex; flex-direction: column; gap: 10px;
+  }
+  .tag-cat-group { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+  .tag-cat-material { font-weight: 700; font-size: 11px; }
+  .tag-cat-row { display: flex; justify-content: space-between; gap: 6px; font-size: 12px; color: #666; }
+  .tag-cat-num { flex: 0 0 auto; }
+  .tag-cat-price { flex: 0 0 auto; font-weight: 600; color: #1c1f26; }
   .tag-model-price { font-weight: 900; font-size: 32px; text-align: center; padding: 14px 14px 4px; }
   .tag-komplekt-band { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 14px; background: #1f3a5f; color: #fff; font-weight: 800; font-size: 17px; padding: 8px 14px; margin-top: 10px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .tag-komplekt-band-value { font-size: 30px; }
@@ -5492,7 +5587,8 @@ const DB = {
     el.orderEmailBtn.addEventListener("click", shareOrderViaEmail);
     el.orderPrintBtn.addEventListener("click", printOrder);
     el.orderDownloadBtn.addEventListener("click", downloadOrderFile);
-    el.saveTagBtn.addEventListener("click", addCurrentToTagDraft);
+    el.saveTagBtn.addEventListener("click", () => addCurrentToTagDraft(1));
+    el.saveTag2Btn.addEventListener("click", () => addCurrentToTagDraft(2));
     el.goToTagsBtn.addEventListener("click", () => setView("tag"));
     el.saveTagDocBtn.addEventListener("click", saveTagDocument);
     el.newTagBtn.addEventListener("click", startNewTagDraft);
