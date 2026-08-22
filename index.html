@@ -654,26 +654,30 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 /* Без соседней колонки категорий (обычный «1 вариант», см. tagLeafCardHtml)
    .tag-model-cols — единственный ребёнок и растягивается на всю ширину,
    как раньше; когда соседняя колонка есть — делят ширину на фиксированные
-   доли (54/46), а не «сколько влезет», иначе категориям может не хватить
-   места и цена/₽ вылезает за карточку (см. отчёт). */
-.tag-model-cols { display: flex; flex-wrap: wrap; gap: 10px 22px; padding: 12px 14px 0; flex: 0 1 54%; min-width: 0; }
+   доли (60/40, не «сколько влезет»), с запасом в пользу левой части —
+   там название цвета/эмали непредсказуемой длины (например «Белоснежная
+   Эмаль» — см. отчёт, слово переносилось посреди «Белоснежна»/«я»),
+   у категорий справа текст всегда короткий и предсказуемый. */
+.tag-model-cols { display: flex; flex-wrap: wrap; gap: 10px 22px; padding: 12px 14px 0; flex: 0 1 60%; min-width: 0; }
 .tag-model-cols:only-child { flex: 1 1 auto; }
 .tag-model-col { flex: 1 1 150px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
 .tag-model-field { display: flex; gap: 6px; align-items: flex-start; min-width: 0; }
 .tag-model-field-body { display: flex; flex-direction: column; min-width: 0; }
 .tag-model-field-label { font-weight: 700; font-size: clamp(10px, 3cqw, 12px); }
-.tag-model-field-value { font-size: clamp(11px, 3.4cqw, 13px); color: var(--muted); word-break: break-word; }
+/* overflow-wrap (не word-break: break-word — нестандартное значение,
+   ломает слово раньше, чем нужно) — перенос слова целиком на новую
+   строку, если он не помещается, и разрыв посреди буквы — только когда
+   слово не помещается целиком даже на отдельной строке. */
+.tag-model-field-value { font-size: clamp(11px, 3.4cqw, 13px); color: var(--muted); overflow-wrap: break-word; }
 /* «2 вариант» ценника — компактный блок цен по категориям (без галочек,
    сокращённая подпись «N к-я» вместо «Категория N» — экономия места,
    чтобы не увеличивать размер ценника, см. отчёт), справа от основных
    характеристик, сгруппировано по материалу (см. tagCategoryPriceHtml).
    Без разделительной линии — отступ (padding вместо border) и тот же шаг
    между группами (10px), что и между полями слева (.tag-model-col),
-   чтобы обе половины смотрелись одним ритмом, а не двумя разными блоками.
-   Доля пошире (46%, левая часть — 54%), чтобы цена (например «12 000 ₽»)
-   гарантированно помещалась и не вылезала за правый край карточки. */
+   чтобы обе половины смотрелись одним ритмом, а не двумя разными блоками. */
 .tag-model-categories {
-  flex: 0 1 46%; min-width: 0; padding: 12px 14px 0 0; display: flex; flex-direction: column; gap: 10px;
+  flex: 0 1 40%; min-width: 0; padding: 12px 14px 0 0; display: flex; flex-direction: column; gap: 10px;
 }
 .tag-cat-group { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .tag-cat-material { font-weight: 700; font-size: clamp(10px, 3cqw, 12px); }
@@ -5020,14 +5024,14 @@ const DB = {
   .tag-check { display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px; margin-top: 2px; border: 1.5px solid #c81e1e; border-radius: 2px; color: #c81e1e; font-size: 11px; font-weight: 900; flex: 0 0 auto; }
   .tag-model-title { font-weight: 900; font-size: 26px; padding: 10px 14px 0; }
   .tag-model-top { display: flex; align-items: flex-start; }
-  .tag-model-cols { display: flex; flex-wrap: wrap; gap: 10px 22px; padding: 12px 14px 0; flex: 0 1 54%; min-width: 0; }
+  .tag-model-cols { display: flex; flex-wrap: wrap; gap: 10px 22px; padding: 12px 14px 0; flex: 0 1 60%; min-width: 0; }
   .tag-model-cols:only-child { flex: 1 1 auto; }
   .tag-model-col { flex: 1 1 150px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
   .tag-model-field { display: flex; gap: 6px; align-items: flex-start; min-width: 0; }
   .tag-model-field-label { font-weight: 700; font-size: 11px; }
-  .tag-model-field-value { font-size: 12px; color: #666; }
+  .tag-model-field-value { font-size: 12px; color: #666; overflow-wrap: break-word; }
   .tag-model-categories {
-    flex: 0 1 46%; min-width: 0; padding: 12px 14px 0 0; display: flex; flex-direction: column; gap: 10px;
+    flex: 0 1 40%; min-width: 0; padding: 12px 14px 0 0; display: flex; flex-direction: column; gap: 10px;
   }
   .tag-cat-group { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
   .tag-cat-material { font-weight: 700; font-size: 11px; }
