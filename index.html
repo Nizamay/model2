@@ -1039,7 +1039,7 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
         <button type="button" id="goToOrderBtn" class="btn-goto">Перейти в спецификацию →</button>
       </div>
       <div class="result-actions">
-        <button type="button" id="saveTagBtn" class="btn-save" title="Обычный ценник — цена выбранного цвета/эмали">🏷️ Ценник · 1 вариант</button>
+        <button type="button" id="saveTagBtn" class="btn-save" title="Обычный ценник — цена выбранного цвета/эмали">🏷️ Ценник</button>
         <button type="button" id="saveTag2Btn" class="btn-save" hidden title="Ценник с ценами по всем категориям плёнки/эмали (только Сборные и Щитовые)">🏷️ Ценник · 2 вариант</button>
       </div>
       <div class="result-actions">
@@ -3769,7 +3769,7 @@ const DB = {
       ? "✏️ Редактирование позиции ценника — после сохранения вернётесь в ценник."
       : "✏️ Редактирование позиции спецификации — после сохранения вернётесь в спецификацию.";
     el.saveToOrderBtn.textContent = editingOrder ? "💾 Сохранить изменения" : "Сохранить в спецификацию";
-    el.saveTagBtn.textContent = editingTag ? "💾 Сохранить изменения" : "🏷️ Ценник · 1 вариант";
+    el.saveTagBtn.textContent = editingTag ? "💾 Сохранить изменения" : "🏷️ Ценник";
     updateTagVariant2Visibility();
   }
 
@@ -4390,7 +4390,9 @@ const DB = {
     } else {
       tagItems.push(record);
       saveTagDraft();
-      flashSaved(el.saveTagBtn);
+      // «Сохранено» — на той кнопке, что реально нажали (1 или 2 вариант),
+      // а не всегда на первой (см. отчёт).
+      flashSaved(variant === 2 ? el.saveTag2Btn : el.saveTagBtn);
     }
   }
 
@@ -4489,7 +4491,11 @@ const DB = {
     const heightText = it.height ? String(it.height) : "";
     let widthText = "";
     if (it.standard && Array.isArray(it.stdWidths) && it.stdWidths.length) {
-      widthText = it.stdWidths.join("/");
+      // ​ (пробел нулевой ширины) после «/» — место для переноса
+      // строки ровно на границе значений списка, а не посреди цифр (было
+      // «400/600/700/80» / «0/900», см. отчёт) — сам символ не виден,
+      // просто подсказка браузеру, где можно перенести.
+      widthText = it.stdWidths.join("/​");
     } else if (it.width) {
       widthText = String(it.width);
     }
