@@ -229,6 +229,12 @@ input.edit-name[readonly]:focus { outline: 2px solid var(--accent); outline-offs
 
 .field { display: flex; flex-direction: column; gap: 6px; flex: 1; }
 .field-row { display: flex; gap: 12px; }
+/* Высота/Ширина/Толщина — три поля в один ряд; «Толщина, мм» на пару
+   символов длиннее двух соседних и на узком экране переносится на вторую
+   строку, из-за чего сам инпут «Толщина» уезжает на строку ниже двух
+   остальных (см. отчёт). */
+#sizeFreeGroup .field-row label,
+#sizeMatrixRow label { white-space: nowrap; }
 
 label { font-size: 13px; font-weight: 600; color: var(--muted); }
 
