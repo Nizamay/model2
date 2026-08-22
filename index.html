@@ -647,6 +647,9 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 .tag-model-title { font-weight: 900; font-size: clamp(19px, 8cqw, 32px); padding: 10px 14px 0; line-height: 1.15; }
 .tag-model-cols { display: flex; flex-wrap: wrap; gap: 10px 22px; padding: 12px 14px 0; }
 .tag-model-col { flex: 1 1 150px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+/* «2 вариант» ценника — до 6 строк (ПВХ 1-4 + эмаль 1-2 у «Щитовые»), гэп
+   уже, чтобы колонка не растягивала карточку по высоте (см. tagCategoryPriceRows). */
+.tag-model-col-categories { gap: 4px; }
 .tag-model-field { display: flex; gap: 6px; align-items: flex-start; min-width: 0; }
 .tag-model-field-body { display: flex; flex-direction: column; min-width: 0; }
 .tag-model-field-label { font-weight: 700; font-size: clamp(10px, 3cqw, 12px); }
@@ -1010,7 +1013,10 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
         <button type="button" id="goToOrderBtn" class="btn-goto">Перейти в спецификацию →</button>
       </div>
       <div class="result-actions">
-        <button type="button" id="saveTagBtn" class="btn-save">🏷️ Сохранить в ценник</button>
+        <button type="button" id="saveTagBtn" class="btn-save" title="Обычный ценник — цена выбранного цвета/эмали">🏷️ Ценник · 1 вариант</button>
+        <button type="button" id="saveTag2Btn" class="btn-save" hidden title="Ценник с ценами по всем категориям плёнки/эмали (только Сборные и Щитовые)">🏷️ Ценник · 2 вариант</button>
+      </div>
+      <div class="result-actions">
         <button type="button" id="goToTagsBtn" class="btn-goto">Перейти в ценник →</button>
       </div>
     </div>
@@ -1814,6 +1820,7 @@ const DB = {
     editBannerText: document.getElementById("editBannerText"),
     cancelEditBtn: document.getElementById("cancelEditBtn"),
     saveTagBtn: document.getElementById("saveTagBtn"),
+    saveTag2Btn: document.getElementById("saveTag2Btn"),
     goToTagsBtn: document.getElementById("goToTagsBtn"),
     specEditingBanner: document.getElementById("specEditingBanner"),
     specNumber: document.getElementById("specNumber"),
@@ -2030,6 +2037,7 @@ const DB = {
     el.sizeModeField.hidden = isMatrix || isTrim || isFurniture;
     el.sizeFreeGroup.hidden = isStdSize || isTrim || isFurniture;
     el.sizeMatrixRow.hidden = !isStdSize || isTrim || isFurniture;
+    updateTagVariant2Visibility();
 
     el.trimLengthThicknessRow.hidden = !isTrim;
     el.trimDoor42Field.hidden = !isTrim;
@@ -3721,6 +3729,11 @@ const DB = {
   // только один из них.
   let editingItemId = null;
   let editingTagItemId = null;
+  // Вариант ценника у позиции, которая сейчас редактируется (см.
+  // beginEditTagItem/addCurrentToTagDraft) — во время редактирования кнопка
+  // «2 вариант» прячется (см. updateTagVariant2Visibility), сохранение идёт
+  // тем же вариантом, каким позиция была изначально сохранена.
+  let editingTagVariant = 1;
 
   function updateEditBanner() {
     const editingOrder = editingItemId != null;
@@ -3730,7 +3743,17 @@ const DB = {
       ? "✏️ Редактирование позиции ценника — после сохранения вернётесь в ценник."
       : "✏️ Редактирование позиции спецификации — после сохранения вернётесь в спецификацию.";
     el.saveToOrderBtn.textContent = editingOrder ? "💾 Сохранить изменения" : "Сохранить в спецификацию";
-    el.saveTagBtn.textContent = editingTag ? "💾 Сохранить изменения" : "🏷️ Сохранить в ценник";
+    el.saveTagBtn.textContent = editingTag ? "💾 Сохранить изменения" : "🏷️ Ценник · 1 вариант";
+    updateTagVariant2Visibility();
+  }
+
+  // Кнопка «2 вариант» (цены по всем категориям плёнки/эмали) — только для
+  // Сборные/Щитовые (см. отчёт) и только когда не идёт редактирование уже
+  // сохранённой позиции (там сохраняем тем же вариантом, каким она была
+  // создана, см. editingTagVariant).
+  function updateTagVariant2Visibility() {
+    el.saveTag2Btn.hidden = editingTagItemId != null
+      || !(state.section === "щитовое" || state.section === "сборное");
   }
 
   function beginEditItem(id) {
@@ -4284,7 +4307,7 @@ const DB = {
     return leafDisplayName(o.model.name, o.glassName);
   }
 
-  function addCurrentToTagDraft() {
+  function addCurrentToTagDraft(variant) {
     const o = computeOrder();
     if (!o.model) return;
     if (!editingTagItemId && !tagItems.length && !tagDate) {
@@ -4292,6 +4315,13 @@ const DB = {
     }
     const record = {
       id: editingTagItemId || uid("tagitem"),
+      // «2 вариант» — цены по всем категориям плёнки/эмали вместо одной
+      // выбранной (см. tagCategoryPriceRows/tagLeafCardHtml) — только для
+      // Сборные/Щитовые, кнопка «2 вариант» больше нигде не показывается
+      // (см. updateTagVariant2Visibility), но подстраховываемся и тут.
+      priceTableVariant: editingTagItemId
+        ? editingTagVariant
+        : (variant === 2 && (o.section === "щитовое" || o.section === "сборное") ? 2 : 1),
       section: o.section,
       label: tagItemLabel(o),
       material: o.materialLabel, color: o.color, glassName: o.glassName, patinaName: o.patinaName,
@@ -4342,6 +4372,7 @@ const DB = {
     const item = tagItems.find((it) => it.id === id);
     if (!item || !item.calcState) return;
     editingTagItemId = id;
+    editingTagVariant = item.priceTableVariant || 1;
     editingItemId = null;
     restoreCalcState(item.calcState);
     updateEditBanner();
@@ -4468,6 +4499,31 @@ const DB = {
   // колонкой — так не растягивает карточку переносом на новую строку на
   // узких экранах, см. отчёт со скриншотом с оранжевой разметкой), крупнее
   // основной цены полотна.
+  // «2 вариант» ценника (см. addCurrentToTagDraft/updateTagVariant2Visibility) —
+  // вместо цены одного выбранного цвета показывает цены по всем категориям
+  // плёнки ПВХ (и, для «Щитовые», ещё и эмали — полотно может быть в любом
+  // из двух материалов) — по одной строке на категорию. Категория 0 у ПВХ —
+  // служебная (см. DB.categorySurcharge, наценка ещё не согласована),
+  // покупателю не показываем, начинаем с категории 1. Считает напрямую по
+  // DB (та же формула, что и computeOrder: modelBasePrice + surcharge) —
+  // никак не завязано на то, какой конкретно цвет был выбран при сохранении
+  // позиции, само сохранение/итоги/алгоритмы расчёта не трогает.
+  function tagCategoryPriceRows(it) {
+    if (it.priceTableVariant !== 2) return "";
+    const model = it.calcState && it.calcState.modelId ? getModel(it.calcState.modelId) : null;
+    if (!model) return "";
+    const materials = it.section === "щитовое" ? ["пвх", "эмаль"] : ["пвх"];
+    let rows = "";
+    materials.forEach((mat) => {
+      const surcharge = DB.categorySurcharge[mat] || {};
+      Object.keys(surcharge).map(Number).filter((cat) => cat >= 1).sort((a, b) => a - b).forEach((cat) => {
+        const price = modelBasePrice(model, mat) + (surcharge[cat] || 0);
+        rows += tagModelFieldHtml(`${DB.materialNames[mat] || mat}, ${catName(mat, cat)}:`, tagMoney(price));
+      });
+    });
+    return rows;
+  }
+
   function tagLeafCardHtml(it) {
     const { heightText, widthText } = tagLeafDims(it);
     const optionFields = (it.options || []).map((opt) => tagModelFieldHtml(opt.name, "Да")).join("");
@@ -4487,10 +4543,12 @@ const DB = {
       promoField,
     ].filter(Boolean).join("");
     const priceValue = hasPromo ? it.totalNoPromo - tagOptionsTotal(it) : it.total - tagOptionsTotal(it);
+    const categoryFields = tagCategoryPriceRows(it);
     return `<div class="tag-model-title">${esc(it.label)}</div>
       <div class="tag-model-cols">
         ${leftFields ? `<div class="tag-model-col">${leftFields}</div>` : ""}
         ${rightFields ? `<div class="tag-model-col">${rightFields}</div>` : ""}
+        ${categoryFields ? `<div class="tag-model-col tag-model-col-categories">${categoryFields}</div>` : ""}
       </div>
       <div class="tag-model-price${hasPromo ? " tag-model-price-crossed" : ""}">${esc(tagMoney(priceValue))}</div>`;
   }
@@ -4917,6 +4975,7 @@ const DB = {
   .tag-model-title { font-weight: 900; font-size: 26px; padding: 10px 14px 0; }
   .tag-model-cols { display: flex; flex-wrap: wrap; gap: 10px 22px; padding: 12px 14px 0; }
   .tag-model-col { flex: 1 1 150px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+  .tag-model-col-categories { gap: 4px; }
   .tag-model-field { display: flex; gap: 6px; align-items: flex-start; min-width: 0; }
   .tag-model-field-label { font-weight: 700; font-size: 11px; }
   .tag-model-field-value { font-size: 12px; color: #666; }
@@ -5492,7 +5551,8 @@ const DB = {
     el.orderEmailBtn.addEventListener("click", shareOrderViaEmail);
     el.orderPrintBtn.addEventListener("click", printOrder);
     el.orderDownloadBtn.addEventListener("click", downloadOrderFile);
-    el.saveTagBtn.addEventListener("click", addCurrentToTagDraft);
+    el.saveTagBtn.addEventListener("click", () => addCurrentToTagDraft(1));
+    el.saveTag2Btn.addEventListener("click", () => addCurrentToTagDraft(2));
     el.goToTagsBtn.addEventListener("click", () => setView("tag"));
     el.saveTagDocBtn.addEventListener("click", saveTagDocument);
     el.newTagBtn.addEventListener("click", startNewTagDraft);
