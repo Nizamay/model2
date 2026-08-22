@@ -660,14 +660,16 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 /* «2 вариант» ценника — компактный блок цен по категориям (без галочек,
    сокращённая подпись «N к-я» вместо «Категория N» — экономия места,
    чтобы не увеличивать размер ценника, см. отчёт), справа от основных
-   характеристик, сгруппировано по материалу (см. tagCategoryPriceHtml). */
+   характеристик, сгруппировано по материалу (см. tagCategoryPriceHtml).
+   Без разделительной линии — отступ (padding вместо border) и тот же шаг
+   между группами (10px), что и между полями слева (.tag-model-col),
+   чтобы обе половины смотрелись одним ритмом, а не двумя разными блоками. */
 .tag-model-categories {
-  flex: 0 1 40%; min-width: 0; padding: 12px 14px 0 12px; margin-left: 4px;
-  border-left: 1px solid var(--border); display: flex; flex-direction: column; gap: 8px;
+  flex: 0 1 40%; min-width: 0; padding: 12px 14px 0 0; display: flex; flex-direction: column; gap: 10px;
 }
-.tag-cat-group { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.tag-cat-group { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .tag-cat-material { font-weight: 700; font-size: clamp(10px, 3cqw, 12px); }
-.tag-cat-row { display: flex; justify-content: space-between; gap: 6px; font-size: clamp(10px, 3cqw, 12px); color: var(--muted); }
+.tag-cat-row { display: flex; justify-content: space-between; gap: 6px; font-size: clamp(11px, 3.4cqw, 13px); color: var(--muted); }
 .tag-cat-num { flex: 0 0 auto; }
 .tag-cat-price { flex: 0 0 auto; font-weight: 600; color: var(--text); }
 .tag-model-price { font-weight: 900; font-size: clamp(26px, 10cqw, 40px); text-align: center; padding: 14px 14px 4px; }
@@ -5006,12 +5008,11 @@ const DB = {
   .tag-model-field-label { font-weight: 700; font-size: 11px; }
   .tag-model-field-value { font-size: 12px; color: #666; }
   .tag-model-categories {
-    flex: 0 1 40%; min-width: 0; padding: 12px 14px 0 12px; margin-left: 4px;
-    border-left: 1px solid #ddd; display: flex; flex-direction: column; gap: 8px;
+    flex: 0 1 40%; min-width: 0; padding: 12px 14px 0 0; display: flex; flex-direction: column; gap: 10px;
   }
-  .tag-cat-group { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .tag-cat-group { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
   .tag-cat-material { font-weight: 700; font-size: 11px; }
-  .tag-cat-row { display: flex; justify-content: space-between; gap: 6px; font-size: 11px; color: #666; }
+  .tag-cat-row { display: flex; justify-content: space-between; gap: 6px; font-size: 12px; color: #666; }
   .tag-cat-num { flex: 0 0 auto; }
   .tag-cat-price { flex: 0 0 auto; font-weight: 600; color: #1c1f26; }
   .tag-model-price { font-weight: 900; font-size: 32px; text-align: center; padding: 14px 14px 4px; }
