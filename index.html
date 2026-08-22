@@ -645,15 +645,31 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
    только если в ценнике есть позиция полотна двери/фурнитуры — для
    ценника из одного погонажа (без полотна) не рендерится, см. tagDocHtml. */
 .tag-model-title { font-weight: 900; font-size: clamp(19px, 8cqw, 32px); padding: 10px 14px 0; line-height: 1.15; }
-.tag-model-cols { display: flex; flex-wrap: wrap; gap: 10px 22px; padding: 12px 14px 0; }
+/* Верхняя часть карточки — левая половина (название уже отдельным
+   заголовком выше, тут остальное: материал/высота/ширина, как и раньше,
+   см. .tag-model-cols) и, только у «2 варианта» ценника, отдельным правым
+   блоком — цены по категориям (см. tag-model-categories/tagCategoryPriceHtml),
+   без опции — только .tag-model-cols, как раньше, во всю ширину. */
+.tag-model-top { display: flex; align-items: flex-start; }
+.tag-model-cols { display: flex; flex-wrap: wrap; gap: 10px 22px; padding: 12px 14px 0; flex: 1 1 auto; min-width: 0; }
 .tag-model-col { flex: 1 1 150px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
-/* «2 вариант» ценника — до 6 строк (ПВХ 1-4 + эмаль 1-2 у «Щитовые»), гэп
-   уже, чтобы колонка не растягивала карточку по высоте (см. tagCategoryPriceRows). */
-.tag-model-col-categories { gap: 4px; }
 .tag-model-field { display: flex; gap: 6px; align-items: flex-start; min-width: 0; }
 .tag-model-field-body { display: flex; flex-direction: column; min-width: 0; }
 .tag-model-field-label { font-weight: 700; font-size: clamp(10px, 3cqw, 12px); }
 .tag-model-field-value { font-size: clamp(11px, 3.4cqw, 13px); color: var(--muted); word-break: break-word; }
+/* «2 вариант» ценника — компактный блок цен по категориям (без галочек,
+   сокращённая подпись «N к-я» вместо «Категория N» — экономия места,
+   чтобы не увеличивать размер ценника, см. отчёт), справа от основных
+   характеристик, сгруппировано по материалу (см. tagCategoryPriceHtml). */
+.tag-model-categories {
+  flex: 0 1 40%; min-width: 0; padding: 12px 14px 0 12px; margin-left: 4px;
+  border-left: 1px solid var(--border); display: flex; flex-direction: column; gap: 8px;
+}
+.tag-cat-group { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.tag-cat-material { font-weight: 700; font-size: clamp(10px, 3cqw, 12px); }
+.tag-cat-row { display: flex; justify-content: space-between; gap: 6px; font-size: clamp(10px, 3cqw, 12px); color: var(--muted); }
+.tag-cat-num { flex: 0 0 auto; }
+.tag-cat-price { flex: 0 0 auto; font-weight: 600; color: var(--text); }
 .tag-model-price { font-weight: 900; font-size: clamp(26px, 10cqw, 40px); text-align: center; padding: 14px 14px 4px; }
 /* Акция: цена полотна зачёркнута жирной чертой, а цена со скидкой — в
    правом столбце характеристик (см. tagLeafCardHtml), крупнее основной
@@ -4502,26 +4518,34 @@ const DB = {
   // «2 вариант» ценника (см. addCurrentToTagDraft/updateTagVariant2Visibility) —
   // вместо цены одного выбранного цвета показывает цены по всем категориям
   // плёнки ПВХ (и, для «Щитовые», ещё и эмали — полотно может быть в любом
-  // из двух материалов) — по одной строке на категорию. Категория 0 у ПВХ —
-  // служебная (см. DB.categorySurcharge, наценка ещё не согласована),
-  // покупателю не показываем, начинаем с категории 1. Считает напрямую по
-  // DB (та же формула, что и computeOrder: modelBasePrice + surcharge) —
-  // никак не завязано на то, какой конкретно цвет был выбран при сохранении
-  // позиции, само сохранение/итоги/алгоритмы расчёта не трогает.
-  function tagCategoryPriceRows(it) {
+  // из двух материалов), сгруппированные по материалу, компактно (без
+  // галочек, сокращённая подпись категории — по просьбе заказчика: место
+  // ограничено, размеры ценника меняться не должны, см. отчёт). Категория 0
+  // у ПВХ — служебная (см. DB.categorySurcharge, наценка ещё не
+  // согласована), покупателю не показываем, начинаем с категории 1. Считает
+  // напрямую по DB (та же формула, что и computeOrder: modelBasePrice +
+  // surcharge) — никак не завязано на то, какой конкретно цвет был выбран
+  // при сохранении позиции, само сохранение/итоги/алгоритмы расчёта не
+  // трогает. Это отдельный правый блок карточки (см. tagLeafCardHtml), а не
+  // третья колонка внутри .tag-model-cols — так исходная левая часть
+  // (название/материал/высота/ширина) остаётся ровно такой же, как раньше.
+  function tagCategoryPriceHtml(it) {
     if (it.priceTableVariant !== 2) return "";
     const model = it.calcState && it.calcState.modelId ? getModel(it.calcState.modelId) : null;
     if (!model) return "";
     const materials = it.section === "щитовое" ? ["пвх", "эмаль"] : ["пвх"];
-    let rows = "";
+    let html = "";
     materials.forEach((mat) => {
       const surcharge = DB.categorySurcharge[mat] || {};
-      Object.keys(surcharge).map(Number).filter((cat) => cat >= 1).sort((a, b) => a - b).forEach((cat) => {
+      const cats = Object.keys(surcharge).map(Number).filter((cat) => cat >= 1).sort((a, b) => a - b);
+      if (!cats.length) return;
+      const rows = cats.map((cat) => {
         const price = modelBasePrice(model, mat) + (surcharge[cat] || 0);
-        rows += tagModelFieldHtml(`${DB.materialNames[mat] || mat}, ${catName(mat, cat)}:`, tagMoney(price));
-      });
+        return `<div class="tag-cat-row"><span class="tag-cat-num">${cat} к-я</span><span class="tag-cat-price">${esc(tagMoney(price))}</span></div>`;
+      }).join("");
+      html += `<div class="tag-cat-group"><div class="tag-cat-material">${esc(DB.materialNames[mat] || mat)}</div>${rows}</div>`;
     });
-    return rows;
+    return html;
   }
 
   function tagLeafCardHtml(it) {
@@ -4543,12 +4567,14 @@ const DB = {
       promoField,
     ].filter(Boolean).join("");
     const priceValue = hasPromo ? it.totalNoPromo - tagOptionsTotal(it) : it.total - tagOptionsTotal(it);
-    const categoryFields = tagCategoryPriceRows(it);
+    const categoryHtml = tagCategoryPriceHtml(it);
     return `<div class="tag-model-title">${esc(it.label)}</div>
-      <div class="tag-model-cols">
-        ${leftFields ? `<div class="tag-model-col">${leftFields}</div>` : ""}
-        ${rightFields ? `<div class="tag-model-col">${rightFields}</div>` : ""}
-        ${categoryFields ? `<div class="tag-model-col tag-model-col-categories">${categoryFields}</div>` : ""}
+      <div class="tag-model-top">
+        <div class="tag-model-cols">
+          ${leftFields ? `<div class="tag-model-col">${leftFields}</div>` : ""}
+          ${rightFields ? `<div class="tag-model-col">${rightFields}</div>` : ""}
+        </div>
+        ${categoryHtml ? `<div class="tag-model-categories">${categoryHtml}</div>` : ""}
       </div>
       <div class="tag-model-price${hasPromo ? " tag-model-price-crossed" : ""}">${esc(tagMoney(priceValue))}</div>`;
   }
@@ -4973,12 +4999,21 @@ const DB = {
   .tag-header-sub { text-align: center; font-size: 12px; color: #666; padding: 10px 14px 0; line-height: 1.5; }
   .tag-check { display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px; margin-top: 2px; border: 1.5px solid #c81e1e; border-radius: 2px; color: #c81e1e; font-size: 11px; font-weight: 900; flex: 0 0 auto; }
   .tag-model-title { font-weight: 900; font-size: 26px; padding: 10px 14px 0; }
-  .tag-model-cols { display: flex; flex-wrap: wrap; gap: 10px 22px; padding: 12px 14px 0; }
+  .tag-model-top { display: flex; align-items: flex-start; }
+  .tag-model-cols { display: flex; flex-wrap: wrap; gap: 10px 22px; padding: 12px 14px 0; flex: 1 1 auto; min-width: 0; }
   .tag-model-col { flex: 1 1 150px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
-  .tag-model-col-categories { gap: 4px; }
   .tag-model-field { display: flex; gap: 6px; align-items: flex-start; min-width: 0; }
   .tag-model-field-label { font-weight: 700; font-size: 11px; }
   .tag-model-field-value { font-size: 12px; color: #666; }
+  .tag-model-categories {
+    flex: 0 1 40%; min-width: 0; padding: 12px 14px 0 12px; margin-left: 4px;
+    border-left: 1px solid #ddd; display: flex; flex-direction: column; gap: 8px;
+  }
+  .tag-cat-group { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .tag-cat-material { font-weight: 700; font-size: 11px; }
+  .tag-cat-row { display: flex; justify-content: space-between; gap: 6px; font-size: 11px; color: #666; }
+  .tag-cat-num { flex: 0 0 auto; }
+  .tag-cat-price { flex: 0 0 auto; font-weight: 600; color: #1c1f26; }
   .tag-model-price { font-weight: 900; font-size: 32px; text-align: center; padding: 14px 14px 4px; }
   .tag-komplekt-band { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 14px; background: #1f3a5f; color: #fff; font-weight: 800; font-size: 17px; padding: 8px 14px; margin-top: 10px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .tag-komplekt-band-value { font-size: 30px; }
