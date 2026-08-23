@@ -218,6 +218,12 @@ input.edit-name[readonly]:focus { outline: 2px solid var(--accent); outline-offs
 .choice-row input[type="number"] { width: 92px; }
 .choice-row .row-del { padding: 6px 10px; }
 .choice-head { font-size: 12px; font-weight: 700; color: var(--muted); margin-top: 2px; }
+/* Разделительная линия между цветами в списке категории (см. отчёт —
+   без полной рамки вокруг каждого цвета, чтобы не ломать раскладку,
+   только линия сверху у всех, кроме первого). Свой класс, а не общий
+   .choice-row + .choice-row — он используется и другими списками
+   (варианты кромки, стекло), их разделитель не нужен. */
+.color-row + .color-row { border-top: 1px solid var(--muted); padding-top: 10px; }
 
 .row-add {
   align-self: flex-start; margin-top: 2px;
@@ -6044,11 +6050,23 @@ const DB = {
     const sw = DB.colorSwatches[name];
     const src = sw && (sw.door || sw.image);
     const v = adjOf(name);
-    const panel = src ? `
+    // Панель тона теперь показывается у любого цвета, не только у тех, для
+    // которых уже есть фото текстуры (см. отчёт: у новых цветов ПВХ и у
+    // всех цветов «Эмаль» панели не было вовсе — DB.colorSwatches для них
+    // просто нет). Без фото — вместо превью-картинки заливка цветом (тот же
+    // hex, что и в 2D-превью двери, см. EMAL_COLOR_HEX/computeOrder), но
+    // сами ползунки и сохранение работают одинаково — фильтр применяется
+    // к полотну в 2D независимо от того, залито оно фото или сплошным
+    // цветом (см. doorFilter).
+    const previewHex = (sw && sw.hex) || EMAL_COLOR_HEX[name] || "#c9cbcd";
+    const preview = src
+      ? `<img class="adjust-preview" data-color="${esc(name)}" src="${src}" style="filter:${filterCss(v)}" alt="">`
+      : `<div class="adjust-preview" data-color="${esc(name)}" style="background:${previewHex};filter:${filterCss(v)}"></div>`;
+    const panel = `
       <details class="adjust-panel">
         <summary>Настроить тон плёнки</summary>
         <div class="adjust-body">
-          <img class="adjust-preview" data-color="${esc(name)}" src="${src}" style="filter:${filterCss(v)}" alt="">
+          ${preview}
           <div class="arow"><span>Оттенок</span><input type="range" class="adj" data-color="${esc(name)}" data-k="h" min="-90" max="90" step="1" value="${v.h}"></div>
           <div class="arow"><span>Насыщенность</span><input type="range" class="adj" data-color="${esc(name)}" data-k="s" min="0" max="300" step="1" value="${v.s}"></div>
           <div class="arow"><span>Яркость</span><input type="range" class="adj" data-color="${esc(name)}" data-k="b" min="30" max="200" step="1" value="${v.b}"></div>
@@ -6058,8 +6076,11 @@ const DB = {
             <button type="button" data-field="resetAdjust" data-color="${esc(name)}">Сбросить</button>
           </div>
         </div>
-      </details>` : "";
-    return `<div class="choice-row">
+      </details>`;
+    // color-row — свой класс поверх .choice-row, чтобы разделительную линию
+    // между цветами (см. CSS .color-row + .color-row) не задело другие
+    // списки, использующие тот же .choice-row (варианты кромки, стекло и т.п.).
+    return `<div class="choice-row color-row">
       <input type="text" class="edit-name" value="${esc(name)}" data-field="name" ${a}>
       <div class="pitem-del">
         <label class="switch"><input type="checkbox" class="arm-del"><span class="switch-track"></span></label>
