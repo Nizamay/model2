@@ -225,6 +225,15 @@ input.edit-name[readonly]:focus { outline: 2px solid var(--accent); outline-offs
    (варианты кромки, стекло), их разделитель не нужен. */
 .color-row + .color-row { border-top: 1px solid var(--muted); padding-top: 10px; }
 .color-upload-btn { display: inline-block; }
+.color-upload-remove { color: #c81e1e; border-color: #c81e1e; }
+/* Скрыто визуально, но остаётся в потоке документа и получает события —
+   в отличие от [hidden]/display:none, на части мобильных браузеров событие
+   change у файлового поля, открытого через <label>, надёжно доходит только
+   так (см. colorRow/отчёт). */
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+}
 
 .row-add {
   align-self: flex-start; margin-top: 2px;
@@ -2571,6 +2580,14 @@ const DB = {
     const mix = (c) => Math.max(0, Math.min(255, Math.round(c + (target - c) * p)));
     return "#" + [mix(r), mix(g), mix(b)].map((v) => v.toString(16).padStart(2, "0")).join("");
   }
+
+  // Заводские фото плёнок — снимок сразу после объявления DB, до любых
+  // правок во время сеанса (загрузка своего фото поверх заводского, см.
+  // colorRow/onColorFileUpload). Нужен, чтобы «Убрать своё фото» могло
+  // вернуть именно оригинал, а не голую заливку цветом — см.
+  // onColorRemovePhoto.
+  const FACTORY_COLOR_SWATCHES = {};
+  Object.keys(DB.colorSwatches).forEach((k) => { FACTORY_COLOR_SWATCHES[k] = { ...DB.colorSwatches[k] }; });
 
   // Цвета эмали пока без сфотографированных образцов (в отличие от ПВХ в
   // DB.colorSwatches) — условные значения-заглушки для механики закраски.
@@ -6113,8 +6130,13 @@ const DB = {
     const file = input.files && input.files[0];
     const name = input.dataset.color;
     if (!file || !name) { input.value = ""; return; }
+    // Мгновенная подпись сразу по факту выбора файла — ещё до кадрирования
+    // (которое асинхронное) — чтобы было видно, что событие вообще
+    // сработало, а не «тишина» до самого результата (см. отчёт).
+    const label = input.closest("label");
+    if (label) label.firstChild.textContent = "⏳ Обрабатываю…";
     cropToSwatchRatio(file).then(({ dataUrl, hex }) => {
-      DB.colorSwatches[name] = { hex, image: dataUrl, tileImage: dataUrl };
+      DB.colorSwatches[name] = { hex, image: dataUrl, tileImage: dataUrl, custom: true };
       // Свой try/catch, а не общий savePrices() — тут заметно вероятнее
       // упереться в лимит localStorage (фото даже сжатыми весят намного
       // больше текста), и в отличие от остальных полей молчать об этом
@@ -6122,15 +6144,30 @@ const DB = {
       let saved = true;
       try { localStorage.setItem(PRICE_STORE_KEY, JSON.stringify(collectPrices())); }
       catch (err) { saved = false; }
-      input.value = "";
-      render();
+      // renderPriceEditor() — не общий render(): тот отвечает за калькулятор
+      // и НЕ перерисовывает список редактора цен (см. отчёт — фото
+      // сохранялось в DB/localStorage, но кнопка так и висела на
+      // «Обрабатываю…», превью и «Убрать своё фото» не появлялись).
+      renderPriceEditor();
       if (!saved) {
         alert("Фото загружено, но не поместилось в памяти браузера (localStorage переполнен). Освободите место — например, удалите старые сохранённые спецификации или ценники — и загрузите фото ещё раз.");
       }
     }).catch(() => {
       input.value = "";
+      if (label) label.firstChild.textContent = "📷 Загрузить своё фото";
       alert("Не удалось обработать это фото. Попробуйте другой файл.");
     });
+  }
+
+  // «Убрать своё фото» — возвращает заводское фото (если оно у этого цвета
+  // было, см. FACTORY_COLOR_SWATCHES), а для цветов без заводского фото
+  // (добавленных через «+ Добавить цвет») просто убирает запись целиком —
+  // превью возвращается к обычной заливке цветом (см. colorRow).
+  function onColorRemovePhoto(name) {
+    if (FACTORY_COLOR_SWATCHES[name]) DB.colorSwatches[name] = { ...FACTORY_COLOR_SWATCHES[name] };
+    else delete DB.colorSwatches[name];
+    savePrices();
+    renderPriceEditor();
   }
 
   function colorRow(mat, cat, i, name) {
@@ -6170,9 +6207,14 @@ const DB = {
     // формат заводских образцов (3:4, как DB.colorSwatchSampleSize) — иначе
     // при укладке на дверь плёнка растягивается неравномерно по ширине и
     // высоте и волокна дерева превращаются в «толстые верёвки» (см. отчёт).
+    // Класс sr-only вместо атрибута hidden — на части мобильных браузеров
+    // событие change у полностью скрытого (display:none) файлового поля,
+    // открытого через <label>, срабатывает ненадёжно (см. отчёт: «кнопка
+    // находит файл, но не загружается ничего»); sr-only держит поле в
+    // потоке (нулевого размера, невидимо), а не выключает его из рендера.
     const uploadBtn = `<label class="row-add color-upload-btn">📷 Загрузить своё фото
-      <input type="file" accept="image/*" class="color-upload-input" data-color="${esc(name)}" hidden>
-    </label>`;
+      <input type="file" accept="image/*" class="color-upload-input sr-only" data-color="${esc(name)}">
+    </label>${sw && sw.custom ? `<button type="button" class="row-add color-upload-remove" data-field="removePhoto" data-color="${esc(name)}">✕ Убрать своё фото</button>` : ""}`;
     // color-row — свой класс поверх .choice-row, чтобы разделительную линию
     // между цветами (см. CSS .color-row + .color-row) не задело другие
     // списки, использующие тот же .choice-row (варианты кромки, стекло и т.п.).
@@ -6701,6 +6743,11 @@ const DB = {
 
   let resetArmTimer = null;
   function onPriceClick(e) {
+    const removePhoto = e.target.closest('[data-field="removePhoto"]');
+    if (removePhoto) {
+      onColorRemovePhoto(removePhoto.dataset.color);
+      return;
+    }
     const saveAdj = e.target.closest('[data-field="saveAdjust"]');
     if (saveAdj) {
       const body = saveAdj.closest(".adjust-body");
