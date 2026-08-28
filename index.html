@@ -224,6 +224,7 @@ input.edit-name[readonly]:focus { outline: 2px solid var(--accent); outline-offs
    .choice-row + .choice-row — он используется и другими списками
    (варианты кромки, стекло), их разделитель не нужен. */
 .color-row + .color-row { border-top: 1px solid var(--muted); padding-top: 10px; }
+.color-upload-btn { display: inline-block; }
 
 .row-add {
   align-self: flex-start; margin-top: 2px;
@@ -5847,6 +5848,10 @@ const DB = {
         patina: Array.isArray(m.patina) ? m.patina.map((p) => ({ ...p })) : undefined
       })),
       colors: DB.colors,
+      // Свои загруженные фото плёнок (см. onColorFileUpload) хранятся тут
+      // же — раньше colorSwatches вообще не сохранялся между сеансами
+      // (заводские 27 фото прошиты в коде, дозаписывать было некуда).
+      colorSwatches: DB.colorSwatches,
       colorAdjust: DB.colorAdjust || {},
       categorySurcharge: DB.categorySurcharge,
       categoryNames: DB.categoryNames,
@@ -5898,6 +5903,10 @@ const DB = {
       }
     }
     if (s.colors) DB.colors = s.colors;
+    // Снимок мог быть сохранён до появления загрузки своих фото (см.
+    // onColorFileUpload) — тогда s.colorSwatches нет, оставляем заводские
+    // 27 фото как есть (не затираем пустым объектом).
+    if (s.colorSwatches && typeof s.colorSwatches === "object") DB.colorSwatches = s.colorSwatches;
     DB.colorAdjust = (s.colorAdjust && typeof s.colorAdjust === "object") ? s.colorAdjust : (DB.colorAdjust || {});
     if (s.categorySurcharge) DB.categorySurcharge = s.categorySurcharge;
     if (s.categoryNames) DB.categoryNames = s.categoryNames;
@@ -6045,6 +6054,85 @@ const DB = {
     return `hue-rotate(${v.h}deg) saturate(${v.s}%) brightness(${v.b}%) contrast(${v.c}%)`;
   }
 
+  // Кадрирует и уменьшает загруженное фото под формат заводских образцов
+  // плёнки — 3:4 (600×800), тот же, что и у DB.colorSwatchSampleSize
+  // (150×200мм) и у всех 27 встроенных фото. При укладке на дверь (см.
+  // drawDoor) образец растягивается в тайл по ширине и высоте отдельно
+  // (preserveAspectRatio="none") — если пропорции исходного фото другие,
+  // волокна дерева на выходе превращаются в «толстые верёвки» (см. отчёт).
+  // Кадрирование по центру снимает эту зависимость от формата исходника —
+  // не важно, каким соотношением сторон снято фото на телефон.
+  function cropToSwatchRatio(file) {
+    const targetW = 600, targetH = 800;
+    const targetRatio = targetW / targetH;
+    return new Promise((resolve, reject) => {
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = () => {
+        const srcRatio = img.naturalWidth / img.naturalHeight;
+        let sx, sy, sw, sh;
+        if (srcRatio > targetRatio) {
+          sh = img.naturalHeight;
+          sw = sh * targetRatio;
+          sx = (img.naturalWidth - sw) / 2;
+          sy = 0;
+        } else {
+          sw = img.naturalWidth;
+          sh = sw / targetRatio;
+          sx = 0;
+          sy = (img.naturalHeight - sh) / 2;
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = targetW;
+        canvas.height = targetH;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(img, sx, sy, sw, sh, 0, 0, targetW, targetH);
+        const dataUrl = canvas.toDataURL("image/jpeg", 0.85);
+        // Средний цвет образца — по уменьшенной до 1×1 копии (обычный приём).
+        const avgCtx = document.createElement("canvas").getContext("2d");
+        avgCtx.canvas.width = 1; avgCtx.canvas.height = 1;
+        avgCtx.drawImage(canvas, 0, 0, 1, 1);
+        const [r, g, b] = avgCtx.getImageData(0, 0, 1, 1).data;
+        const hex = "#" + [r, g, b].map((x) => x.toString(16).padStart(2, "0")).join("");
+        URL.revokeObjectURL(url);
+        resolve({ dataUrl, hex });
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("image load failed")); };
+      img.src = url;
+    });
+  }
+
+  // Загрузка своего фото плёнки (см. colorRow — кнопка «Загрузить своё
+  // фото» над «Настроить тон плёнки», есть у каждого цвета ПВХ/эмали, в
+  // т.ч. у только что добавленных). Сохраняет в тот же DB.colorSwatches,
+  // которым уже пользуются превью в редакторе и 2D-полотно (см. drawDoor),
+  // так что новое фото сразу подхватывается везде без доп. переключателей.
+  function onColorFileUpload(e) {
+    const input = e.target;
+    if (!input.classList || !input.classList.contains("color-upload-input")) return;
+    const file = input.files && input.files[0];
+    const name = input.dataset.color;
+    if (!file || !name) { input.value = ""; return; }
+    cropToSwatchRatio(file).then(({ dataUrl, hex }) => {
+      DB.colorSwatches[name] = { hex, image: dataUrl, tileImage: dataUrl };
+      // Свой try/catch, а не общий savePrices() — тут заметно вероятнее
+      // упереться в лимит localStorage (фото даже сжатыми весят намного
+      // больше текста), и в отличие от остальных полей молчать об этом
+      // нельзя — иначе загруженное фото тихо потеряется при перезаходе.
+      let saved = true;
+      try { localStorage.setItem(PRICE_STORE_KEY, JSON.stringify(collectPrices())); }
+      catch (err) { saved = false; }
+      input.value = "";
+      render();
+      if (!saved) {
+        alert("Фото загружено, но не поместилось в памяти браузера (localStorage переполнен). Освободите место — например, удалите старые сохранённые спецификации или ценники — и загрузите фото ещё раз.");
+      }
+    }).catch(() => {
+      input.value = "";
+      alert("Не удалось обработать это фото. Попробуйте другой файл.");
+    });
+  }
+
   function colorRow(mat, cat, i, name) {
     const a = dataAttrs("color", { material: mat, cat: cat, idx: i });
     const sw = DB.colorSwatches[name];
@@ -6077,6 +6165,14 @@ const DB = {
           </div>
         </div>
       </details>`;
+    // Загрузка своего фото — заменяет фото образца для этого цвета (см.
+    // onColorFileUpload/cropToSwatchRatio). Кадрируется/уменьшается сразу под
+    // формат заводских образцов (3:4, как DB.colorSwatchSampleSize) — иначе
+    // при укладке на дверь плёнка растягивается неравномерно по ширине и
+    // высоте и волокна дерева превращаются в «толстые верёвки» (см. отчёт).
+    const uploadBtn = `<label class="row-add color-upload-btn">📷 Загрузить своё фото
+      <input type="file" accept="image/*" class="color-upload-input" data-color="${esc(name)}" hidden>
+    </label>`;
     // color-row — свой класс поверх .choice-row, чтобы разделительную линию
     // между цветами (см. CSS .color-row + .color-row) не задело другие
     // списки, использующие тот же .choice-row (варианты кромки, стекло и т.п.).
@@ -6087,6 +6183,7 @@ const DB = {
         <span class="switch-label">Разрешить удаление</span>
         <button type="button" class="row-del" data-field="del" ${a} disabled>Удалить</button>
       </div>
+      ${uploadBtn}
       ${panel}
     </div>`;
   }
@@ -6939,6 +7036,7 @@ const DB = {
     });
     el.priceEditor.addEventListener("input", (e) => { onPriceInput(e); onAdjustInput(e); onModelSearch(e); onTrimSearch(e); onFurnitureSearch(e); });
     el.priceEditor.addEventListener("click", onPriceClick);
+    el.priceEditor.addEventListener("change", onColorFileUpload);
     el.priceEditor.addEventListener("click", (e) => {
       const input = e.target.closest("input.edit-name[data-field='name']");
       if (input) openNameEditModal(input);
