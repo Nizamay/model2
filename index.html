@@ -418,6 +418,9 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 .adjust-panel > summary { cursor: pointer; font-size: 13px; color: var(--accent); font-weight: 600; }
 .adjust-body { display: flex; flex-direction: column; gap: 14px; padding: 10px 0 4px; width: 100%; min-width: 0; box-sizing: border-box; }
 .adjust-preview { width: 100%; max-width: 260px; aspect-ratio: 3/4; object-fit: cover; border-radius: 6px; border: 1px solid var(--border); align-self: center; }
+/* Кнопки «Загрузить файл» / «Удалить файл» — внутри панели тон-коррекции,
+   рядом с превью (см. colorRow/отчёт). */
+.adjust-upload-row { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
 /* Подпись — над ползунком, ползунок во всю ширину */
 .adjust-body .arow { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--muted); min-width: 0; }
 .adjust-body .arow span { font-weight: 600; }
@@ -425,10 +428,10 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 .adjust-actions { display: flex; gap: 8px; margin-top: 2px; }
 .adjust-actions button { flex: 1 1 0; min-width: 0; padding: 10px 6px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font-weight: 600; cursor: pointer; }
 .adjust-actions .save { background: var(--accent); color: #fff; border-color: var(--accent); }
-/* Кнопка «Сбросить» со «взводом»: первый тап переводит её в состояние
-   подтверждения (красная «Точно?»), только второй тап сбрасывает — защита
-   от случайного сброса. */
-.adjust-actions button.confirm { background: var(--danger); color: #fff; border-color: var(--danger); }
+.adjust-actions button:disabled { opacity: .55; cursor: default; }
+/* Ползунки заблокированы, пока не нажата «Изменить» — защита от случайной
+   смены тона касанием (см. onPriceClick: editAdjust). */
+.adjust-body input[type="range"].adj:disabled { opacity: .45; }
 /* Крупная кнопка ползунка (удобно на телефоне) */
 .adjust-body input[type="range"].adj { -webkit-appearance: none; appearance: none; background: transparent; }
 .adjust-body input[type="range"].adj::-webkit-slider-runnable-track { height: 6px; background: var(--border); border-radius: 3px; }
@@ -6154,7 +6157,7 @@ const DB = {
       }
     }).catch(() => {
       input.value = "";
-      if (label) label.firstChild.textContent = "📷 Загрузить своё фото";
+      if (label) label.firstChild.textContent = "📷 Загрузить файл";
       alert("Не удалось обработать это фото. Попробуйте другой файл.");
     });
   }
@@ -6187,21 +6190,6 @@ const DB = {
     const preview = src
       ? `<img class="adjust-preview" data-color="${esc(name)}" src="${src}" style="filter:${filterCss(v)}" alt="">`
       : `<div class="adjust-preview" data-color="${esc(name)}" style="background:${previewHex};filter:${filterCss(v)}"></div>`;
-    const panel = `
-      <details class="adjust-panel">
-        <summary>Настроить тон плёнки</summary>
-        <div class="adjust-body">
-          ${preview}
-          <div class="arow"><span>Оттенок</span><input type="range" class="adj" data-color="${esc(name)}" data-k="h" min="-90" max="90" step="1" value="${v.h}"></div>
-          <div class="arow"><span>Насыщенность</span><input type="range" class="adj" data-color="${esc(name)}" data-k="s" min="0" max="300" step="1" value="${v.s}"></div>
-          <div class="arow"><span>Яркость</span><input type="range" class="adj" data-color="${esc(name)}" data-k="b" min="30" max="200" step="1" value="${v.b}"></div>
-          <div class="arow"><span>Контраст</span><input type="range" class="adj" data-color="${esc(name)}" data-k="c" min="30" max="200" step="1" value="${v.c}"></div>
-          <div class="adjust-actions">
-            <button type="button" class="save" data-field="saveAdjust" data-color="${esc(name)}">Сохранить</button>
-            <button type="button" data-field="resetAdjust" data-color="${esc(name)}">Сбросить</button>
-          </div>
-        </div>
-      </details>`;
     // Загрузка своего фото — заменяет фото образца для этого цвета (см.
     // onColorFileUpload/cropToSwatchRatio). Кадрируется/уменьшается сразу под
     // формат заводских образцов (3:4, как DB.colorSwatchSampleSize) — иначе
@@ -6212,9 +6200,32 @@ const DB = {
     // открытого через <label>, срабатывает ненадёжно (см. отчёт: «кнопка
     // находит файл, но не загружается ничего»); sr-only держит поле в
     // потоке (нулевого размера, невидимо), а не выключает его из рендера.
-    const uploadBtn = `<label class="row-add color-upload-btn">📷 Загрузить своё фото
+    // Кнопки загрузки/удаления файла живут внутри панели «Настроить тон
+    // плёнки» — их место рядом с превью и ползунками, а не отдельной
+    // строкой над панелью (см. отчёт).
+    const uploadBtn = `<label class="row-add color-upload-btn">📷 Загрузить файл
       <input type="file" accept="image/*" class="color-upload-input sr-only" data-color="${esc(name)}">
-    </label>${sw && sw.custom ? `<button type="button" class="row-add color-upload-remove" data-field="removePhoto" data-color="${esc(name)}">✕ Убрать своё фото</button>` : ""}`;
+    </label>${sw && sw.custom ? `<button type="button" class="row-add color-upload-remove" data-field="removePhoto" data-color="${esc(name)}">✕ Удалить файл</button>` : ""}`;
+    // Ползунки по умолчанию заблокированы (disabled) — иначе случайное
+    // касание ползунка на телефоне сразу меняет тон плёнки. Разблокирует их
+    // кнопка «Изменить»; «Сохранить» фиксирует значение и снова блокирует
+    // ползунки (см. onPriceClick: editAdjust/saveAdjust, отчёт).
+    const panel = `
+      <details class="adjust-panel">
+        <summary>Настроить тон плёнки</summary>
+        <div class="adjust-body">
+          ${preview}
+          <div class="adjust-upload-row">${uploadBtn}</div>
+          <div class="arow"><span>Оттенок</span><input type="range" class="adj" data-color="${esc(name)}" data-k="h" min="-90" max="90" step="1" value="${v.h}" disabled></div>
+          <div class="arow"><span>Насыщенность</span><input type="range" class="adj" data-color="${esc(name)}" data-k="s" min="0" max="300" step="1" value="${v.s}" disabled></div>
+          <div class="arow"><span>Яркость</span><input type="range" class="adj" data-color="${esc(name)}" data-k="b" min="30" max="200" step="1" value="${v.b}" disabled></div>
+          <div class="arow"><span>Контраст</span><input type="range" class="adj" data-color="${esc(name)}" data-k="c" min="30" max="200" step="1" value="${v.c}" disabled></div>
+          <div class="adjust-actions">
+            <button type="button" class="save" data-field="saveAdjust" data-color="${esc(name)}">Сохранить</button>
+            <button type="button" data-field="editAdjust" data-color="${esc(name)}">Изменить</button>
+          </div>
+        </div>
+      </details>`;
     // color-row — свой класс поверх .choice-row, чтобы разделительную линию
     // между цветами (см. CSS .color-row + .color-row) не задело другие
     // списки, использующие тот же .choice-row (варианты кромки, стекло и т.п.).
@@ -6225,7 +6236,6 @@ const DB = {
         <span class="switch-label">Разрешить удаление</span>
         <button type="button" class="row-del" data-field="del" ${a} disabled>Удалить</button>
       </div>
-      ${uploadBtn}
       ${panel}
     </div>`;
   }
@@ -6741,11 +6751,21 @@ const DB = {
     if (img) img.style.filter = filterCss(readAdjustPanel(body));
   }
 
-  let resetArmTimer = null;
   function onPriceClick(e) {
     const removePhoto = e.target.closest('[data-field="removePhoto"]');
     if (removePhoto) {
       onColorRemovePhoto(removePhoto.dataset.color);
+      return;
+    }
+    // «Изменить» разблокирует ползунки тона (по умолчанию они disabled —
+    // см. colorRow), чтобы случайное касание ползунка само по себе тон не
+    // меняло. «Сохранить» фиксирует значение и блокирует их обратно.
+    const editAdj = e.target.closest('[data-field="editAdjust"]');
+    if (editAdj) {
+      const body = editAdj.closest(".adjust-body");
+      if (body) body.querySelectorAll(".adj").forEach((r) => { r.disabled = false; });
+      editAdj.textContent = "Можно менять ✓";
+      editAdj.disabled = true;
       return;
     }
     const saveAdj = e.target.closest('[data-field="saveAdjust"]');
@@ -6755,40 +6775,11 @@ const DB = {
       savePrices();
       render();
       saveAdj.textContent = "Сохранено ✓";
-      return;
-    }
-    const resetAdj = e.target.closest('[data-field="resetAdjust"]');
-    if (resetAdj) {
-      // Защита от случайного сброса: первый тап «взводит» кнопку («Точно?»),
-      // и только второй — сбрасывает. Через 3.5 с без второго тапа кнопка
-      // возвращается в обычное состояние.
-      if (resetAdj.dataset.armed !== "1") {
-        resetAdj.dataset.armed = "1";
-        resetAdj.classList.add("confirm");
-        resetAdj.textContent = "Точно?";
-        clearTimeout(resetArmTimer);
-        resetArmTimer = setTimeout(() => {
-          resetAdj.dataset.armed = "";
-          resetAdj.classList.remove("confirm");
-          resetAdj.textContent = "Сбросить";
-        }, 3500);
-        return;
-      }
-      clearTimeout(resetArmTimer);
-      resetAdj.dataset.armed = "";
-      resetAdj.classList.remove("confirm");
-      resetAdj.textContent = "Сбросить";
-      if (DB.colorAdjust) delete DB.colorAdjust[resetAdj.dataset.color];
-      // Сбрасываем ползунки и превью на месте, без перерисовки страницы.
-      const body = resetAdj.closest(".adjust-body");
       if (body) {
-        const def = { h: 0, s: 100, b: 100, c: 100 };
-        body.querySelectorAll(".adj").forEach((r) => { r.value = def[r.dataset.k]; });
-        const img = body.querySelector(".adjust-preview");
-        if (img) img.style.filter = filterCss(def);
+        body.querySelectorAll(".adj").forEach((r) => { r.disabled = true; });
+        const editBtn = body.querySelector('[data-field="editAdjust"]');
+        if (editBtn) { editBtn.disabled = false; editBtn.textContent = "Изменить"; }
       }
-      savePrices();
-      render();
       return;
     }
     const del = e.target.closest("[data-field='del']");
