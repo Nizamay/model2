@@ -6479,12 +6479,13 @@ const DB = {
         let colorsHtml = `<div class="choice-head">Цвета в категории</div>`;
         colors.forEach((name, i) => { colorsHtml += colorRow(mat, cat, i, name); });
         colorsHtml += addBtn("color", { material: mat, cat: cat }, "Добавить цвет");
-        // noDelete: удаление категории целиком стирало бы разом все цвета
-        // внутри — слишком опасно одной случайной кнопкой. Отдельные цвета
-        // по-прежнему удаляются каждый своим тумблером (см. colorRow).
+        // Удаление категории — тем же безопасным тумблером, что и у моделей/
+        // цветов внутри неё (см. editItem/delBlock): стирает эту одну
+        // категорию целиком (вместе со всеми цветами внутри), остальные
+        // категории не затрагивает.
         catsHtml += editItem(
           "surcharge", { material: mat, cat: cat }, catName(mat, cat), DB.categorySurcharge[mat][cat],
-          { extraBody: colorsHtml, isOpen, noDelete: true }
+          { extraBody: colorsHtml, isOpen }
         );
       });
       catsHtml += addBtn("category", { material: mat }, "Добавить категорию");
@@ -6900,9 +6901,14 @@ const DB = {
     if (del) {
       const d = del.dataset;
       switch (d.kind) {
-        // "surcharge" (удаление категории целиком) намеренно нет — см.
-        // editItem(..., { noDelete: true }) в renderPriceEditor: одна кнопка
-        // стирала бы разом все цвета/плёнки внутри категории.
+        case "surcharge":
+          // Удаляет только эту одну категорию (вместе со всеми цветами
+          // внутри неё, см. renderPriceEditor) — своим тумблером на каждой
+          // категории отдельно, остальные категории не затрагивает.
+          delete DB.categorySurcharge[d.material][d.cat];
+          delete DB.colors[d.material][d.cat];
+          if (DB.categoryNames[d.material]) delete DB.categoryNames[d.material][d.cat];
+          populateColors(); break;
         case "materialGroupColor":
         case "materialGroupOpt":
           // Только пользовательские материалы (noDelete у «пвх»/«эмаль» —
