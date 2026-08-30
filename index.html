@@ -968,6 +968,11 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
       </select>
     </div>
 
+    <div class="field" id="trimPatinaField">
+      <label for="trimPatina">Патина</label>
+      <select id="trimPatina"></select>
+    </div>
+
     <div class="field" id="trimWidthModeField">
       <label for="trimWidthMode">Ширина</label>
       <select id="trimWidthMode">
@@ -1357,15 +1362,27 @@ function trimBox(material, length, thickness, door42, prices) {
     prices: trimNormalizePrices(material, prices)
   };
 }
+// «///» — фрезерованные борозды на наличнике (см. ТЗ), у них есть свой
+// вариант с патиной (Золото/Серебро) за отдельную плату — точно так же, как
+// у патины дверного полотна (DEFAULT_PATINA), но своя цена на каждую
+// позицию наличника (см. DB.trim.items[i].patina/computeTrimOrder).
+// Объявлен до TRIM_ITEMS_RAW (variant==="///" использует его сразу при
+// построении массива, до объявления DEFAULT_PATINA ниже).
+const DEFAULT_TRIM_PATINA = [
+  { id: "gold", name: "Золото", price: 0 },
+  { id: "silver", name: "Серебро", price: 0 }
+];
 function trimNalich(material, length, thickness, tenon, variant, prices) {
   const matLabel = material === "пвх" ? "ПВХ" : "Эмаль";
   const variantTag = variant === "///" ? ` "///"` : "";
   const tenonTag = tenon ? " шип 50мм" : "";
-  return {
+  const item = {
     vid: "наличник", material, length, thickness, width: 70, tenon: !!tenon, variant: variant || "",
     name: `Наличник телескопический СФД ${matLabel}${variantTag} ${length}×70×${thickness}${tenonTag}`,
     prices: trimNormalizePrices(material, prices)
   };
+  if (variant === "///") item.patina = DEFAULT_TRIM_PATINA.map((p) => ({ ...p }));
+  return item;
 }
 function trimDobor(material, length, width, prices) {
   const matLabel = material === "пвх" ? "ПВХ" : "Эмаль";
@@ -1769,6 +1786,7 @@ const DB = {
     trimDoor42: false,
     trimTenon: false,
     trimVariant: "",
+    trimPatinaId: "none",
     trimWidthMode: "стандарт",
     trimWidthStd: null,
     trimWidthFree: 0,
@@ -1842,6 +1860,8 @@ const DB = {
     trimTenon: document.getElementById("trimTenon"),
     trimVariantField: document.getElementById("trimVariantField"),
     trimVariant: document.getElementById("trimVariant"),
+    trimPatinaField: document.getElementById("trimPatinaField"),
+    trimPatina: document.getElementById("trimPatina"),
     trimWidthModeField: document.getElementById("trimWidthModeField"),
     trimWidthMode: document.getElementById("trimWidthMode"),
     trimWidthStdField: document.getElementById("trimWidthStdField"),
@@ -2092,6 +2112,7 @@ const DB = {
     el.trimDoor42Field.hidden = !isTrim;
     el.trimTenonField.hidden = !isTrim;
     el.trimVariantField.hidden = !isTrim;
+    el.trimPatinaField.hidden = !isTrim;
     el.trimWidthModeField.hidden = !isTrim;
     el.trimWidthStdField.hidden = !isTrim;
     el.trimWidthFreeField.hidden = !isTrim;
@@ -2145,6 +2166,8 @@ const DB = {
       el.trimDoor42Field.hidden = true;
       el.trimTenonField.hidden = true;
       el.trimVariantField.hidden = true;
+      el.trimPatinaField.hidden = true;
+      state.trimPatinaId = "none";
       el.trimWidthModeField.hidden = true;
       el.trimWidthStdField.hidden = true;
       el.trimWidthFreeField.hidden = true;
@@ -2170,6 +2193,7 @@ const DB = {
 
     const variants = trimVariantsFor();
     el.trimVariantField.hidden = !(isNal && state.material === "эмаль" && tenonAvailable && variants.length > 1);
+    populateTrimPatina();
 
     el.trimWidthModeField.hidden = isBox;
     const isWidthStd = state.trimWidthMode === "стандарт";
@@ -2305,6 +2329,28 @@ const DB = {
       .join("");
     if (!variants.includes(state.trimVariant)) state.trimVariant = variants[0];
     el.trimVariant.value = state.trimVariant;
+  }
+
+  // Патина — только у Наличника-Эмаль вида «///» (фрезерованные борозды,
+  // см. TRIM_ITEMS_RAW/trimNalich), и только если у найденной по текущим
+  // параметрам позиции она вообще задана (см. item.patina). «Без патины» —
+  // всегда доступный первый вариант, как и у патины дверного полотна
+  // (см. populatePatina).
+  function trimItemPatina(item) {
+    return (item && Array.isArray(item.patina)) ? item.patina : [];
+  }
+
+  function populateTrimPatina() {
+    const eligible = state.trimVid === "наличник" && state.material === "эмаль" && state.trimVariant === "///";
+    const patina = eligible ? trimItemPatina(findTrimItem()) : [];
+    el.trimPatinaField.hidden = !patina.length;
+    if (!patina.length) { state.trimPatinaId = "none"; return; }
+    const options = [{ id: "none", name: "Без патины" }].concat(patina);
+    el.trimPatina.innerHTML = options
+      .map((p) => `<option value="${p.id}">${esc(p.name)}</option>`)
+      .join("");
+    if (!options.some((p) => p.id === state.trimPatinaId)) state.trimPatinaId = "none";
+    el.trimPatina.value = state.trimPatinaId;
   }
 
   // Стандартная ширина: у Наличника в прайсе всегда одно значение (70мм —
@@ -3260,12 +3306,22 @@ const DB = {
     let perUnit = basePrice;
     // «Ценник»: без наценки за нестандартную ширину (см. computeOrder — та
     // же логика для дверного полотна, tagPerUnit/tagTotal).
-    const perUnitTag = basePrice;
+    let perUnitTag = basePrice;
     if (isWidthCustom) {
       const nsMult = 1 + (Number(DB.nonStandardPercent) || 0) / 100;
       perUnit = roundUp10(perUnit * nsMult);
       rows.push(`Наценка за нестандартную ширину (+${DB.nonStandardPercent}%, округление вверх до 10 ₽): ${perUnit} ₽`);
     }
+
+    // Патина — только у Наличника-Эмаль вида «///» (см. item.patina/
+    // TRIM_ITEMS_RAW); «Без патины» ничего не добавляет к цене, как и у
+    // патины дверного полотна (см. computeOrder).
+    const patina = (state.trimVariant === "///" && state.trimPatinaId !== "none")
+      ? trimItemPatina(item).find((p) => p.id === state.trimPatinaId) : null;
+    const patinaPrice = patina ? patina.price : 0;
+    if (patina) rows.push(`Патина (${patina.name}): +${patinaPrice} ₽`);
+    perUnit += patinaPrice;
+    perUnitTag += patinaPrice;
 
     const displayWidth = isWidthCustom ? (Number(state.trimWidthFree) || 0) : (item.width || 0);
     const pseudoModel = { name: item.name + (isWidthCustom ? ` (ширина по заказу ${displayWidth} мм)` : "") };
@@ -3274,6 +3330,7 @@ const DB = {
       ...result,
       standard: !isWidthCustom,
       materialLabel, color: state.color, glassName: "",
+      patinaName: patina ? patina.name : "",
       tagPerUnit: perUnitTag,
       tagTotal: Math.round(perUnitTag * result.quantity),
       height: state.trimLength || 0, width: displayWidth, thickness: item.thickness || 10,
@@ -3719,7 +3776,7 @@ const DB = {
     "section", "sizeMode", "modelId", "material", "color", "glassId", "patinaId",
     "height", "width", "thickness", "discount", "promo", "quantity",
     "trimVid", "trimLength", "trimThickness", "trimDoor42", "trimTenon",
-    "trimVariant", "trimWidthMode", "trimWidthStd", "trimWidthFree",
+    "trimVariant", "trimPatinaId", "trimWidthMode", "trimWidthStd", "trimWidthFree",
     "trimCustomItemId", "trimCustomColorId",
     "furnitureVid", "furnitureItemId", "furnitureColorId"
   ];
@@ -5498,6 +5555,13 @@ const DB = {
     });
     el.trimVariant.addEventListener("change", () => {
       state.trimVariant = el.trimVariant.value;
+      // Патина зависит от вида наличника (только «///», см. populateTrimPatina)
+      // — applySectionUI() пересчитывает её видимость/список при смене вида.
+      applySectionUI();
+      render();
+    });
+    el.trimPatina.addEventListener("change", () => {
+      state.trimPatinaId = el.trimPatina.value;
       render();
     });
     el.trimWidthMode.addEventListener("change", () => {
@@ -5879,7 +5943,11 @@ const DB = {
       options: DB.options,
       nonStandardPercent: DB.nonStandardPercent,
       trimTypes: DB.trim.types.map((t) => ({ ...t })),
-      trim: DB.trim.items.map((it) => ({ ...it, prices: { ...it.prices } })),
+      trim: DB.trim.items.map((it) => ({
+        ...it,
+        prices: { ...it.prices },
+        patina: Array.isArray(it.patina) ? it.patina.map((p) => ({ ...p })) : undefined
+      })),
       trimCustomItems: DB.trim.customItems.map((it) => ({
         id: it.id, vid: it.vid, name: it.name,
         colors: Array.isArray(it.colors) ? it.colors.map((c) => ({ ...c })) : []
@@ -5945,7 +6013,18 @@ const DB = {
     // Снимок мог быть сохранён до появления «Погонажа» — тогда s.trim нет,
     // и DB.trim.items остаётся со значениями по умолчанию (см. выше).
     if (Array.isArray(s.trim) && s.trim.length) {
-      DB.trim.items = s.trim.map((it) => ({ ...it, prices: { ...(it.prices || {}) } }));
+      DB.trim.items = s.trim.map((it) => ({
+        ...it,
+        prices: { ...(it.prices || {}) },
+        // Снимок мог быть сохранён до появления патины у наличника «///» —
+        // тогда у таких позиций нет it.patina, подставляем стартовый набор
+        // (Золото/Серебро, см. DEFAULT_TRIM_PATINA), как и у патины полотна выше.
+        patina: Array.isArray(it.patina)
+          ? it.patina.map((p) => ({ ...p }))
+          : ((it.vid === "наличник" && it.material === "эмаль" && it.variant === "///")
+              ? DEFAULT_TRIM_PATINA.map((p) => ({ ...p }))
+              : undefined)
+      }));
     }
     // Снимок мог быть сохранён до появления custom-видов погонажа — тогда
     // s.trimCustomItems нет, DB.trim.customItems остаётся пустым.
@@ -6284,6 +6363,22 @@ const DB = {
     </div>`;
   }
 
+  // Строка патины внутри позиции Наличника-Эмаль вида «///» (см.
+  // DB.trim.items[i].patina/populateTrimPatina) — тот же формат, что и у
+  // патины дверного полотна выше, только на позицию погонажа.
+  function trimPatinaRow(itemId, p) {
+    const a = dataAttrs("trimPatina", { item: itemId, id: p.id });
+    return `<div class="choice-row">
+      <input type="text" class="edit-name" value="${esc(p.name)}" data-field="name" ${a}>
+      <span class="price-input-wrap"><input type="number" enterkeyhint="enter" step="10" min="0" value="${p.price}" data-field="price" ${a}></span>
+      <div class="pitem-del">
+        <label class="switch"><input type="checkbox" class="arm-del"><span class="switch-track"></span></label>
+        <span class="switch-label">Разрешить удаление</span>
+        <button type="button" class="row-del" data-field="del" ${a} disabled>Удалить</button>
+      </div>
+    </div>`;
+  }
+
   // Строка цвета внутри конкретной позиции фурнитуры (см.
   // DB.furniture.items[i].colors/populateFurnitureColor) — своя цена на
   // каждый цвет, безопасное удаление, как у стекла/патины на модель.
@@ -6532,6 +6627,16 @@ const DB = {
                 <span class="price-input-wrap"><input type="number" enterkeyhint="enter" step="10" min="0" value="${price}" data-field="price" ${a}></span>
               </div>`;
             });
+            // Патина — только у Наличника-Эмаль вида «///» (фрезерованные
+            // борозды, см. TRIM_ITEMS_RAW/trimNalich/computeTrimOrder);
+            // «Добавить патину» на случай, если оба стандартных цвета
+            // удалили, как у патины дверного полотна выше.
+            if (t.id === "наличник" && mat === "эмаль" && (it.variant || "") === "///") {
+              let patinaHtml = `<div class="choice-head">Патина</div>`;
+              trimItemPatina(it).forEach((p) => { patinaHtml += trimPatinaRow(it.id, p); });
+              patinaHtml += addBtn("trimPatina", { item: it.id }, "Добавить патину");
+              priceHtml += patinaHtml;
+            }
             itemsHtml += editItem("trim", { id: it.id }, it.name, 0, { noPrice: true, extraBody: priceHtml, isOpen, search: true });
           });
           itemsHtml += addBtn("trim", { vid: t.id, material: mat }, "Добавить позицию");
@@ -6701,6 +6806,12 @@ const DB = {
         it.prices[d.cat] = val;
         break;
       }
+      case "trimPatina": {
+        const it = DB.trim.items.find((x) => x.id === d.item); if (!it) break;
+        const p = (it.patina || []).find((x) => x.id === d.id); if (!p) break;
+        if (isName) p.name = val; else p.price = val;
+        refresh = populateTrimPatina; break;
+      }
       case "trimCustom": {
         const it = DB.trim.customItems.find((x) => x.id === d.id); if (!it) break;
         if (isName) it.name = val;
@@ -6846,6 +6957,11 @@ const DB = {
         case "trim":
           DB.trim.items = DB.trim.items.filter((it) => it.id !== d.id);
           populateTrimAll(); break;
+        case "trimPatina": {
+          const it = DB.trim.items.find((x) => x.id === d.item);
+          if (it && Array.isArray(it.patina)) it.patina = it.patina.filter((p) => p.id !== d.id);
+          populateTrimPatina(); break;
+        }
         case "trimCustom":
           DB.trim.customItems = DB.trim.customItems.filter((it) => it.id !== d.id);
           populateTrimCustomItem(); break;
@@ -6944,6 +7060,11 @@ const DB = {
           else Object.assign(base, { length: 2070, width: 100 });
           DB.trim.items.push(base);
           populateTrimAll(); break;
+        }
+        case "trimPatina": {
+          const it = DB.trim.items.find((x) => x.id === d.item);
+          if (it) (it.patina = it.patina || []).push({ id: uid("p"), name: "Новая патина", price: 0 });
+          populateTrimPatina(); break;
         }
         case "trimCustom": {
           DB.trim.customItems.push({ id: uid("trc"), vid: d.vid, name: "Новая позиция", colors: [] });
