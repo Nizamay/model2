@@ -416,22 +416,25 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 /* Панель тон-коррекции плёнки в «Изменение цен» */
 .adjust-panel { flex: 1 1 100%; min-width: 0; margin-top: 4px; }
 .adjust-panel > summary { cursor: pointer; font-size: 13px; color: var(--accent); font-weight: 600; }
-.adjust-body { display: flex; flex-direction: column; gap: 14px; padding: 10px 0 4px; width: 100%; min-width: 0; box-sizing: border-box; }
+.adjust-body { display: flex; flex-direction: column; gap: 6px; padding: 10px 0 4px; width: 100%; min-width: 0; box-sizing: border-box; }
 .adjust-preview { width: 100%; max-width: 260px; aspect-ratio: 3/4; object-fit: cover; border-radius: 6px; border: 1px solid var(--border); align-self: center; }
 /* Кнопки «Загрузить файл» / «Удалить файл» — внутри панели тон-коррекции,
    рядом с превью (см. colorRow/отчёт). */
 .adjust-upload-row { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
-/* Подпись — над ползунком, ползунок во всю ширину */
-.adjust-body .arow { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--muted); min-width: 0; }
+/* Подпись — над ползунком, ползунок во всю ширину. Отступы между
+   ползунками намеренно небольшие (см. отчёт: на телефоне между ними
+   приходилось прокручивать экран, чтобы увидеть результат правки, и в этот
+   момент случайное касание соседнего ползунка сразу меняло тон). */
+.adjust-body .arow { display: flex; flex-direction: column; gap: 2px; font-size: 13px; color: var(--muted); min-width: 0; }
 .adjust-body .arow span { font-weight: 600; }
-.adjust-body .arow input[type="range"] { width: 100%; min-width: 0; margin: 0; height: 34px; }
+.adjust-body .arow input[type="range"] { width: 100%; min-width: 0; margin: 0; height: 26px; }
 /* «Расширенные настройки (RGB)» — отдельные множители каналов
    Красный/Зелёный/Синий (см. colorRow/filterCss), свёрнуты по умолчанию —
    для большинства плёнок хватает Оттенка/Насыщенности/Яркости/Контраста
    выше, RGB нужен только для отдельных сложных плёнок. */
 .adjust-advanced { border-top: 1px dashed var(--border); padding-top: 10px; margin-top: 2px; }
 .adjust-advanced > summary { cursor: pointer; font-size: 12px; color: var(--muted); font-weight: 600; }
-.adjust-advanced-body { display: flex; flex-direction: column; gap: 14px; padding-top: 10px; }
+.adjust-advanced-body { display: flex; flex-direction: column; gap: 6px; padding-top: 10px; }
 .adjust-actions { display: flex; gap: 8px; margin-top: 2px; }
 .adjust-actions button { flex: 1 1 0; min-width: 0; padding: 10px 6px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font-weight: 600; cursor: pointer; }
 .adjust-actions .save { background: var(--accent); color: #fff; border-color: var(--accent); }
@@ -439,8 +442,12 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 /* Ползунки заблокированы, пока не нажата «Изменить» — защита от случайной
    смены тона касанием (см. onPriceClick: editAdjust). */
 .adjust-body input[type="range"].adj:disabled { opacity: .45; }
-/* Крупная кнопка ползунка (удобно на телефоне) */
-.adjust-body input[type="range"].adj { -webkit-appearance: none; appearance: none; background: transparent; }
+/* Крупная кнопка ползунка (удобно на телефоне). touch-action: pan-y —
+   вертикальный свайп/скролл проходит мимо ползунка (уходит в прокрутку
+   страницы), значение меняет только горизонтальное движение по нему — без
+   этого случайное касание пальцем при пролистывании экрана мимо ползунка
+   сразу же его сдвигало (см. отчёт). */
+.adjust-body input[type="range"].adj { -webkit-appearance: none; appearance: none; background: transparent; touch-action: pan-y; }
 .adjust-body input[type="range"].adj::-webkit-slider-runnable-track { height: 6px; background: var(--border); border-radius: 3px; }
 .adjust-body input[type="range"].adj::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 24px; height: 24px; margin-top: -9px; border-radius: 50%; background: var(--accent); border: 3px solid #fff; box-shadow: 0 1px 4px rgba(0,0,0,.35); cursor: pointer; }
 .adjust-body input[type="range"].adj::-moz-range-track { height: 6px; background: var(--border); border-radius: 3px; }
