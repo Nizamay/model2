@@ -425,6 +425,13 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 .adjust-body .arow { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--muted); min-width: 0; }
 .adjust-body .arow span { font-weight: 600; }
 .adjust-body .arow input[type="range"] { width: 100%; min-width: 0; margin: 0; height: 34px; }
+/* «Расширенные настройки (RGB)» — отдельные множители каналов
+   Красный/Зелёный/Синий (см. colorRow/filterCss), свёрнуты по умолчанию —
+   для большинства плёнок хватает Оттенка/Насыщенности/Яркости/Контраста
+   выше, RGB нужен только для отдельных сложных плёнок. */
+.adjust-advanced { border-top: 1px dashed var(--border); padding-top: 10px; margin-top: 2px; }
+.adjust-advanced > summary { cursor: pointer; font-size: 12px; color: var(--muted); font-weight: 600; }
+.adjust-advanced-body { display: flex; flex-direction: column; gap: 14px; padding-top: 10px; }
 .adjust-actions { display: flex; gap: 8px; margin-top: 2px; }
 .adjust-actions button { flex: 1 1 0; min-width: 0; padding: 10px 6px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font-weight: 600; cursor: pointer; }
 .adjust-actions .save { background: var(--accent); color: #fff; border-color: var(--accent); }
@@ -849,6 +856,13 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 </style>
 </head>
 <body>
+  <!-- Общее хранилище SVG-фильтров для расширенной тон-коррекции плёнки
+       (каналы Красный/Зелёный/Синий, см. filterCss/ensureRgbFilterDef) —
+       feColorMatrix недоступен через обычный CSS filter, только через
+       ссылку url(#id) на такой SVG-фильтр. Один общий контейнер на всю
+       страницу — фильтры создаются/переиспользуются по значению каналов
+       (одинаковые каналы у разных цветов используют один и тот же узел). -->
+  <svg width="0" height="0" style="position:absolute;overflow:hidden" aria-hidden="true"><defs id="colorAdjustDefs"></defs></svg>
   <main class="calc-card">
     <div class="topbar">
       <h1 id="viewTitle">Расчет — межкомнатные двери</h1>
@@ -6144,13 +6158,48 @@ const DB = {
   // DB.colorSwatches — образец текстуры для ПВХ подвязан к точному прежнему
   // названию и после переименования просто перестанет находиться.
   // Тон-коррекция плёнки: значения по умолчанию и CSS-фильтр из них.
+  // cr/cg/cb — «Расширенные настройки» (отдельные множители каналов
+  // Красный/Зелёный/Синий, см. colorRow/ensureRgbFilterDef) — по умолчанию
+  // 100% (без изменений), не заданы у старых сохранённых значений.
   function adjOf(name) {
     const store = (DB.colorAdjust || (DB.colorAdjust = {}));
     const v = store[name] || {};
-    return { h: v.h || 0, s: (v.s == null ? 100 : v.s), b: (v.b == null ? 100 : v.b), c: (v.c == null ? 100 : v.c) };
+    return {
+      h: v.h || 0, s: (v.s == null ? 100 : v.s), b: (v.b == null ? 100 : v.b), c: (v.c == null ? 100 : v.c),
+      cr: (v.cr == null ? 100 : v.cr), cg: (v.cg == null ? 100 : v.cg), cb: (v.cb == null ? 100 : v.cb)
+    };
+  }
+  // Множители каналов R/G/B — через CSS filter напрямую не сделать (нет
+  // такой функции), только через SVG feColorMatrix, на который CSS filter
+  // может сослаться как на url(#id) в общей цепочке вместе с остальными
+  // фильтрами (см. <svg><defs id="colorAdjustDefs"> в начале body).
+  // Узел создаётся один раз на каждое сочетание каналов и переиспользуется
+  // (одинаковые каналы у разных цветов/при разных значениях остальных
+  // ползунков — один и тот же id, задваивания в DOM нет).
+  function ensureRgbFilterDef(cr, cg, cb) {
+    const id = `adjrgb-${cr}-${cg}-${cb}`;
+    if (!document.getElementById(id)) {
+      const defs = document.getElementById("colorAdjustDefs");
+      if (!defs) return null;
+      const ns = "http://www.w3.org/2000/svg";
+      const filterEl = document.createElementNS(ns, "filter");
+      filterEl.setAttribute("id", id);
+      filterEl.setAttribute("color-interpolation-filters", "sRGB");
+      const matrix = document.createElementNS(ns, "feColorMatrix");
+      matrix.setAttribute("type", "matrix");
+      const rM = cr / 100, gM = cg / 100, bM = cb / 100;
+      matrix.setAttribute("values", `${rM} 0 0 0 0  0 ${gM} 0 0 0  0 0 ${bM} 0 0  0 0 0 1 0`);
+      filterEl.appendChild(matrix);
+      defs.appendChild(filterEl);
+    }
+    return id;
   }
   function filterCss(v) {
-    return `hue-rotate(${v.h}deg) saturate(${v.s}%) brightness(${v.b}%) contrast(${v.c}%)`;
+    const base = `hue-rotate(${v.h}deg) saturate(${v.s}%) brightness(${v.b}%) contrast(${v.c}%)`;
+    const cr = v.cr == null ? 100 : v.cr, cg = v.cg == null ? 100 : v.cg, cb = v.cb == null ? 100 : v.cb;
+    if (cr === 100 && cg === 100 && cb === 100) return base;
+    const id = ensureRgbFilterDef(cr, cg, cb);
+    return id ? `url(#${id}) ${base}` : base;
   }
 
   // Кадрирует и уменьшает загруженное фото под формат заводских образцов
@@ -6299,6 +6348,14 @@ const DB = {
           <div class="arow"><span>Насыщенность</span><input type="range" class="adj" data-color="${esc(name)}" data-k="s" min="0" max="300" step="1" value="${v.s}" disabled></div>
           <div class="arow"><span>Яркость</span><input type="range" class="adj" data-color="${esc(name)}" data-k="b" min="30" max="200" step="1" value="${v.b}" disabled></div>
           <div class="arow"><span>Контраст</span><input type="range" class="adj" data-color="${esc(name)}" data-k="c" min="30" max="200" step="1" value="${v.c}" disabled></div>
+          <details class="adjust-advanced">
+            <summary>Расширенные настройки (RGB)</summary>
+            <div class="adjust-advanced-body">
+              <div class="arow"><span>Красный</span><input type="range" class="adj" data-color="${esc(name)}" data-k="cr" min="0" max="200" step="1" value="${v.cr}" disabled></div>
+              <div class="arow"><span>Зелёный</span><input type="range" class="adj" data-color="${esc(name)}" data-k="cg" min="0" max="200" step="1" value="${v.cg}" disabled></div>
+              <div class="arow"><span>Синий</span><input type="range" class="adj" data-color="${esc(name)}" data-k="cb" min="0" max="200" step="1" value="${v.cb}" disabled></div>
+            </div>
+          </details>
           <div class="adjust-actions">
             <button type="button" class="save" data-field="saveAdjust" data-color="${esc(name)}">Сохранить</button>
             <button type="button" data-field="editAdjust" data-color="${esc(name)}">Изменить</button>
@@ -6850,8 +6907,11 @@ const DB = {
   // Клик по «удалить»/«добавить» — меняет структуру → перерисовываем редактор
   // Считать значения ползунков тон-коррекции из панели.
   function readAdjustPanel(panel) {
-    const g = (k) => { const el = panel.querySelector(`.adj[data-k="${k}"]`); return el ? Number(el.value) : 0; };
-    return { h: g("h"), s: g("s"), b: g("b"), c: g("c") };
+    const g = (k, def) => { const el = panel.querySelector(`.adj[data-k="${k}"]`); return el ? Number(el.value) : def; };
+    return {
+      h: g("h", 0), s: g("s", 100), b: g("b", 100), c: g("c", 100),
+      cr: g("cr", 100), cg: g("cg", 100), cb: g("cb", 100)
+    };
   }
   // Живое превью при движении ползунков (без сохранения).
   function onAdjustInput(e) {
