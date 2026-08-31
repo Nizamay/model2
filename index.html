@@ -226,6 +226,12 @@ input.edit-name[readonly]:focus { outline: 2px solid var(--accent); outline-offs
 .color-row + .color-row { border-top: 1px solid var(--muted); padding-top: 10px; }
 .color-upload-btn { display: inline-block; }
 .color-upload-remove { color: #c81e1e; border-color: #c81e1e; }
+/* Защита от случайного нажатия «Удалить файл»: первый тап переводит кнопку
+   в состояние подтверждения (заливка, «Точно удалить?»), только второй тап
+   в течение паузы удаляет файл (см. onPriceClick: armRemoveFileButton). */
+/* .row-add добавлен в селектор ради специфичности — иначе .row-add:hover
+   (ниже, тот же вес классов, но позже в файле) перебивал бы фон при наведении. */
+.row-add.color-upload-remove.confirm { background: var(--danger); color: #fff; border-color: var(--danger); }
 /* Скрыто визуально, но остаётся в потоке документа и получает события —
    в отличие от [hidden]/display:none, на части мобильных браузеров событие
    change у файлового поля, открытого через <label>, надёжно доходит только
@@ -7053,15 +7059,40 @@ const DB = {
     if (img) img.style.filter = filterCss(readAdjustPanel(body));
   }
 
+  // Защита от случайного удаления файла: первый тап по кнопке «Удалить
+  // файл» только «взводит» её (заливка, «Точно удалить?»), и лишь второй
+  // тап в течение паузы реально удаляет — тот же принцип, что и у тумблера
+  // «Разрешить удаление» на остальных пунктах, но для одиночной кнопки без
+  // отдельного тумблера. Через 3.5 с без второго тапа кнопка возвращается
+  // в обычное состояние.
+  let removeFileArmTimer = null;
+  function armRemoveFileButton(btn, onConfirm) {
+    if (btn.dataset.armed !== "1") {
+      btn.dataset.armed = "1";
+      btn.classList.add("confirm");
+      if (!btn.dataset.origText) btn.dataset.origText = btn.textContent;
+      btn.textContent = "Точно удалить?";
+      clearTimeout(removeFileArmTimer);
+      removeFileArmTimer = setTimeout(() => {
+        btn.dataset.armed = "";
+        btn.classList.remove("confirm");
+        btn.textContent = btn.dataset.origText;
+      }, 3500);
+      return;
+    }
+    clearTimeout(removeFileArmTimer);
+    onConfirm();
+  }
+
   function onPriceClick(e) {
     const removePhoto = e.target.closest('[data-field="removePhoto"]');
     if (removePhoto) {
-      onColorRemovePhoto(removePhoto.dataset.color);
+      armRemoveFileButton(removePhoto, () => onColorRemovePhoto(removePhoto.dataset.color));
       return;
     }
     const removeModelPhoto = e.target.closest('[data-field="removeModelPhoto"]');
     if (removeModelPhoto) {
-      onModelRemovePhoto(removeModelPhoto.dataset.model);
+      armRemoveFileButton(removeModelPhoto, () => onModelRemovePhoto(removeModelPhoto.dataset.model));
       return;
     }
     // «Изменить» разблокирует ползунки тона (по умолчанию они disabled —
