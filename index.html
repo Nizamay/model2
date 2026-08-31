@@ -418,6 +418,11 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 .adjust-panel > summary { cursor: pointer; font-size: 13px; color: var(--accent); font-weight: 600; }
 .adjust-body { display: flex; flex-direction: column; gap: 2px; padding: 10px 0 4px; width: 100%; min-width: 0; box-sizing: border-box; }
 .adjust-preview { width: 100%; max-width: 260px; aspect-ratio: 3/4; object-fit: cover; border-radius: 6px; border: 1px solid var(--border); align-self: center; }
+/* Превью фото модели двери — портретнее образца плёнки (3:4), ближе к
+   реальным пропорциям дверного полотна (см. cropToDoorRatio: 480×1080) —
+   иначе object-fit: cover обрезал бы большую часть высоты двери в узкий
+   квадратный кадр, как у образца материала. */
+.model-photo-preview { max-width: 200px; aspect-ratio: 4/9; }
 /* Кнопки «Загрузить файл» / «Удалить файл» — внутри панели тон-коррекции,
    рядом с превью (см. colorRow/отчёт). */
 .adjust-upload-row { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
@@ -5958,6 +5963,11 @@ const DB = {
       // (заводские 27 фото прошиты в коде, дозаписывать было некуда).
       colorSwatches: DB.colorSwatches,
       colorAdjust: DB.colorAdjust || {},
+      // Свои загруженные фото моделей дверного полотна (см.
+      // onModelFileUpload) — тот же принцип, что и у colorSwatches/
+      // colorAdjust выше, только на модель, а не на цвет.
+      modelSwatches: DB.modelSwatches || {},
+      modelAdjust: DB.modelAdjust || {},
       categorySurcharge: DB.categorySurcharge,
       categoryNames: DB.categoryNames,
       materialNames: DB.materialNames,
@@ -6017,6 +6027,11 @@ const DB = {
     // 27 фото как есть (не затираем пустым объектом).
     if (s.colorSwatches && typeof s.colorSwatches === "object") DB.colorSwatches = s.colorSwatches;
     DB.colorAdjust = (s.colorAdjust && typeof s.colorAdjust === "object") ? s.colorAdjust : (DB.colorAdjust || {});
+    // Снимок мог быть сохранён до появления фото моделей — тогда
+    // s.modelSwatches/s.modelAdjust нет, остаются пустыми (у моделей нет
+    // заводских фото, которые нужно было бы сохранить, см. onModelFileUpload).
+    DB.modelSwatches = (s.modelSwatches && typeof s.modelSwatches === "object") ? s.modelSwatches : (DB.modelSwatches || {});
+    DB.modelAdjust = (s.modelAdjust && typeof s.modelAdjust === "object") ? s.modelAdjust : (DB.modelAdjust || {});
     if (s.categorySurcharge) DB.categorySurcharge = s.categorySurcharge;
     if (s.categoryNames) DB.categoryNames = s.categoryNames;
     // Снимок мог быть сохранён до появления пользовательских материалов —
@@ -6308,6 +6323,99 @@ const DB = {
     renderPriceEditor();
   }
 
+  // --- Фото модели двери (см. отчёт: первый шаг к 2D-визуализации
+  // конкретного дизайна полотна, а не только цвета/материала облицовки) ---
+  // Своя запись на модель, отдельно от DB.colorSwatches — там образцы
+  // ТАЙЛЯТСЯ по всей двери (материал), здесь одно целиком изображение
+  // (конкретная модель), без факторной заготовки — у моделей нет
+  // «заводского» фото, только пользовательская загрузка.
+
+  // Кадрирует под портретное соотношение, близкое к реальным пропорциям
+  // дверного полотна (~800×2000мм), а не 3:4, как у образцов плёнки (см.
+  // cropToSwatchRatio) — там квадратный кадр оправдан (тайлируемый
+  // материал), здесь нужно превью, похожее на целую дверь.
+  function cropToDoorRatio(file) {
+    const targetW = 480, targetH = 1080;
+    const targetRatio = targetW / targetH;
+    return new Promise((resolve, reject) => {
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = () => {
+        const srcRatio = img.naturalWidth / img.naturalHeight;
+        let sx, sy, sw, sh;
+        if (srcRatio > targetRatio) {
+          sh = img.naturalHeight;
+          sw = sh * targetRatio;
+          sx = (img.naturalWidth - sw) / 2;
+          sy = 0;
+        } else {
+          sw = img.naturalWidth;
+          sh = sw / targetRatio;
+          sx = 0;
+          sy = (img.naturalHeight - sh) / 2;
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = targetW;
+        canvas.height = targetH;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(img, sx, sy, sw, sh, 0, 0, targetW, targetH);
+        URL.revokeObjectURL(url);
+        resolve(canvas.toDataURL("image/jpeg", 0.85));
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("image load failed")); };
+      img.src = url;
+    });
+  }
+
+  function modelPhotoOf(modelId) {
+    return (DB.modelSwatches && DB.modelSwatches[modelId]) || null;
+  }
+  // Тон-коррекция фото модели — те же поля/дефолты, что и у плёнки
+  // (см. adjOf), но своя запись на модель (DB.modelAdjust).
+  function modelAdjOf(modelId) {
+    const store = (DB.modelAdjust || (DB.modelAdjust = {}));
+    const v = store[modelId] || {};
+    return {
+      h: v.h || 0, s: (v.s == null ? 100 : v.s), b: (v.b == null ? 100 : v.b), c: (v.c == null ? 100 : v.c),
+      cr: (v.cr == null ? 100 : v.cr), cg: (v.cg == null ? 100 : v.cg), cb: (v.cb == null ? 100 : v.cb)
+    };
+  }
+
+  // Загрузка своего фото модели (см. modelPhotoRow — кнопка «Загрузить
+  // файл» над «Фото модели», есть у каждой модели дверного полотна). Тот
+  // же паттерн, что и у onColorFileUpload, но пишет в DB.modelSwatches.
+  function onModelFileUpload(e) {
+    const input = e.target;
+    if (!input.classList || !input.classList.contains("model-upload-input")) return;
+    const file = input.files && input.files[0];
+    const modelId = input.dataset.model;
+    if (!file || !modelId) { input.value = ""; return; }
+    const label = input.closest("label");
+    if (label) label.firstChild.textContent = "⏳ Обрабатываю…";
+    cropToDoorRatio(file).then((dataUrl) => {
+      (DB.modelSwatches || (DB.modelSwatches = {}))[modelId] = { image: dataUrl, custom: true };
+      let saved = true;
+      try { localStorage.setItem(PRICE_STORE_KEY, JSON.stringify(collectPrices())); }
+      catch (err) { saved = false; }
+      renderPriceEditor();
+      if (!saved) {
+        alert("Фото загружено, но не поместилось в памяти браузера (localStorage переполнен). Освободите место — например, удалите старые сохранённые спецификации или ценники — и загрузите фото ещё раз.");
+      }
+    }).catch(() => {
+      input.value = "";
+      if (label) label.firstChild.textContent = "📷 Загрузить файл";
+      alert("Не удалось обработать это фото. Попробуйте другой файл.");
+    });
+  }
+
+  // «Удалить файл» — у моделей нет заводского фото (в отличие от 27
+  // встроенных образцов плёнки), поэтому просто убирает запись целиком.
+  function onModelRemovePhoto(modelId) {
+    if (DB.modelSwatches) delete DB.modelSwatches[modelId];
+    savePrices();
+    renderPriceEditor();
+  }
+
   function colorRow(mat, cat, i, name) {
     const a = dataAttrs("color", { material: mat, cat: cat, idx: i });
     const sw = DB.colorSwatches[name];
@@ -6409,6 +6517,47 @@ const DB = {
         <button type="button" class="row-del" data-field="del" ${a} disabled>Удалить</button>
       </div>
     </div>`;
+  }
+
+  // Фото модели двери — по образцу панели «Настроить тон плёнки» у цветов
+  // (см. colorRow), но одно целое изображение без тайлинга (см.
+  // cropToDoorRatio/modelPhotoOf) и своя запись на модель, а не на цвет.
+  // Класс sr-only/row-add/adjust-* переиспользует те же стили и делегированные
+  // обработчики (onAdjustInput/editAdjust — они универсальны по классу
+  // .adj/.adjust-body, без разбора data-color/data-model, см. отчёт).
+  function modelPhotoRow(m) {
+    const sw = modelPhotoOf(m.id);
+    const v = modelAdjOf(m.id);
+    const preview = sw && sw.image
+      ? `<img class="adjust-preview model-photo-preview" src="${sw.image}" style="filter:${filterCss(v)}" alt="">`
+      : `<div class="adjust-preview model-photo-preview" style="background:#c9cbcd;filter:${filterCss(v)}"></div>`;
+    const uploadBtn = `<label class="row-add color-upload-btn">📷 Загрузить файл
+      <input type="file" accept="image/*" class="model-upload-input sr-only" data-model="${esc(m.id)}">
+    </label>${sw && sw.custom ? `<button type="button" class="row-add color-upload-remove" data-field="removeModelPhoto" data-model="${esc(m.id)}">✕ Удалить файл</button>` : ""}`;
+    return `
+      <details class="adjust-panel">
+        <summary>Фото модели</summary>
+        <div class="adjust-body">
+          ${preview}
+          <div class="adjust-upload-row">${uploadBtn}</div>
+          <div class="arow"><span>Оттенок</span><input type="range" class="adj" data-model="${esc(m.id)}" data-k="h" min="-90" max="90" step="1" value="${v.h}" disabled></div>
+          <div class="arow"><span>Насыщенность</span><input type="range" class="adj" data-model="${esc(m.id)}" data-k="s" min="0" max="300" step="1" value="${v.s}" disabled></div>
+          <div class="arow"><span>Яркость</span><input type="range" class="adj" data-model="${esc(m.id)}" data-k="b" min="30" max="200" step="1" value="${v.b}" disabled></div>
+          <div class="arow"><span>Контраст</span><input type="range" class="adj" data-model="${esc(m.id)}" data-k="c" min="30" max="200" step="1" value="${v.c}" disabled></div>
+          <details class="adjust-advanced">
+            <summary>Расширенные настройки (RGB)</summary>
+            <div class="adjust-advanced-body">
+              <div class="arow"><span>Красный</span><input type="range" class="adj" data-model="${esc(m.id)}" data-k="cr" min="0" max="200" step="1" value="${v.cr}" disabled></div>
+              <div class="arow"><span>Зелёный</span><input type="range" class="adj" data-model="${esc(m.id)}" data-k="cg" min="0" max="200" step="1" value="${v.cg}" disabled></div>
+              <div class="arow"><span>Синий</span><input type="range" class="adj" data-model="${esc(m.id)}" data-k="cb" min="0" max="200" step="1" value="${v.cb}" disabled></div>
+            </div>
+          </details>
+          <div class="adjust-actions">
+            <button type="button" class="save" data-field="saveModelAdjust" data-model="${esc(m.id)}">Сохранить</button>
+            <button type="button" data-field="editAdjust" data-model="${esc(m.id)}">Изменить</button>
+          </div>
+        </div>
+      </details>`;
   }
 
   // Строка патины внутри конкретной модели «Щитовые» (см.
@@ -6637,6 +6786,10 @@ const DB = {
             patinaHtml += addBtn("modelPatina", { model: m.id }, "Добавить патину");
             extraBody += patinaHtml;
           }
+          // Фото модели — у любой модели, независимо от типа/материала (см.
+          // modelPhotoRow, отчёт: первый шаг к 2D-визуализации конкретного
+          // дизайна полотна).
+          extraBody += modelPhotoRow(m);
           return editItem("model", { id: m.id }, m.name, m.basePrice, { search: true, isOpen, extraBody, noPrice: isSchit });
         })
         .join("") + addBtn("model", { type: g.type }, "Добавить модель");
@@ -6936,9 +7089,17 @@ const DB = {
       onColorRemovePhoto(removePhoto.dataset.color);
       return;
     }
+    const removeModelPhoto = e.target.closest('[data-field="removeModelPhoto"]');
+    if (removeModelPhoto) {
+      onModelRemovePhoto(removeModelPhoto.dataset.model);
+      return;
+    }
     // «Изменить» разблокирует ползунки тона (по умолчанию они disabled —
     // см. colorRow), чтобы случайное касание ползунка само по себе тон не
     // меняло. «Сохранить» фиксирует значение и блокирует их обратно.
+    // Универсально для плёнки и фото модели — data-field один и тот же
+    // (сами данные читает saveAdjust/saveModelAdjust ниже, у editAdjust нет
+    // разбора data-color/data-model, только общий класс .adj).
     const editAdj = e.target.closest('[data-field="editAdjust"]');
     if (editAdj) {
       const body = editAdj.closest(".adjust-body");
@@ -6954,6 +7115,20 @@ const DB = {
       savePrices();
       render();
       saveAdj.textContent = "Сохранено ✓";
+      if (body) {
+        body.querySelectorAll(".adj").forEach((r) => { r.disabled = true; });
+        const editBtn = body.querySelector('[data-field="editAdjust"]');
+        if (editBtn) { editBtn.disabled = false; editBtn.textContent = "Изменить"; }
+      }
+      return;
+    }
+    const saveModelAdj = e.target.closest('[data-field="saveModelAdjust"]');
+    if (saveModelAdj) {
+      const body = saveModelAdj.closest(".adjust-body");
+      (DB.modelAdjust || (DB.modelAdjust = {}))[saveModelAdj.dataset.model] = readAdjustPanel(body);
+      savePrices();
+      render();
+      saveModelAdj.textContent = "Сохранено ✓";
       if (body) {
         body.querySelectorAll(".adj").forEach((r) => { r.disabled = true; });
         const editBtn = body.querySelector('[data-field="editAdjust"]');
@@ -7269,6 +7444,7 @@ const DB = {
     el.priceEditor.addEventListener("input", (e) => { onPriceInput(e); onAdjustInput(e); onModelSearch(e); onTrimSearch(e); onFurnitureSearch(e); });
     el.priceEditor.addEventListener("click", onPriceClick);
     el.priceEditor.addEventListener("change", onColorFileUpload);
+    el.priceEditor.addEventListener("change", onModelFileUpload);
     el.priceEditor.addEventListener("click", (e) => {
       const input = e.target.closest("input.edit-name[data-field='name']");
       if (input) openNameEditModal(input);
