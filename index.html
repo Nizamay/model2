@@ -423,6 +423,9 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
    иначе object-fit: cover обрезал бы большую часть высоты двери в узкий
    квадратный кадр, как у образца материала. */
 .model-photo-preview { max-width: 200px; aspect-ratio: 4/9; }
+/* Блок «Фото модели» — без своей тон-коррекции (см. modelPhotoRow/отчёт),
+   поэтому просто центрированная колонка превью + кнопки, без .adjust-body. */
+.model-photo-block { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 6px 0; }
 /* Кнопки «Загрузить файл» / «Удалить файл» — внутри панели тон-коррекции,
    рядом с превью (см. colorRow/отчёт). */
 .adjust-upload-row { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
@@ -5964,10 +5967,10 @@ const DB = {
       colorSwatches: DB.colorSwatches,
       colorAdjust: DB.colorAdjust || {},
       // Свои загруженные фото моделей дверного полотна (см.
-      // onModelFileUpload) — тот же принцип, что и у colorSwatches/
-      // colorAdjust выше, только на модель, а не на цвет.
+      // onModelFileUpload) — тот же принцип, что и у colorSwatches выше,
+      // только на модель, а не на цвет (без своей тон-коррекции — цвет
+      // настраивается один раз на самой плёнке, см. отчёт).
       modelSwatches: DB.modelSwatches || {},
-      modelAdjust: DB.modelAdjust || {},
       categorySurcharge: DB.categorySurcharge,
       categoryNames: DB.categoryNames,
       materialNames: DB.materialNames,
@@ -6028,10 +6031,9 @@ const DB = {
     if (s.colorSwatches && typeof s.colorSwatches === "object") DB.colorSwatches = s.colorSwatches;
     DB.colorAdjust = (s.colorAdjust && typeof s.colorAdjust === "object") ? s.colorAdjust : (DB.colorAdjust || {});
     // Снимок мог быть сохранён до появления фото моделей — тогда
-    // s.modelSwatches/s.modelAdjust нет, остаются пустыми (у моделей нет
-    // заводских фото, которые нужно было бы сохранить, см. onModelFileUpload).
+    // s.modelSwatches нет, остаётся пустым (у моделей нет заводских фото,
+    // которые нужно было бы сохранить, см. onModelFileUpload).
     DB.modelSwatches = (s.modelSwatches && typeof s.modelSwatches === "object") ? s.modelSwatches : (DB.modelSwatches || {});
-    DB.modelAdjust = (s.modelAdjust && typeof s.modelAdjust === "object") ? s.modelAdjust : (DB.modelAdjust || {});
     if (s.categorySurcharge) DB.categorySurcharge = s.categorySurcharge;
     if (s.categoryNames) DB.categoryNames = s.categoryNames;
     // Снимок мог быть сохранён до появления пользовательских материалов —
@@ -6370,16 +6372,6 @@ const DB = {
   function modelPhotoOf(modelId) {
     return (DB.modelSwatches && DB.modelSwatches[modelId]) || null;
   }
-  // Тон-коррекция фото модели — те же поля/дефолты, что и у плёнки
-  // (см. adjOf), но своя запись на модель (DB.modelAdjust).
-  function modelAdjOf(modelId) {
-    const store = (DB.modelAdjust || (DB.modelAdjust = {}));
-    const v = store[modelId] || {};
-    return {
-      h: v.h || 0, s: (v.s == null ? 100 : v.s), b: (v.b == null ? 100 : v.b), c: (v.c == null ? 100 : v.c),
-      cr: (v.cr == null ? 100 : v.cr), cg: (v.cg == null ? 100 : v.cg), cb: (v.cb == null ? 100 : v.cb)
-    };
-  }
 
   // Загрузка своего фото модели (см. modelPhotoRow — кнопка «Загрузить
   // файл» над «Фото модели», есть у каждой модели дверного полотна). Тот
@@ -6519,45 +6511,23 @@ const DB = {
     </div>`;
   }
 
-  // Фото модели двери — по образцу панели «Настроить тон плёнки» у цветов
-  // (см. colorRow), но одно целое изображение без тайлинга (см.
-  // cropToDoorRatio/modelPhotoOf) и своя запись на модель, а не на цвет.
-  // Класс sr-only/row-add/adjust-* переиспользует те же стили и делегированные
-  // обработчики (onAdjustInput/editAdjust — они универсальны по классу
-  // .adj/.adjust-body, без разбора data-color/data-model, см. отчёт).
+  // Фото модели двери — только само фото + загрузка/удаление, без своей
+  // тон-коррекции (см. отчёт: цвет уже настраивается один раз на плёнке в
+  // «Пленка ПВХ и эмаль», у фото модели отдельные Оттенок/Насыщенность и
+  // т.п. были бы лишними — колор-коррекция должна происходить один раз).
   function modelPhotoRow(m) {
     const sw = modelPhotoOf(m.id);
-    const v = modelAdjOf(m.id);
     const preview = sw && sw.image
-      ? `<img class="adjust-preview model-photo-preview" src="${sw.image}" style="filter:${filterCss(v)}" alt="">`
-      : `<div class="adjust-preview model-photo-preview" style="background:#c9cbcd;filter:${filterCss(v)}"></div>`;
+      ? `<img class="adjust-preview model-photo-preview" src="${sw.image}" alt="">`
+      : `<div class="adjust-preview model-photo-preview" style="background:#c9cbcd;"></div>`;
     const uploadBtn = `<label class="row-add color-upload-btn">📷 Загрузить файл
       <input type="file" accept="image/*" class="model-upload-input sr-only" data-model="${esc(m.id)}">
     </label>${sw && sw.custom ? `<button type="button" class="row-add color-upload-remove" data-field="removeModelPhoto" data-model="${esc(m.id)}">✕ Удалить файл</button>` : ""}`;
-    return `
-      <details class="adjust-panel">
-        <summary>Фото модели</summary>
-        <div class="adjust-body">
-          ${preview}
-          <div class="adjust-upload-row">${uploadBtn}</div>
-          <div class="arow"><span>Оттенок</span><input type="range" class="adj" data-model="${esc(m.id)}" data-k="h" min="-90" max="90" step="1" value="${v.h}" disabled></div>
-          <div class="arow"><span>Насыщенность</span><input type="range" class="adj" data-model="${esc(m.id)}" data-k="s" min="0" max="300" step="1" value="${v.s}" disabled></div>
-          <div class="arow"><span>Яркость</span><input type="range" class="adj" data-model="${esc(m.id)}" data-k="b" min="30" max="200" step="1" value="${v.b}" disabled></div>
-          <div class="arow"><span>Контраст</span><input type="range" class="adj" data-model="${esc(m.id)}" data-k="c" min="30" max="200" step="1" value="${v.c}" disabled></div>
-          <details class="adjust-advanced">
-            <summary>Расширенные настройки (RGB)</summary>
-            <div class="adjust-advanced-body">
-              <div class="arow"><span>Красный</span><input type="range" class="adj" data-model="${esc(m.id)}" data-k="cr" min="0" max="200" step="1" value="${v.cr}" disabled></div>
-              <div class="arow"><span>Зелёный</span><input type="range" class="adj" data-model="${esc(m.id)}" data-k="cg" min="0" max="200" step="1" value="${v.cg}" disabled></div>
-              <div class="arow"><span>Синий</span><input type="range" class="adj" data-model="${esc(m.id)}" data-k="cb" min="0" max="200" step="1" value="${v.cb}" disabled></div>
-            </div>
-          </details>
-          <div class="adjust-actions">
-            <button type="button" class="save" data-field="saveModelAdjust" data-model="${esc(m.id)}">Сохранить</button>
-            <button type="button" data-field="editAdjust" data-model="${esc(m.id)}">Изменить</button>
-          </div>
-        </div>
-      </details>`;
+    return `<div class="choice-head">Фото модели</div>
+      <div class="model-photo-block">
+        ${preview}
+        <div class="adjust-upload-row">${uploadBtn}</div>
+      </div>`;
   }
 
   // Строка патины внутри конкретной модели «Щитовые» (см.
@@ -7097,9 +7067,6 @@ const DB = {
     // «Изменить» разблокирует ползунки тона (по умолчанию они disabled —
     // см. colorRow), чтобы случайное касание ползунка само по себе тон не
     // меняло. «Сохранить» фиксирует значение и блокирует их обратно.
-    // Универсально для плёнки и фото модели — data-field один и тот же
-    // (сами данные читает saveAdjust/saveModelAdjust ниже, у editAdjust нет
-    // разбора data-color/data-model, только общий класс .adj).
     const editAdj = e.target.closest('[data-field="editAdjust"]');
     if (editAdj) {
       const body = editAdj.closest(".adjust-body");
@@ -7115,20 +7082,6 @@ const DB = {
       savePrices();
       render();
       saveAdj.textContent = "Сохранено ✓";
-      if (body) {
-        body.querySelectorAll(".adj").forEach((r) => { r.disabled = true; });
-        const editBtn = body.querySelector('[data-field="editAdjust"]');
-        if (editBtn) { editBtn.disabled = false; editBtn.textContent = "Изменить"; }
-      }
-      return;
-    }
-    const saveModelAdj = e.target.closest('[data-field="saveModelAdjust"]');
-    if (saveModelAdj) {
-      const body = saveModelAdj.closest(".adjust-body");
-      (DB.modelAdjust || (DB.modelAdjust = {}))[saveModelAdj.dataset.model] = readAdjustPanel(body);
-      savePrices();
-      render();
-      saveModelAdj.textContent = "Сохранено ✓";
       if (body) {
         body.querySelectorAll(".adj").forEach((r) => { r.disabled = true; });
         const editBtn = body.querySelector('[data-field="editAdjust"]');
