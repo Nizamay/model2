@@ -101,6 +101,18 @@ h1 { font-size: 20px; margin: 0 0 4px; }
 }
 .menu-item:hover { background: var(--bg); }
 .menu-item.active { color: var(--accent); }
+/* Индикатор занятой памяти браузера (localStorage) — виден при каждом
+   открытии меню, обновляется в toggleMenu() (см. updateStorageIndicator).
+   Нужен, чтобы вовремя заметить приближение к лимиту хранилища браузера —
+   когда он переполняется, новые ценники/спецификации перестают
+   сохраняться (см. отчёт). */
+.menu-storage { padding: 10px 14px 12px; border-top: 1px solid var(--border); }
+.menu-storage-bar { height: 6px; border-radius: 3px; background: var(--bg); overflow: hidden; margin-bottom: 6px; }
+.menu-storage-fill { height: 100%; border-radius: 3px; background: var(--accent); transition: width .2s; }
+.menu-storage-fill.warn { background: #d99a1f; }
+.menu-storage-fill.danger { background: var(--danger); }
+#menuStorageText { font-size: 12px; color: var(--muted); }
+#menuStorageText.danger { color: var(--danger); font-weight: 600; }
 
 .prices-hint { font-size: 13px; color: var(--muted); margin: 0 0 4px; }
 
@@ -899,6 +911,10 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
         <button type="button" class="menu-item" data-view="tag">Ценник</button>
         <button type="button" class="menu-item" data-view="tagList">Сохранённые ценники</button>
         <button type="button" class="menu-item" data-view="prices">Изменение цен</button>
+        <div class="menu-storage" id="menuStorage">
+          <div class="menu-storage-bar"><div class="menu-storage-fill" id="menuStorageFill"></div></div>
+          <span id="menuStorageText">Память браузера: …</span>
+        </div>
       </nav>
     </div>
 
@@ -1957,6 +1973,8 @@ const DB = {
     customTextureClear: document.getElementById("s_customTextureClear"),
     menuBtn: document.getElementById("menuBtn"),
     menu: document.getElementById("menu"),
+    menuStorageFill: document.getElementById("menuStorageFill"),
+    menuStorageText: document.getElementById("menuStorageText"),
     viewTitle: document.getElementById("viewTitle"),
     viewCalc: document.getElementById("viewCalc"),
     viewScene: document.getElementById("viewScene"),
@@ -3715,8 +3733,13 @@ const DB = {
     }
   }
 
+  // Возвращает true/false — та же логика, что и у saveTagHistory (см. её
+  // комментарий): ошибку записи (переполненный localStorage) нельзя молча
+  // проглатывать, иначе спецификация выглядела бы сохранённой до конца
+  // сеанса и пропадала бы бесследно после перезагрузки.
   function saveSpecHistory() {
-    try { localStorage.setItem(SPEC_HISTORY_KEY, JSON.stringify(specHistory)); } catch (e) {}
+    try { localStorage.setItem(SPEC_HISTORY_KEY, JSON.stringify(specHistory)); return true; }
+    catch (e) { return false; }
   }
 
   function nextSpecSeq() {
@@ -4096,8 +4119,16 @@ const DB = {
       grandTotal: orderFinalTotal({ items: orderItems, discount: orderDiscount })
     };
     const idx = specHistory.findIndex((e) => e.number === entry.number);
+    const prevEntry = idx >= 0 ? specHistory[idx] : null;
     if (idx >= 0) specHistory[idx] = entry; else specHistory.unshift(entry);
-    saveSpecHistory();
+    if (!saveSpecHistory()) {
+      // Откатываем — иначе спецификация выглядела бы сохранённой до
+      // перезагрузки страницы, а потом бесследно пропадала бы (см. отчёт
+      // про ту же проблему у ценников).
+      if (prevEntry) specHistory[idx] = prevEntry; else specHistory.shift();
+      alert("Не удалось сохранить спецификацию — не хватает места в памяти браузера (localStorage переполнен). Освободите место — удалите старые сохранённые спецификации, ценники или свои загруженные фото плёнок/моделей — и попробуйте снова.");
+      return;
+    }
     // Сохранённая спецификация целиком переезжает в историю — черновик и
     // страница «Спецификация» очищаются сразу, чтобы не было неясности,
     // сохранено уже или нет: страница свободна для следующего заказа.
@@ -4425,8 +4456,16 @@ const DB = {
     }
   }
 
+  // Возвращает true/false — раньше ошибка (например, переполненный
+  // localStorage) молча проглатывалась: ценник выглядел сохранённым до
+  // конца сеанса (запись уже была в tagHistory), а после перезагрузки
+  // страницы бесследно пропадал, потому что реально в хранилище так и не
+  // попал (см. отчёт: «после сохранения нескольких ценников со временем
+  // некоторые исчезают» — saveTagDocument теперь откатывает запись и
+  // предупреждает, если это произошло).
   function saveTagHistory() {
-    try { localStorage.setItem(TAG_HISTORY_KEY, JSON.stringify(tagHistory)); } catch (e) {}
+    try { localStorage.setItem(TAG_HISTORY_KEY, JSON.stringify(tagHistory)); return true; }
+    catch (e) { return false; }
   }
 
   function tagGrandTotal(items) {
@@ -4554,8 +4593,15 @@ const DB = {
       grandTotal: tagGrandTotal(tagItems)
     };
     const idx = tagHistory.findIndex((e) => e.id === entry.id);
+    const prevEntry = idx >= 0 ? tagHistory[idx] : null;
     if (idx >= 0) tagHistory[idx] = entry; else tagHistory.unshift(entry);
-    saveTagHistory();
+    if (!saveTagHistory()) {
+      // Откатываем добавление — иначе ценник выглядел бы сохранённым до
+      // перезагрузки страницы, а потом бесследно пропадал бы (см. отчёт).
+      if (prevEntry) tagHistory[idx] = prevEntry; else tagHistory.shift();
+      alert("Не удалось сохранить ценник — не хватает места в памяти браузера (localStorage переполнен). Освободите место — удалите старые сохранённые ценники, спецификации или свои загруженные фото плёнок/моделей — и попробуйте снова.");
+      return;
+    }
     tagItems = [];
     tagDate = "";
     tagPromoUntil = "";
@@ -5914,10 +5960,43 @@ const DB = {
 
   // --- Вкладки (меню) --------------------------------------------------
 
+  // Индикатор занятой памяти браузера — см. отчёт: сохранённые ценники/
+  // спецификации бесследно пропадали, когда localStorage происхождения
+  // заполнялся (например, накопленными загруженными фото плёнок/моделей),
+  // а пользователь узнавал об этом только постфактум. Точный лимит браузер
+  // не сообщает и он отличается у разных браузеров/устройств — 5 МБ ниже
+  // взят как ориентир (упёрлись в эту границу при проверке, см. отчёт),
+  // поэтому в тексте пишем «примерно».
+  function getStorageUsageBytes() {
+    let total = 0;
+    try {
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        const v = localStorage.getItem(k) || "";
+        total += k.length + v.length;
+      }
+    } catch (e) {}
+    return total;
+  }
+  const STORAGE_ASSUMED_LIMIT = 5 * 1024 * 1024;
+  function updateStorageIndicator() {
+    if (!el.menuStorageFill || !el.menuStorageText) return;
+    const used = getStorageUsageBytes();
+    const percent = Math.min(100, Math.round((used / STORAGE_ASSUMED_LIMIT) * 100));
+    const usedMb = (used / (1024 * 1024)).toFixed(1);
+    const limitMb = (STORAGE_ASSUMED_LIMIT / (1024 * 1024)).toFixed(0);
+    el.menuStorageFill.style.width = percent + "%";
+    el.menuStorageFill.classList.toggle("warn", percent >= 70 && percent < 90);
+    el.menuStorageFill.classList.toggle("danger", percent >= 90);
+    el.menuStorageText.classList.toggle("danger", percent >= 90);
+    el.menuStorageText.textContent = `Память браузера: ${usedMb} МБ из ~${limitMb} МБ (${percent}%)`;
+  }
+
   function toggleMenu(force) {
     const open = force !== undefined ? force : el.menu.hidden;
     el.menu.hidden = !open;
     el.menuBtn.setAttribute("aria-expanded", String(open));
+    if (open) updateStorageIndicator();
   }
 
   function setView(view) {
