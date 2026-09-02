@@ -101,6 +101,18 @@ h1 { font-size: 20px; margin: 0 0 4px; }
 }
 .menu-item:hover { background: var(--bg); }
 .menu-item.active { color: var(--accent); }
+/* Индикатор занятой памяти браузера (localStorage) — виден при каждом
+   открытии меню, обновляется в toggleMenu() (см. updateStorageIndicator).
+   Нужен, чтобы вовремя заметить приближение к лимиту хранилища браузера —
+   когда он переполняется, новые ценники/спецификации перестают
+   сохраняться (см. отчёт). */
+.menu-storage { padding: 10px 14px 12px; border-top: 1px solid var(--border); }
+.menu-storage-bar { height: 6px; border-radius: 3px; background: var(--bg); overflow: hidden; margin-bottom: 6px; }
+.menu-storage-fill { height: 100%; border-radius: 3px; background: var(--accent); transition: width .2s; }
+.menu-storage-fill.warn { background: #d99a1f; }
+.menu-storage-fill.danger { background: var(--danger); }
+#menuStorageText { font-size: 12px; color: var(--muted); }
+#menuStorageText.danger { color: var(--danger); font-weight: 600; }
 
 .prices-hint { font-size: 13px; color: var(--muted); margin: 0 0 4px; }
 
@@ -899,6 +911,10 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
         <button type="button" class="menu-item" data-view="tag">Ценник</button>
         <button type="button" class="menu-item" data-view="tagList">Сохранённые ценники</button>
         <button type="button" class="menu-item" data-view="prices">Изменение цен</button>
+        <div class="menu-storage" id="menuStorage">
+          <div class="menu-storage-bar"><div class="menu-storage-fill" id="menuStorageFill"></div></div>
+          <span id="menuStorageText">Память браузера: …</span>
+        </div>
       </nav>
     </div>
 
@@ -1957,6 +1973,8 @@ const DB = {
     customTextureClear: document.getElementById("s_customTextureClear"),
     menuBtn: document.getElementById("menuBtn"),
     menu: document.getElementById("menu"),
+    menuStorageFill: document.getElementById("menuStorageFill"),
+    menuStorageText: document.getElementById("menuStorageText"),
     viewTitle: document.getElementById("viewTitle"),
     viewCalc: document.getElementById("viewCalc"),
     viewScene: document.getElementById("viewScene"),
@@ -5942,10 +5960,43 @@ const DB = {
 
   // --- Вкладки (меню) --------------------------------------------------
 
+  // Индикатор занятой памяти браузера — см. отчёт: сохранённые ценники/
+  // спецификации бесследно пропадали, когда localStorage происхождения
+  // заполнялся (например, накопленными загруженными фото плёнок/моделей),
+  // а пользователь узнавал об этом только постфактум. Точный лимит браузер
+  // не сообщает и он отличается у разных браузеров/устройств — 5 МБ ниже
+  // взят как ориентир (упёрлись в эту границу при проверке, см. отчёт),
+  // поэтому в тексте пишем «примерно».
+  function getStorageUsageBytes() {
+    let total = 0;
+    try {
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        const v = localStorage.getItem(k) || "";
+        total += k.length + v.length;
+      }
+    } catch (e) {}
+    return total;
+  }
+  const STORAGE_ASSUMED_LIMIT = 5 * 1024 * 1024;
+  function updateStorageIndicator() {
+    if (!el.menuStorageFill || !el.menuStorageText) return;
+    const used = getStorageUsageBytes();
+    const percent = Math.min(100, Math.round((used / STORAGE_ASSUMED_LIMIT) * 100));
+    const usedMb = (used / (1024 * 1024)).toFixed(1);
+    const limitMb = (STORAGE_ASSUMED_LIMIT / (1024 * 1024)).toFixed(0);
+    el.menuStorageFill.style.width = percent + "%";
+    el.menuStorageFill.classList.toggle("warn", percent >= 70 && percent < 90);
+    el.menuStorageFill.classList.toggle("danger", percent >= 90);
+    el.menuStorageText.classList.toggle("danger", percent >= 90);
+    el.menuStorageText.textContent = `Память браузера: ${usedMb} МБ из ~${limitMb} МБ (${percent}%)`;
+  }
+
   function toggleMenu(force) {
     const open = force !== undefined ? force : el.menu.hidden;
     el.menu.hidden = !open;
     el.menuBtn.setAttribute("aria-expanded", String(open));
+    if (open) updateStorageIndicator();
   }
 
   function setView(view) {
