@@ -3715,8 +3715,13 @@ const DB = {
     }
   }
 
+  // Возвращает true/false — та же логика, что и у saveTagHistory (см. её
+  // комментарий): ошибку записи (переполненный localStorage) нельзя молча
+  // проглатывать, иначе спецификация выглядела бы сохранённой до конца
+  // сеанса и пропадала бы бесследно после перезагрузки.
   function saveSpecHistory() {
-    try { localStorage.setItem(SPEC_HISTORY_KEY, JSON.stringify(specHistory)); } catch (e) {}
+    try { localStorage.setItem(SPEC_HISTORY_KEY, JSON.stringify(specHistory)); return true; }
+    catch (e) { return false; }
   }
 
   function nextSpecSeq() {
@@ -4096,8 +4101,16 @@ const DB = {
       grandTotal: orderFinalTotal({ items: orderItems, discount: orderDiscount })
     };
     const idx = specHistory.findIndex((e) => e.number === entry.number);
+    const prevEntry = idx >= 0 ? specHistory[idx] : null;
     if (idx >= 0) specHistory[idx] = entry; else specHistory.unshift(entry);
-    saveSpecHistory();
+    if (!saveSpecHistory()) {
+      // Откатываем — иначе спецификация выглядела бы сохранённой до
+      // перезагрузки страницы, а потом бесследно пропадала бы (см. отчёт
+      // про ту же проблему у ценников).
+      if (prevEntry) specHistory[idx] = prevEntry; else specHistory.shift();
+      alert("Не удалось сохранить спецификацию — не хватает места в памяти браузера (localStorage переполнен). Освободите место — удалите старые сохранённые спецификации, ценники или свои загруженные фото плёнок/моделей — и попробуйте снова.");
+      return;
+    }
     // Сохранённая спецификация целиком переезжает в историю — черновик и
     // страница «Спецификация» очищаются сразу, чтобы не было неясности,
     // сохранено уже или нет: страница свободна для следующего заказа.
@@ -4425,8 +4438,16 @@ const DB = {
     }
   }
 
+  // Возвращает true/false — раньше ошибка (например, переполненный
+  // localStorage) молча проглатывалась: ценник выглядел сохранённым до
+  // конца сеанса (запись уже была в tagHistory), а после перезагрузки
+  // страницы бесследно пропадал, потому что реально в хранилище так и не
+  // попал (см. отчёт: «после сохранения нескольких ценников со временем
+  // некоторые исчезают» — saveTagDocument теперь откатывает запись и
+  // предупреждает, если это произошло).
   function saveTagHistory() {
-    try { localStorage.setItem(TAG_HISTORY_KEY, JSON.stringify(tagHistory)); } catch (e) {}
+    try { localStorage.setItem(TAG_HISTORY_KEY, JSON.stringify(tagHistory)); return true; }
+    catch (e) { return false; }
   }
 
   function tagGrandTotal(items) {
@@ -4554,8 +4575,15 @@ const DB = {
       grandTotal: tagGrandTotal(tagItems)
     };
     const idx = tagHistory.findIndex((e) => e.id === entry.id);
+    const prevEntry = idx >= 0 ? tagHistory[idx] : null;
     if (idx >= 0) tagHistory[idx] = entry; else tagHistory.unshift(entry);
-    saveTagHistory();
+    if (!saveTagHistory()) {
+      // Откатываем добавление — иначе ценник выглядел бы сохранённым до
+      // перезагрузки страницы, а потом бесследно пропадал бы (см. отчёт).
+      if (prevEntry) tagHistory[idx] = prevEntry; else tagHistory.shift();
+      alert("Не удалось сохранить ценник — не хватает места в памяти браузера (localStorage переполнен). Освободите место — удалите старые сохранённые ценники, спецификации или свои загруженные фото плёнок/моделей — и попробуйте снова.");
+      return;
+    }
     tagItems = [];
     tagDate = "";
     tagPromoUntil = "";
