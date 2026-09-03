@@ -6030,6 +6030,70 @@ const DB = {
     toggleMenu(false);
   }
 
+  // --- Хранилище фото (IndexedDB) ---------------------------------------
+  // localStorage у каждого сайта ограничен жёстким лимитом браузера
+  // (обычно 5-10 МБ и его нельзя увеличить — см. отчёт: «Сохранённые
+  // ценники» бесследно пропадали, когда он заполнялся) — для десятков фото
+  // плёнок и моделей этого мало. IndexedDB — то же самое хранилище браузера
+  // (тот же сайт, тот же телефон/компьютер, ничего не грузится в облако),
+  // но лимит там на порядки больше. Сюда переезжают только СВОИ загруженные
+  // фото (заводские 27 образцов плёнки уже в коде, их переносить некуда и
+  // незачем) — в localStorage вместе с остальными ценами остаётся только
+  // лёгкая пометка «custom», сама картинка больше его не раздувает.
+  const PHOTO_DB_NAME = "doorcalc_photos_v1";
+  const PHOTO_STORE_COLOR = "colorPhotos";
+  const PHOTO_STORE_MODEL = "modelPhotos";
+  let photoDbPromise = null;
+  function openPhotoDb() {
+    if (!window.indexedDB) return Promise.reject(new Error("indexedDB unavailable"));
+    if (!photoDbPromise) {
+      photoDbPromise = new Promise((resolve, reject) => {
+        const req = indexedDB.open(PHOTO_DB_NAME, 1);
+        req.onupgradeneeded = () => {
+          const db = req.result;
+          if (!db.objectStoreNames.contains(PHOTO_STORE_COLOR)) db.createObjectStore(PHOTO_STORE_COLOR);
+          if (!db.objectStoreNames.contains(PHOTO_STORE_MODEL)) db.createObjectStore(PHOTO_STORE_MODEL);
+        };
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+      });
+    }
+    return photoDbPromise;
+  }
+  function idbPut(storeName, key, value) {
+    return openPhotoDb().then((db) => new Promise((resolve, reject) => {
+      const tx = db.transaction(storeName, "readwrite");
+      tx.objectStore(storeName).put(value, key);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    }));
+  }
+  function idbDelete(storeName, key) {
+    return openPhotoDb().then((db) => new Promise((resolve, reject) => {
+      const tx = db.transaction(storeName, "readwrite");
+      tx.objectStore(storeName).delete(key);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    }));
+  }
+  function idbGetAll(storeName) {
+    return openPhotoDb().then((db) => new Promise((resolve, reject) => {
+      const tx = db.transaction(storeName, "readonly");
+      const store = tx.objectStore(storeName);
+      const keysReq = store.getAllKeys();
+      const valsReq = store.getAll();
+      tx.oncomplete = () => resolve({ keys: keysReq.result || [], values: valsReq.result || [] });
+      tx.onerror = () => reject(tx.error);
+    }));
+  }
+  // Имена цветов/id моделей, чьё фото уже подтверждённо лежит в IndexedDB.
+  // Пока имя/id не в этом наборе, collectPrices() на всякий случай
+  // продолжает писать фото целиком и в localStorage — если IndexedDB
+  // недоступна (старый браузер, приватный режим) или запись не удалась,
+  // ничего не теряется, просто не выигрываем место для этого файла.
+  const colorPhotosConfirmedInIdb = new Set();
+  const modelPhotosConfirmedInIdb = new Set();
+
   // --- Сохранение изменённых цен --------------------------------------
 
   const PRICE_STORE_KEY = "doorcalc_prices_v2";
@@ -6049,13 +6113,25 @@ const DB = {
       // Свои загруженные фото плёнок (см. onColorFileUpload) хранятся тут
       // же — раньше colorSwatches вообще не сохранялся между сеансами
       // (заводские 27 фото прошиты в коде, дозаписывать было некуда).
-      colorSwatches: DB.colorSwatches,
+      // Само изображение — только у записей, ещё НЕ подтверждённых в
+      // IndexedDB (см. colorPhotosConfirmedInIdb выше и отчёт про
+      // переполнение localStorage) — иначе просто лёгкая пометка «custom»,
+      // картинка в IndexedDB.
+      colorSwatches: Object.fromEntries(Object.entries(DB.colorSwatches).map(([name, sw]) => {
+        if (sw && sw.custom && colorPhotosConfirmedInIdb.has(name)) return [name, { hex: sw.hex, custom: true }];
+        return [name, sw];
+      })),
       colorAdjust: DB.colorAdjust || {},
       // Свои загруженные фото моделей дверного полотна (см.
       // onModelFileUpload) — тот же принцип, что и у colorSwatches выше,
       // только на модель, а не на цвет (без своей тон-коррекции — цвет
-      // настраивается один раз на самой плёнке, см. отчёт).
-      modelSwatches: DB.modelSwatches || {},
+      // настраивается один раз на самой плёнке, см. отчёт). Все записи тут
+      // «свои» (заводских фото у моделей нет), поэтому та же логика
+      // «лёгкая пометка, если фото уже подтверждено в IndexedDB».
+      modelSwatches: Object.fromEntries(Object.entries(DB.modelSwatches || {}).map(([id, sw]) => {
+        if (sw && sw.custom && modelPhotosConfirmedInIdb.has(id)) return [id, { custom: true }];
+        return [id, sw];
+      })),
       categorySurcharge: DB.categorySurcharge,
       categoryNames: DB.categoryNames,
       materialNames: DB.materialNames,
@@ -6112,8 +6188,17 @@ const DB = {
     if (s.colors) DB.colors = s.colors;
     // Снимок мог быть сохранён до появления загрузки своих фото (см.
     // onColorFileUpload) — тогда s.colorSwatches нет, оставляем заводские
-    // 27 фото как есть (не затираем пустым объектом).
-    if (s.colorSwatches && typeof s.colorSwatches === "object") DB.colorSwatches = s.colorSwatches;
+    // 27 фото как есть (не затираем пустым объектом). Если есть — не
+    // заменяем DB.colorSwatches целиком, а докладываем поверх заводского
+    // набора только сохранённые записи (в основном свои custom-фото; сама
+    // картинка может быть тут же — старый формат до переезда на IndexedDB —
+    // или подъедет чуть позже асинхронно, см. loadPhotosFromIndexedDb) —
+    // иначе заводские фото цветов, которые никто не трогал, пропали бы.
+    if (s.colorSwatches && typeof s.colorSwatches === "object") {
+      Object.keys(s.colorSwatches).forEach((name) => {
+        if (s.colorSwatches[name]) DB.colorSwatches[name] = s.colorSwatches[name];
+      });
+    }
     DB.colorAdjust = (s.colorAdjust && typeof s.colorAdjust === "object") ? s.colorAdjust : (DB.colorAdjust || {});
     // Снимок мог быть сохранён до появления фото моделей — тогда
     // s.modelSwatches нет, остаётся пустым (у моделей нет заводских фото,
@@ -6187,6 +6272,61 @@ const DB = {
       const raw = localStorage.getItem(PRICE_STORE_KEY);
       if (raw) applyPrices(JSON.parse(raw));
     } catch (e) {}
+  }
+
+  // Асинхронно подтягивает фото из IndexedDB (см. выше) и одновременно
+  // переносит туда фото старого формата — те, что уже лежали прямо в
+  // localStorage до этого обновления (миграция, ничего не теряется у тех,
+  // кто уже успел что-то загрузить). Не блокирует первую отрисовку —
+  // вызывается уже после init(), фото просто «появляются» чуть позже,
+  // обычно за доли секунды. См. отчёт про переполнение localStorage и
+  // индикатор памяти в меню — после переноса он должен заметно упасть.
+  function loadPhotosFromIndexedDbAndMigrate() {
+    const colorTask = idbGetAll(PHOTO_STORE_COLOR).then(({ keys, values }) => {
+      const known = new Set(keys);
+      keys.forEach((name, i) => {
+        DB.colorSwatches[name] = { ...(DB.colorSwatches[name] || {}), ...values[i], custom: true };
+        colorPhotosConfirmedInIdb.add(name);
+      });
+      const migrations = [];
+      Object.keys(DB.colorSwatches).forEach((name) => {
+        const sw = DB.colorSwatches[name];
+        if (sw && sw.custom && sw.image && !known.has(name)) {
+          migrations.push(
+            idbPut(PHOTO_STORE_COLOR, name, { hex: sw.hex, image: sw.image, tileImage: sw.tileImage, door: sw.door })
+              .then(() => { colorPhotosConfirmedInIdb.add(name); })
+              .catch(() => {})
+          );
+        }
+      });
+      return Promise.all(migrations);
+    }).catch(() => {});
+
+    const modelTask = idbGetAll(PHOTO_STORE_MODEL).then(({ keys, values }) => {
+      const known = new Set(keys);
+      keys.forEach((id, i) => {
+        DB.modelSwatches[id] = { ...(DB.modelSwatches[id] || {}), ...values[i], custom: true };
+        modelPhotosConfirmedInIdb.add(id);
+      });
+      const migrations = [];
+      Object.keys(DB.modelSwatches || {}).forEach((id) => {
+        const sw = DB.modelSwatches[id];
+        if (sw && sw.custom && sw.image && !known.has(id)) {
+          migrations.push(
+            idbPut(PHOTO_STORE_MODEL, id, { image: sw.image })
+              .then(() => { modelPhotosConfirmedInIdb.add(id); })
+              .catch(() => {})
+          );
+        }
+      });
+      return Promise.all(migrations);
+    }).catch(() => {});
+
+    Promise.all([colorTask, modelTask]).then(() => {
+      savePrices(); // сузить localStorage — часть фото теперь подтверждена в IndexedDB
+      render();
+      if (!el.viewPrices.hidden) renderPriceEditor();
+    });
   }
 
   // --- Редактор цен ----------------------------------------------------
@@ -6377,21 +6517,32 @@ const DB = {
     if (label) label.firstChild.textContent = "⏳ Обрабатываю…";
     cropToSwatchRatio(file).then(({ dataUrl, hex }) => {
       DB.colorSwatches[name] = { hex, image: dataUrl, tileImage: dataUrl, custom: true };
-      // Свой try/catch, а не общий savePrices() — тут заметно вероятнее
-      // упереться в лимит localStorage (фото даже сжатыми весят намного
-      // больше текста), и в отличие от остальных полей молчать об этом
-      // нельзя — иначе загруженное фото тихо потеряется при перезаходе.
-      let saved = true;
-      try { localStorage.setItem(PRICE_STORE_KEY, JSON.stringify(collectPrices())); }
-      catch (err) { saved = false; }
-      // renderPriceEditor() — не общий render(): тот отвечает за калькулятор
-      // и НЕ перерисовывает список редактора цен (см. отчёт — фото
-      // сохранялось в DB/localStorage, но кнопка так и висела на
-      // «Обрабатываю…», превью и «Убрать своё фото» не появлялись).
-      renderPriceEditor();
-      if (!saved) {
-        alert("Фото загружено, но не поместилось в памяти браузера (localStorage переполнен). Освободите место — например, удалите старые сохранённые спецификации или ценники — и загрузите фото ещё раз.");
-      }
+      // Ещё не подтверждено в IndexedDB — до подтверждения collectPrices()
+      // на всякий случай пишет фото полностью и в localStorage (см. выше).
+      colorPhotosConfirmedInIdb.delete(name);
+      // Само фото — в IndexedDB (места на порядки больше localStorage, см.
+      // отчёт про переполнение), остальные цены — как раньше. Если
+      // IndexedDB недоступна или запись не удалась — не страшно, просто не
+      // подтвердится, и localStorage подстрахует полным вариантом.
+      idbPut(PHOTO_STORE_COLOR, name, { hex, image: dataUrl, tileImage: dataUrl })
+        .then(() => { colorPhotosConfirmedInIdb.add(name); })
+        .catch(() => {})
+        .then(() => {
+          // Свой try/catch, а не общий savePrices() — в отличие от
+          // остальных полей молчать об ошибке нельзя: иначе загруженное
+          // фото тихо потеряется при перезаходе (см. отчёт).
+          let saved = true;
+          try { localStorage.setItem(PRICE_STORE_KEY, JSON.stringify(collectPrices())); }
+          catch (err) { saved = false; }
+          // renderPriceEditor() — не общий render(): тот отвечает за калькулятор
+          // и НЕ перерисовывает список редактора цен (см. отчёт — фото
+          // сохранялось в DB/localStorage, но кнопка так и висела на
+          // «Обрабатываю…», превью и «Убрать своё фото» не появлялись).
+          renderPriceEditor();
+          if (!saved) {
+            alert("Фото загружено, но не поместилось в памяти браузера (localStorage переполнен). Освободите место — например, удалите старые сохранённые спецификации или ценники — и загрузите фото ещё раз.");
+          }
+        });
     }).catch(() => {
       input.value = "";
       if (label) label.firstChild.textContent = "📷 Загрузить файл";
@@ -6406,8 +6557,11 @@ const DB = {
   function onColorRemovePhoto(name) {
     if (FACTORY_COLOR_SWATCHES[name]) DB.colorSwatches[name] = { ...FACTORY_COLOR_SWATCHES[name] };
     else delete DB.colorSwatches[name];
-    savePrices();
-    renderPriceEditor();
+    colorPhotosConfirmedInIdb.delete(name);
+    idbDelete(PHOTO_STORE_COLOR, name).catch(() => {}).then(() => {
+      savePrices();
+      renderPriceEditor();
+    });
   }
 
   // --- Фото модели двери (см. отчёт: первый шаг к 2D-визуализации
@@ -6471,13 +6625,19 @@ const DB = {
     if (label) label.firstChild.textContent = "⏳ Обрабатываю…";
     cropToDoorRatio(file).then((dataUrl) => {
       (DB.modelSwatches || (DB.modelSwatches = {}))[modelId] = { image: dataUrl, custom: true };
-      let saved = true;
-      try { localStorage.setItem(PRICE_STORE_KEY, JSON.stringify(collectPrices())); }
-      catch (err) { saved = false; }
-      renderPriceEditor();
-      if (!saved) {
-        alert("Фото загружено, но не поместилось в памяти браузера (localStorage переполнен). Освободите место — например, удалите старые сохранённые спецификации или ценники — и загрузите фото ещё раз.");
-      }
+      modelPhotosConfirmedInIdb.delete(modelId);
+      idbPut(PHOTO_STORE_MODEL, modelId, { image: dataUrl })
+        .then(() => { modelPhotosConfirmedInIdb.add(modelId); })
+        .catch(() => {})
+        .then(() => {
+          let saved = true;
+          try { localStorage.setItem(PRICE_STORE_KEY, JSON.stringify(collectPrices())); }
+          catch (err) { saved = false; }
+          renderPriceEditor();
+          if (!saved) {
+            alert("Фото загружено, но не поместилось в памяти браузера (localStorage переполнен). Освободите место — например, удалите старые сохранённые спецификации или ценники — и загрузите фото ещё раз.");
+          }
+        });
     }).catch(() => {
       input.value = "";
       if (label) label.firstChild.textContent = "📷 Загрузить файл";
@@ -6489,8 +6649,11 @@ const DB = {
   // встроенных образцов плёнки), поэтому просто убирает запись целиком.
   function onModelRemovePhoto(modelId) {
     if (DB.modelSwatches) delete DB.modelSwatches[modelId];
-    savePrices();
-    renderPriceEditor();
+    modelPhotosConfirmedInIdb.delete(modelId);
+    idbDelete(PHOTO_STORE_MODEL, modelId).catch(() => {}).then(() => {
+      savePrices();
+      renderPriceEditor();
+    });
   }
 
   function colorRow(mat, cat, i, name) {
@@ -7567,6 +7730,9 @@ const DB = {
     }, true);
 
     render();
+
+    // Асинхронно, уже после первой отрисовки — см. loadPhotosFromIndexedDbAndMigrate.
+    loadPhotosFromIndexedDbAndMigrate();
   }
 
   document.addEventListener("DOMContentLoaded", init);
