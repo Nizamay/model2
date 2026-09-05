@@ -819,21 +819,16 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 .tag-cat-num { flex: 0 1 auto; min-width: 0; }
 .tag-cat-price { flex: 0 0 auto; font-weight: 600; color: var(--text); white-space: nowrap; }
 .tag-model-price { font-weight: 900; font-size: clamp(26px, 10cqw, 40px); text-align: center; padding: 14px 14px 4px; }
-/* Акция: цена полотна зачёркнута жирной чертой, а цена со скидкой — в
-   правом столбце характеристик (см. tagLeafCardHtml), крупнее основной
-   цены полотна — по просьбе заказчика (сама скидка важнее «недействующей»
-   цены). Зачёркнутая цена выровнена по левому краю с «Цена по акции» —
-   а не по центру, как обычная цена без Акции (см. .tag-model-price выше):
-   отступ слева считается скриптом (см. alignTagPromoPrices), т.к. «Цена по
-   акции» стоит то в единственном столбце характеристик (Матрица/
-   пользовательские группы), то во втором из двух (Щитовые/Сборные —
-   там его положение зависит от ширины первого столбца, фиксированным
-   числом не посчитать). 14px ниже — запасной вариант на случай, если
-   скрипт почему-то не отработал (не должно случаться в приложении).
-*/
+/* Акция: цена со скидкой крупнее основной цены полотна (сама скидка
+   важнее «недействующей» цены), а старая цена — зачёркнута жирной чертой.
+   Обе — ПО ЦЕНТРУ карточки, ровно как обычная цена полотна без Акции
+   (.tag-model-price выше). Раньше они прижимались влево и выравнивались
+   скриптом по «Цена по акции» в правом столбце — из-за этого ценник с
+   Акцией смотрелся иначе, чем соседние (см. отчёт: «цены модели дверей
+   не оцентрованы, у третьего ценника смещена влево»). */
+.tag-model-promo { text-align: center; padding: 10px 14px 0; }
 .tag-model-price-crossed {
   text-decoration: line-through; text-decoration-thickness: 4px; text-decoration-color: var(--danger); opacity: .7;
-  text-align: left; padding-left: 14px;
 }
 .tag-model-promo-label { font-weight: 700; font-size: clamp(10px, 3cqw, 12px); }
 .tag-model-promo-value { font-weight: 900; font-size: clamp(30px, 12cqw, 46px); color: var(--danger); }
@@ -850,14 +845,6 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 /* Сама сумма — крупнее подписи, тем же размером, что и цена полотна
    (.tag-model-price), по просьбе заказчика. */
 .tag-komplekt-band-value { font-size: clamp(24px, 9cqw, 38px); }
-/* При активной Акции на полотне — подпись и сумма друг под другом (не в
-   одну строку), сумма выровнена по левому краю с «Цена по акции» и
-   зачёркнутой ценой (см. .tag-model-price-crossed выше и
-   alignTagPromoPrices) — те же три цены одной вертикальной линией, что
-   просил заказчик. Без Акции — прежняя раскладка в одну строку
-   (подпись слева, сумма справа), её никто не менял. */
-.tag-komplekt-band-with-promo { flex-direction: column; align-items: flex-start; gap: 2px; }
-.tag-komplekt-band-with-promo .tag-komplekt-band-value { padding-left: 14px; }
 /* Сетка (grid), а не flex — с flex-wrap колонка «цена за 1 шт.» иногда
    переносилась на отдельную строку сама по себе, отрываясь от «цена
    итого» (не помещались обе рядом с длинным названием на узкой карточке).
@@ -892,7 +879,14 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 .tag-komplekt-trim-body { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .tag-komplekt-trim-name { font-weight: 700; font-size: clamp(12px, 3.6cqw, 14px); }
 .tag-komplekt-trim-color { font-size: clamp(11px, 3.2cqw, 13px); font-weight: 600; color: #000; }
-.tag-komplekt-trim-math { font-weight: 800; font-size: clamp(12px, 3.6cqw, 14px); }
+/* Математика расчёта погонажа — на всю ширину строки: «1шт × 810 ₽»
+   слева, итог справа, ровно по тому же правому краю, что и «ИТОГО»
+   у дверного полотна выше (см. отчёт: строка выглядела прижатой
+   влево, просили «растянуть на всю ширину, соблюдай симметрию»). */
+.tag-komplekt-trim-math {
+  font-weight: 800; font-size: clamp(12px, 3.6cqw, 14px);
+  display: flex; justify-content: space-between; gap: 4px 10px;
+}
 .tag-komplekt-row-trim .item-actions { flex: 1 1 100%; }
 
 .tag-doc-footer { padding: 16px 14px 20px; display: flex; flex-direction: column; gap: 14px; margin-top: auto; }
@@ -4846,13 +4840,18 @@ const DB = {
       it.patinaName ? tagModelFieldHtml("Патина:", it.patinaName) : "",
     ].filter(Boolean).join("");
     const hasPromo = it.promoPercent > 0 && it.totalNoPromo != null;
-    const promoField = hasPromo
-      ? `<div class="tag-model-field tag-model-field-promo">${tagCheckIcon()}<div class="tag-model-field-body"><div class="tag-model-promo-label">Цена по акции:</div><div class="tag-model-promo-value">${esc(tagMoney(it.total - tagOptionsTotal(it)))}</div></div></div>`
+    // «Цена по акции» — отдельным блоком по центру карточки, под обеими
+    // колонками, а не полем внутри правой колонки: раньше цена с Акцией
+    // оказывалась прижата влево, тогда как у ценника без Акции цена стоит
+    // по центру — ценники смотрелись по-разному (см. отчёт: «цены модели
+    // дверей не оцентрованы»). Теперь и цена по акции, и зачёркнутая
+    // старая цена центрируются так же, как обычная цена полотна.
+    const promoBlock = hasPromo
+      ? `<div class="tag-model-promo"><div class="tag-model-promo-label">Цена по акции:</div><div class="tag-model-promo-value">${esc(tagMoney(it.total - tagOptionsTotal(it)))}</div></div>`
       : "";
     const rightFields = [
       heightText ? tagModelFieldHtml("высота (мм):", heightText) : "",
       widthText ? tagModelFieldHtml("ширина (мм):", widthText) : "",
-      promoField,
     ].filter(Boolean).join("");
     const priceValue = hasPromo ? it.totalNoPromo - tagOptionsTotal(it) : it.total - tagOptionsTotal(it);
     const categoryHtml = tagCategoryPriceHtml(it);
@@ -4864,6 +4863,7 @@ const DB = {
         </div>
         ${categoryHtml ? `<div class="tag-model-categories">${categoryHtml}</div>` : ""}
       </div>
+      ${promoBlock}
       <div class="tag-model-price${hasPromo ? " tag-model-price-crossed" : ""}">${esc(tagMoney(priceValue))}</div>`;
   }
 
@@ -4888,7 +4888,7 @@ const DB = {
         <div class="tag-komplekt-trim-body">
           <div class="tag-komplekt-trim-name">${esc(it.label)}</div>
           ${it.color ? `<div class="tag-komplekt-trim-color">${esc(it.color)}</div>` : ""}
-          <div class="tag-komplekt-trim-math">${esc(qtyStr)}шт × ${esc(tagMoney(it.perUnit))} = ${esc(tagMoney(it.total))}</div>
+          <div class="tag-komplekt-trim-math"><span>${esc(qtyStr)}шт × ${esc(tagMoney(it.perUnit))}</span><span class="tag-komplekt-trim-sum">${esc(tagMoney(it.total))}</span></div>
         </div>
         ${actions}
       </div>`;
@@ -5001,40 +5001,6 @@ const DB = {
     textEl.style.fontSize = Math.floor(fitSize) + "px";
   }
 
-  // Выравнивает по левому краю три цены на ценнике при активной Акции —
-  // «Цена по акции», зачёркнутую цену полотна и «Сумма комплекта» (см.
-  // отчёт со скриншотом). Отступ не фиксированный: «Цена по акции» стоит
-  // то в единственном столбце характеристик (Матрица/пользовательские
-  // группы — тогда отступ маленький, у самого края), то во втором из двух
-  // столбцов (Щитовые/Сборные, где есть материал/цвет — тогда отступ
-  // зависит от ширины первого столбца и заранее не известен). Поэтому
-  // меряем, где «Цена по акции» оказалась на самом деле, и подгоняем под
-  // неё зачёркнутую цену и сумму комплекта — вместо того чтобы гадать
-  // числом в CSS.
-  // Сдвигает el так, чтобы его текст (левый край с учётом уже стоящего
-  // padding-left) оказался ровно на targetLeft (координата viewport, как из
-  // getBoundingClientRect). Считаем через «текущее положение → нужная
-  // поправка», а не абсолютной арифметикой через границы/паддинги
-  // родителей (.tag-doc/.tag-komplekt-band и т.п.) — так не важно, на какой
-  // глубине вложенности элемент и сколько своих border/padding у предков
-  // (двойная рамка карточки в 5px один раз уже привела к промаху на эти же
-  // 5px при прямом расчёте).
-  function shiftTagPriceTo(el, targetLeft) {
-    if (!el) return;
-    const currentPadding = parseFloat(getComputedStyle(el).paddingLeft) || 0;
-    const currentTextLeft = el.getBoundingClientRect().left + currentPadding;
-    const newPadding = Math.max(0, currentPadding + (targetLeft - currentTextLeft));
-    el.style.paddingLeft = Math.round(newPadding) + "px";
-  }
-
-  function alignTagPromoPrices(docEl) {
-    if (!docEl) return;
-    const promoValue = docEl.querySelector(".tag-model-promo-value");
-    if (!promoValue) return;
-    const targetLeft = promoValue.getBoundingClientRect().left;
-    shiftTagPriceTo(docEl.querySelector(".tag-model-price-crossed"), targetLeft);
-    shiftTagPriceTo(docEl.querySelector(".tag-komplekt-band-with-promo .tag-komplekt-band-value"), targetLeft);
-  }
 
   // Подгоняет содержимое карточки ровно под её фиксированную высоту
   // (.tag-doc-fixed) — и УЖИМАЕТ, если позиций много, и РАСТЯГИВАЕТ, если
@@ -5051,8 +5017,6 @@ const DB = {
   // от ширины зависит перенос строк, а значит и высота, поэтому одного
   // прохода мало — обычно сходится за 2-3 шага.
   //
-  // Вызывать ПОСЛЕ fitTagModelTitle/alignTagPromoPrices — те меряют
-  // координаты, и на уже отмасштабированном поддереве считали бы неверно.
   const TAG_FIT_MIN_SCALE = 0.5;
   // 1.8, а не «сколько угодно»: у самого простого ценника (одно полотно)
   // содержимому нужно примерно 1.64, чтобы заполнить карточку целиком —
@@ -5060,6 +5024,34 @@ const DB = {
   // (см. отчёт с фото, пустота отчёркнута синим), но и не давал
   // раздувать текст до нелепого, если ценник вдруг совсем пустой.
   const TAG_FIT_MAX_SCALE = 1.8;
+
+  // Название модели — ОДНОГО размера на всех ценниках (см. отчёт: «размеры
+  // шрифтов разные, нужно как в первом ценнике, но чуть больше»). Само по
+  // себе это не получается: содержимое карточки масштабируется под её
+  // высоту, и у ценника из одной позиции масштаб 1.65, а у комплекта 1.35 —
+  // один и тот же кегль выглядел бы по-разному. Поэтому кегль задаётся
+  // «наоборот»: TAG_TITLE_PRINT_PX / k, чтобы ПОСЛЕ масштабирования
+  // название везде рисовалось одинаково — ровно TAG_TITLE_PRINT_PX на
+  // карточке шириной TAG_DOC_PRINT_WIDTH.
+  //
+  // Единственное исключение — очень длинные названия (обычно из «Матрицы»,
+  // где в названии перечислены цвет/стекло/кромка): если такое название не
+  // укладывается в 3 строки, кегль для него уменьшается. Иначе заголовок
+  // занял бы половину ценника.
+  const TAG_TITLE_PRINT_PX = 35;
+  const TAG_TITLE_MAX_LINES = 3;
+  function applyTagTitleSize(groupEl, scale) {
+    const titleEl = groupEl.querySelector(".tag-model-title");
+    if (!titleEl || !titleEl.clientWidth) return;
+    let size = TAG_TITLE_PRINT_PX / scale;
+    const lineHeight = 1.15;
+    for (let guard = 0; guard < 40 && size > 8; guard++) {
+      titleEl.style.fontSize = size + "px";
+      if (Math.round(titleEl.scrollHeight / (size * lineHeight)) <= TAG_TITLE_MAX_LINES) break;
+      size -= size * 0.06;
+    }
+  }
+
   function fitTagDocHeight(groupEl) {
     if (!groupEl) return;
     const doc = groupEl.querySelector(".tag-doc");
@@ -5078,6 +5070,9 @@ const DB = {
       inner.style.width = (100 / k) + "%";
       inner.style.minHeight = "0";
       inner.style.transform = "none";
+      // Кегль названия зависит от масштаба (см. applyTagTitleSize), а высота
+      // содержимого — от кегля названия, поэтому пересчитываем внутри цикла.
+      applyTagTitleSize(groupEl, k);
       const natural = inner.scrollHeight;
       if (!natural) break;
       let next = available / natural;
@@ -5086,83 +5081,12 @@ const DB = {
       k = next;
       if (settled) break;
     }
+    applyTagTitleSize(groupEl, k);
     inner.style.width = (100 / k) + "%";
     inner.style.minHeight = (available / k) + "px";
     inner.style.transform = "scale(" + k + ")";
   }
 
-  // Заголовок карточки модели (.tag-model-title) — фиксированный размер
-  // шрифта ОДИН НА ВСЕ ценники независимо от типа двери (Матрица/Сборные/
-  // Щитовые/свои типы), а не под конкретное название ТЕКУЩЕЙ позиции —
-  // иначе ценники с длинным и коротким названием выглядят по-разному
-  // (карточка как будто «гуляет» от длины текста, см. отчёт). Раньше
-  // пробовали разбить по группам (своя группа каждому типу) — стало хуже:
-  // ценники разных типов получались заметно разной высоты, а при печати
-  ///сборке нескольких картинок на одном листе внешний инструмент,
-  // подгоняя разные по высоте картинки под одну строку, ужимал их и по
-  // ширине — ценники в ряду выглядели разного размера (см. отчёт с фото
-  // двух распечатанных ценников разной ширины). Заказчику нужно, чтобы
-  // все ценники были одинаковыми (в магазине они стоят в ряд), поэтому
-  // группы убрали — один размер на всё. Считается от самого длинного
-  // названия среди ВСЕХ моделей (DB.models), а не от текущего — поэтому
-  // одинаков всегда, даже если у конкретной позиции название короче.
-  //
-  // «Самое длинное название» — не просто m.name из каталога, а имя С
-  // добавленным суффиксом стекла, как оно реально появляется на ценнике
-  // (см. leafDisplayName — «Модерн 13» с выбранным стеклом «Черное»
-  // превращается в «Модерн 13 ПО (Черное)», это заметно длиннее самого
-  // «Модерн 13»). Раньше суффикс стекла не учитывался при подборе
-  // размера — из-за этого шрифт получался слишком крупным, и такое имя
-  // всё равно переносилось на 2-3 строки при печати, раздувая карточку
-  // (см. отчёт — «Модерн 13 ПО (Черное)» перенеслось на 3 строки).
-  // Берём для каждой модели её самое длинное собственное стекло — так
-  // считается настоящий худший случай, а не только базовое имя.
-  function tagTitleLongestName() {
-    let longest = "";
-    DB.models.forEach((m) => {
-      const glasses = Array.isArray(m.glasses) ? m.glasses : [];
-      const longestGlass = glasses.reduce((a, g) => (g.name.length > a.length ? g.name : a), "");
-      const worstCase = longestGlass ? leafDisplayName(m.name, longestGlass) : m.name;
-      if (worstCase.length > longest.length) longest = worstCase;
-    });
-    return longest;
-  }
-  // Подбирает размер шрифта, при котором самое длинное название группы
-  // умещается в доступную ширину карточки максимум в maxLines строк — тем
-  // же приёмом измерения через скрытый зонд, что и fitPromoTabText выше
-  // (пробный размер → масштабируем под реальную ширину).
-  function fitTagModelTitle(docEl, leaf) {
-    if (!docEl || !leaf) return;
-    const titleEl = docEl.querySelector(".tag-model-title");
-    if (!titleEl) return;
-    const availableWidth = titleEl.clientWidth;
-    if (!availableWidth) return;
-    const longestName = tagTitleLongestName();
-    if (!longestName) return;
-
-    const probe = document.createElement("div");
-    probe.style.position = "absolute";
-    probe.style.visibility = "hidden";
-    probe.style.left = "-9999px";
-    probe.style.top = "0";
-    probe.style.width = availableWidth + "px";
-    const cs = getComputedStyle(titleEl);
-    probe.style.fontWeight = cs.fontWeight;
-    probe.style.fontFamily = cs.fontFamily;
-    probe.style.lineHeight = "1.15";
-    probe.textContent = longestName;
-    document.body.appendChild(probe);
-
-    const maxSize = 32, minSize = 15, maxLines = 2;
-    let fitSize = minSize;
-    for (let size = maxSize; size >= minSize; size--) {
-      probe.style.fontSize = size + "px";
-      const lines = Math.round(probe.scrollHeight / (size * 1.15));
-      if (lines <= maxLines) { fitSize = size; break; }
-    }
-    document.body.removeChild(probe);
-    titleEl.style.fontSize = fitSize + "px";
-  }
 
   // Тело печатной формы/картинки — общее и для живого просмотра/
   // редактирования (view.readOnly === false, «Дата» — реальный input), и
@@ -5193,7 +5117,7 @@ const DB = {
     const hasPromo = !!(leaf && leaf.promoPercent > 0 && leaf.totalNoPromo != null);
     const komplektHtml = !view.items.length
       ? `<div class="order-empty">Пока пусто — откройте «Калькулятор цены» и нажмите «Сохранить в ценник».</div>`
-      : `<div class="tag-komplekt-band${hasPromo ? " tag-komplekt-band-with-promo" : ""}"><span>Сумма комплекта:</span><span class="tag-komplekt-band-value">${esc(tagMoney(tagGrandTotal(view.items)))}</span></div>
+      : `<div class="tag-komplekt-band"><span>Сумма комплекта:</span><span class="tag-komplekt-band-value">${esc(tagMoney(tagGrandTotal(view.items)))}</span></div>
          <div class="tag-komplekt-colheads"><span>за 1 шт.</span><span>ИТОГО:</span></div>
          ${view.items.map((it) => tagKomplektRowHtml(it, view.readOnly) + (it.options || []).map(tagOptionRowHtml).join("")).join("")}`;
 
@@ -5232,8 +5156,6 @@ const DB = {
     const view = currentTagView();
     el.tagDocHolder.innerHTML = tagDocHtml(view);
     fitPromoTabText(el.tagDocHolder.querySelector(".tag-promo-tab"));
-    alignTagPromoPrices(el.tagDocHolder.querySelector(".tag-doc-group"));
-    fitTagModelTitle(el.tagDocHolder.querySelector(".tag-doc-group"), tagPrimaryLeaf(view.items));
     el.tagDraftActions.hidden = view.readOnly;
     el.tagHistoryViewActions.hidden = !view.readOnly;
     el.tagEditingBanner.hidden = view.readOnly || view.meta.id == null;
@@ -5354,30 +5276,11 @@ const DB = {
     // страницы (тот же view) и запекаем его в inline style (см. tagPromoTabHtml).
     const liveTabText = el.tagDocHolder.querySelector(".tag-promo-tab-text");
     const fontSizePx = liveTabText ? parseFloat(getComputedStyle(liveTabText).fontSize) : null;
-    // Выравнивание зачёркнутой цены/суммы комплекта под «Цена по акции» (см.
-    // alignTagPromoPrices) НЕЛЬЗЯ запечь числом с живой страницы, как размер
-    // шрифта приставки чуть выше: «Цена по акции» стоит то в единственном
-    // столбце характеристик (тогда отступ не зависит от ширины), то во
-    // втором из двух (Щитовые/Сборные — тогда отступ зависит от ширины
-    // первого столбца), а скачанный файл открывается в своей ширине
-    // (max-width: 560px), которая почти наверняка отличается от ширины
-    // живой страницы в момент скачивания — запечённое число было бы верным
-    // только случайно. Поэтому здесь не запекаем px, а добавляем в файл
-    // маленький самостоятельный скрипт (см. ниже), который меряет и
-    // выравнивает уже после открытия файла, в его собственной раскладке.
     const hasPromo = !!(leaf && leaf.promoPercent > 0 && leaf.totalNoPromo != null);
-    // Фиксированный размер шрифта заголовка модели по группе (см.
-    // fitTagModelTitle в приложении) — та же проблема с шириной, что и у
-    // alignTagPromoPrices ниже: запекать числом нельзя (ширина карточки
-    // в файле отличается от ширины страницы на момент скачивания), поэтому
-    // передаём в файл только САМОЕ ДЛИННОЕ НАЗВАНИЕ группы (строка не
-    // зависит от ширины) и меряем/подгоняем уже в собственной раскладке
-    // файла тем же самостоятельным скриптом.
-    const longestTitleName = leaf ? tagTitleLongestName() : "";
 
     const komplektHtml = !view.items.length
       ? "<p>Пусто.</p>"
-      : `<div class="tag-komplekt-band${hasPromo ? " tag-komplekt-band-with-promo" : ""}"><span>Сумма комплекта:</span><span class="tag-komplekt-band-value">${esc(tagMoney(tagGrandTotal(view.items)))}</span></div>
+      : `<div class="tag-komplekt-band"><span>Сумма комплекта:</span><span class="tag-komplekt-band-value">${esc(tagMoney(tagGrandTotal(view.items)))}</span></div>
          <div class="tag-komplekt-colheads"><span>за 1 шт.</span><span>ИТОГО:</span></div>
          ${view.items.map((it) => tagKomplektRowHtml(it, true) + (it.options || []).map(tagOptionRowHtml).join("")).join("")}`;
 
@@ -5414,8 +5317,6 @@ const DB = {
   .tag-model-price { font-weight: 900; font-size: 32px; text-align: center; padding: 14px 14px 4px; }
   .tag-komplekt-band { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 14px; background: #1f3a5f; color: #fff; font-weight: 800; font-size: 17px; padding: 8px 14px; margin-top: 10px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .tag-komplekt-band-value { font-size: 30px; }
-  .tag-komplekt-band-with-promo { flex-direction: column; align-items: flex-start; gap: 2px; }
-  .tag-komplekt-band-with-promo .tag-komplekt-band-value { padding-left: 14px; }
   .tag-komplekt-colheads, .tag-komplekt-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; column-gap: 8px; row-gap: 4px; }
   .tag-komplekt-colheads { padding: 6px 14px 0; font-size: 10px; font-weight: 600; color: #000; }
   .tag-komplekt-colheads span { grid-column: 3; text-align: right; white-space: nowrap; }
@@ -5429,15 +5330,20 @@ const DB = {
   .tag-komplekt-trim-body { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
   .tag-komplekt-trim-name { font-weight: 700; font-size: 13px; }
   .tag-komplekt-trim-color { font-size: 12px; font-weight: 600; color: #000; }
-  .tag-komplekt-trim-math { font-weight: 800; font-size: 13px; }
+  .tag-komplekt-trim-math { font-weight: 800; font-size: 13px; display: flex; justify-content: space-between; gap: 4px 10px; }
   .tag-komplekt-row-trim .item-actions { flex: 1 1 100%; }
   .tag-doc-footer { padding: 16px 14px 20px; margin-top: auto; }
   .tag-meta-line { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; font-size: 13px; }
-  .tag-model-price-crossed { text-decoration: line-through; text-decoration-thickness: 4px; text-decoration-color: #c81e1e; opacity: .7; text-align: left; padding-left: 14px; }
+  .tag-model-promo { text-align: center; padding: 10px 14px 0; }
+  .tag-model-price-crossed { text-decoration: line-through; text-decoration-thickness: 4px; text-decoration-color: #c81e1e; opacity: .7; }
   .tag-model-promo-label { font-weight: 700; font-size: 11px; }
   .tag-model-promo-value { font-weight: 900; font-size: 30px; color: #c81e1e; }
-  .tag-doc-group { display: flex; align-items: stretch; }
-  .tag-doc-group-with-promo { width: 133.333%; }
+  /* Ширина карточки в файле — та же, что и при его печати (см. @media print
+     ниже): иначе подгонка содержимого, которая считается один раз при
+     открытии файла, была бы посчитана для экранной ширины и не совпала бы
+     с печатной. */
+  .tag-doc-group { display: flex; align-items: stretch; width: 100%; max-width: 480px; margin: 0 auto; }
+  .tag-doc-group-with-promo { max-width: 640px; }
   .tag-doc-group-with-promo .tag-doc { flex: 0 0 75%; }
   .tag-promo-tab {
     flex: 0 0 25%; min-width: 0; background: #ffd400; border: 3px solid #c81e1e; border-left: none;
@@ -5483,70 +5389,27 @@ const DB = {
   </div></div>
   ${tagPromoTabHtml(leaf, { ...view, readOnly: true }, fontSizePx)}
   </div>
-  ${longestTitleName ? `<scr${""}ipt>
-    (function () {
-      var longestName = ${JSON.stringify(longestTitleName)};
-      var titleEl = document.querySelector(".tag-model-title");
-      if (!titleEl) return;
-      var availableWidth = titleEl.clientWidth;
-      if (!availableWidth) return;
-      var probe = document.createElement("div");
-      probe.style.position = "absolute";
-      probe.style.visibility = "hidden";
-      probe.style.left = "-9999px";
-      probe.style.top = "0";
-      probe.style.width = availableWidth + "px";
-      var cs = getComputedStyle(titleEl);
-      probe.style.fontWeight = cs.fontWeight;
-      probe.style.fontFamily = cs.fontFamily;
-      probe.style.lineHeight = "1.15";
-      probe.textContent = longestName;
-      document.body.appendChild(probe);
-      var maxSize = 32, minSize = 15, maxLines = 2, fitSize = minSize;
-      for (var size = maxSize; size >= minSize; size--) {
-        probe.style.fontSize = size + "px";
-        var lines = Math.round(probe.scrollHeight / (size * 1.15));
-        if (lines <= maxLines) { fitSize = size; break; }
-      }
-      document.body.removeChild(probe);
-      titleEl.style.fontSize = fitSize + "px";
-    })();
-  </scr${""}ipt>` : ""}
-  ${hasPromo ? `<scr${""}ipt>
-    // Выравнивает зачёркнутую цену и «Сумма комплекта» под «Цена по акции»
-    // — то же самое, что alignTagPromoPrices в приложении (см. комментарий
-    // выше про запекание px), но самостоятельно: файл открывается сам по
-    // себе, без остального приложения, поэтому меряет и выравнивает уже
-    // после открытия, в собственной раскладке файла. Тег разбит на части
-    // (склеен из кусков через ${""}) — иначе буквальный тег открытия/
-    // закрытия внутри шаблонной строки основного скрипта приложения
-    // сбивает с толку простые текстовые парсеры (например, извлечение
-    // тегов скрипта для node --check при тестировании этого файла),
-    // которые не различают настоящие теги и текст внутри JS-строки.
-    (function () {
-      function shiftTo(el, targetLeft) {
-        if (!el) return;
-        var currentPadding = parseFloat(getComputedStyle(el).paddingLeft) || 0;
-        var currentTextLeft = el.getBoundingClientRect().left + currentPadding;
-        var newPadding = Math.max(0, currentPadding + (targetLeft - currentTextLeft));
-        el.style.paddingLeft = Math.round(newPadding) + "px";
-      }
-      var promoValue = document.querySelector(".tag-model-promo-value");
-      if (!promoValue) return;
-      var targetLeft = promoValue.getBoundingClientRect().left;
-      shiftTo(document.querySelector(".tag-model-price-crossed"), targetLeft);
-      shiftTo(document.querySelector(".tag-komplekt-band-with-promo .tag-komplekt-band-value"), targetLeft);
-    })();
-  </scr${""}ipt>` : ""}
   <scr${""}ipt>
-    // Ужимает содержимое под фиксированную высоту карточки — то же, что
-    // fitTagDocHeight в приложении. Запускается последним: подгонка
-    // заголовка и выравнивание цен выше меряют координаты, а на уже
-    // отмасштабированном поддереве считали бы неверно.
+    // Подгоняет содержимое под фиксированную высоту карточки и задаёт
+    // единый кегль названия модели — то же, что fitTagDocHeight и
+    // applyTagTitleSize в приложении (числа те же: ${TAG_TITLE_PRINT_PX}px
+    // название, масштаб от 0.5 до 1.8). В файле считается заново, потому
+    // что он открывается в своей ширине, не совпадающей с шириной
+    // страницы в момент скачивания.
     (function () {
       var doc = document.querySelector(".tag-doc");
       var inner = document.querySelector(".tag-doc-inner");
       if (!doc || !inner) return;
+      var titleEl = document.querySelector(".tag-model-title");
+      function applyTitle(scale) {
+        if (!titleEl || !titleEl.clientWidth) return;
+        var size = ${TAG_TITLE_PRINT_PX} / scale;
+        for (var g = 0; g < 40 && size > 8; g++) {
+          titleEl.style.fontSize = size + "px";
+          if (Math.round(titleEl.scrollHeight / (size * 1.15)) <= ${TAG_TITLE_MAX_LINES}) break;
+          size -= size * 0.06;
+        }
+      }
       function fit() {
         inner.style.transform = "";
         inner.style.width = "";
@@ -5558,6 +5421,7 @@ const DB = {
           inner.style.width = (100 / k) + "%";
           inner.style.minHeight = "0";
           inner.style.transform = "none";
+          applyTitle(k);
           var natural = inner.scrollHeight;
           if (!natural) break;
           var next = Math.max(0.5, Math.min(available / natural, 1.8));
@@ -5565,6 +5429,7 @@ const DB = {
           k = next;
           if (settled) break;
         }
+        applyTitle(k);
         inner.style.width = (100 / k) + "%";
         inner.style.minHeight = (available / k) + "px";
         inner.style.transform = "scale(" + k + ")";
@@ -5788,8 +5653,6 @@ const DB = {
       host.innerHTML = tagDocHtml({ items: entry.items, tagDate: entry.tagDate, promoUntil: entry.promoUntil || "", readOnly: true });
       const docEl = host.querySelector(".tag-doc-group");
       fitPromoTabText(host.querySelector(".tag-promo-tab"));
-      alignTagPromoPrices(docEl);
-      fitTagModelTitle(docEl, tagPrimaryLeaf(entry.items));
       try {
         const blob = await tagDocToPngBlob(docEl);
         downloadBlob(blob, `tsennik-${i + 1}.png`);
