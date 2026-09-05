@@ -770,22 +770,26 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 }
 .tag-cat-group { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .tag-cat-material { font-weight: 700; font-size: clamp(10px, 3cqw, 12px); }
-/* И .tag-cat-num, и .tag-cat-price — flex: 0 0 auto (не сжимаются вообще,
-   раньше у .tag-cat-num было flex-shrink: 1), gap увеличен. По отчётам:
-   сначала «2 к-я» переносилось прямо ВНУТРИ слова («2 к-» / «я») при
-   печати — не хватало места в узкой правой колонке «2 варианта» ценника,
-   а .tag-cat-num мог сжиматься и с ним переноситься. Добавленный тогда
-   flex-wrap на всей строке убрал перенос ВНУТРИ слова, но при печати
-   всё равно оказалось мало места — и вместо разрыва слова вниз стала
-   уходить вся цена целиком, у каждой категории — из-за этого ценник
-   вытягивался по высоте и весь заметно сужался при печати нескольких
-   штук на одном листе (см. второй отчёт с фото). И то, и то — следствие
-   того, что .tag-cat-num вообще допускал сжатие. Короткие подписи вида
-   «1 к-я»/«4 к-я» никогда не нуждаются в сжатии — без flex-shrink оба
-   элемента строки всегда остаются на одной строке при своём естественном
-   размере (только сам gap — с запасом, чтобы не выглядело зажатым). */
+/* История трёх заходов на эту строку (см. отчёты с фото распечаток):
+   1) .tag-cat-num мог сжиматься (flex-shrink: 1) — при нехватке места
+      подпись «2 к-я» переносилась ПРЯМО ВНУТРИ слова («2 к-» / «я»),
+      потому что обычный дефис браузер сам считает местом для переноса.
+   2) Попытка запретить сжатие подписи и переносить вместо этого всю
+      строку (flex-wrap на .tag-cat-row) — при нехватке места вниз
+      уходила вся цена целиком, у каждой категории; ценник вытягивался
+      по высоте и из-за этого сужался при печати нескольких штук рядом.
+   3) Попытка вообще запретить сжатие обеих частей (flex: 0 0 auto) —
+      при нехватке места (у моделей с широкими 5-значными ценами, типа
+      «12 100 ₽») цена просто вылезала за рамку карточки вправо.
+   Настоящая причина была не в самих flex/wrap, а в том, что обычный
+   дефис в «к-я» — законное место переноса. Заменили его неразрывным
+   дефисом «‑» (U+2011) в самом тексте подписи — обычный перенос внутри
+   слова стал невозможен в принципе, поэтому .tag-cat-num снова может
+   спокойно сжиматься при нехватке места: в худшем случае подпись
+   перенесётся по ОБЫЧНОМУ пробелу («2» / «к-я», а не «2 к-» / «я»), а
+   цена никогда не окажется ни на новой строке, ни за рамкой. */
 .tag-cat-row { display: flex; justify-content: space-between; gap: 4px 18px; font-size: clamp(11px, 3.4cqw, 13px); font-weight: 600; color: #000; min-width: 0; }
-.tag-cat-num { flex: 0 0 auto; white-space: nowrap; }
+.tag-cat-num { flex: 0 1 auto; min-width: 0; }
 .tag-cat-price { flex: 0 0 auto; font-weight: 600; color: var(--text); white-space: nowrap; }
 .tag-model-price { font-weight: 900; font-size: clamp(26px, 10cqw, 40px); text-align: center; padding: 14px 14px 4px; }
 /* Акция: цена полотна зачёркнута жирной чертой, а цена со скидкой — в
@@ -4774,7 +4778,15 @@ const DB = {
       if (!cats.length) return;
       const rows = cats.map((cat) => {
         const price = modelBasePrice(model, mat) + (surcharge[cat] || 0);
-        return `<div class="tag-cat-row"><span class="tag-cat-num">${cat} к-я</span><span class="tag-cat-price">${esc(tagMoney(price))}</span></div>`;
+        // Неразрывный дефис (U+2011) вместо обычного «-» в «к-я» — обычный
+        // дефис браузер сам считает местом для переноса строки (как в
+        // «интернет-магазин»), из-за чего при нехватке места подпись
+        // ломалась прямо ВНУТРИ слова («2 к-» / «я», см. отчёт с фото
+        // распечатки). С неразрывным дефисом «к-я» — неделимый кусок,
+        // а перенос (если места совсем не хватает) возможен только по
+        // обычному пробелу перед ним («2» / «к-я») — не так красиво, но
+        // не разрывает слово и не толкает цену за рамку карточки.
+        return `<div class="tag-cat-row"><span class="tag-cat-num">${cat} к‑я</span><span class="tag-cat-price">${esc(tagMoney(price))}</span></div>`;
       }).join("");
       html += `<div class="tag-cat-group"><div class="tag-cat-material">${esc(DB.materialNames[mat] || mat)}</div>${rows}</div>`;
     });
@@ -5264,7 +5276,7 @@ const DB = {
   .tag-cat-group { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
   .tag-cat-material { font-weight: 700; font-size: 11px; }
   .tag-cat-row { display: flex; justify-content: space-between; gap: 4px 18px; font-size: 12px; font-weight: 600; color: #000; min-width: 0; }
-  .tag-cat-num { flex: 0 0 auto; white-space: nowrap; }
+  .tag-cat-num { flex: 0 1 auto; min-width: 0; }
   .tag-cat-price { flex: 0 0 auto; font-weight: 600; color: #1c1f26; white-space: nowrap; }
   .tag-model-price { font-weight: 900; font-size: 32px; text-align: center; padding: 14px 14px 4px; }
   .tag-komplekt-band { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 14px; background: #1f3a5f; color: #fff; font-weight: 800; font-size: 17px; padding: 8px 14px; margin-top: 10px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
