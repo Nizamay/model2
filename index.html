@@ -873,7 +873,11 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 }
 .tag-komplekt-colheads span { grid-column: 3; text-align: right; white-space: nowrap; }
 .tag-komplekt-colheads span:last-child { grid-column: 4; }
-.tag-komplekt-row { padding: 7px 14px; border-bottom: 1px dashed var(--border); }
+/* Без разделительных пунктирных линий между позициями — заказчик
+   попросил убрать их на распечатке (см. отчёт с фото, оранжевые
+   стрелки): строки и так читаются по отступам, а линии дробят
+   карточку. */
+.tag-komplekt-row { padding: 7px 14px; }
 .tag-komplekt-label { grid-column: 2; min-width: 0; font-weight: 700; font-size: clamp(12px, 3.6cqw, 14px); }
 .tag-komplekt-qty { font-weight: 600; color: #000; }
 .tag-komplekt-unit, .tag-komplekt-total {
@@ -5032,17 +5036,30 @@ const DB = {
     shiftTagPriceTo(docEl.querySelector(".tag-komplekt-band-with-promo .tag-komplekt-band-value"), targetLeft);
   }
 
-  // Ужимает содержимое карточки под её фиксированную высоту (.tag-doc-fixed),
-  // если позиций так много, что содержимое в неё не помещается. Заказчик
-  // клеит ценники на наличники в ряду дверей — они должны быть одного
-  // размера, а самый набитый ценник (все опции + фурнитура + Акция) иначе
-  // получается выше листа A4 и вылезает за поля (см. отчёт с фото).
-  // Масштаб, а не «уплотнение» отступов: так пропорции карточки остаются
-  // ровно теми же, просто чуть мельче шрифт. Ширина компенсируется
-  // (width: 100/k %), чтобы после уменьшения содержимое по-прежнему
-  // занимало всю ширину карточки, а не оставляло поле справа.
+  // Подгоняет содержимое карточки ровно под её фиксированную высоту
+  // (.tag-doc-fixed) — и УЖИМАЕТ, если позиций много, и РАСТЯГИВАЕТ, если
+  // их мало. Заказчик клеит ценники на наличники в ряду дверей, они должны
+  // быть одного размера; при этом самый набитый ценник иначе получался
+  // выше листа A4 и вылезал за поля, а самый простой оставлял внизу пустое
+  // место и слишком мелкий шрифт (см. отчёт с фото распечатки — пустота
+  // отчёркнута синим). Масштаб, а не правка отступов/кеглей по отдельности:
+  // пропорции карточки остаются ровно теми же, меняется только размер.
+  //
+  // Ширина и минимальная высота компенсируются (÷ k), чтобы после
+  // масштабирования содержимое занимало ровно всю карточку — и по ширине,
+  // и по высоте (дата с подписью прижаты к низу). Считается итеративно:
+  // от ширины зависит перенос строк, а значит и высота, поэтому одного
+  // прохода мало — обычно сходится за 2-3 шага.
+  //
   // Вызывать ПОСЛЕ fitTagModelTitle/alignTagPromoPrices — те меряют
   // координаты, и на уже отмасштабированном поддереве считали бы неверно.
+  const TAG_FIT_MIN_SCALE = 0.5;
+  // 1.8, а не «сколько угодно»: у самого простого ценника (одно полотно)
+  // содержимому нужно примерно 1.64, чтобы заполнить карточку целиком —
+  // ограничитель выше этого, чтобы пустого места внизу не оставалось
+  // (см. отчёт с фото, пустота отчёркнута синим), но и не давал
+  // раздувать текст до нелепого, если ценник вдруг совсем пустой.
+  const TAG_FIT_MAX_SCALE = 1.8;
   function fitTagDocHeight(groupEl) {
     if (!groupEl) return;
     const doc = groupEl.querySelector(".tag-doc");
@@ -5050,11 +5067,27 @@ const DB = {
     if (!doc || !inner) return;
     inner.style.transform = "";
     inner.style.width = "";
+    inner.style.minHeight = "";
     const available = doc.clientHeight;
-    const natural = inner.scrollHeight;
-    if (!available || !natural || natural <= available) return;
-    const k = available / natural;
+    if (!available) return;
+    let k = 1;
+    for (let i = 0; i < 6; i++) {
+      // Меряем «natural» без растяжки по высоте (min-height: 0) и без
+      // самого масштаба — только реальную высоту содержимого при текущей
+      // (скомпенсированной) ширине.
+      inner.style.width = (100 / k) + "%";
+      inner.style.minHeight = "0";
+      inner.style.transform = "none";
+      const natural = inner.scrollHeight;
+      if (!natural) break;
+      let next = available / natural;
+      next = Math.max(TAG_FIT_MIN_SCALE, Math.min(next, TAG_FIT_MAX_SCALE));
+      const settled = Math.abs(next - k) <= 0.004;
+      k = next;
+      if (settled) break;
+    }
     inner.style.width = (100 / k) + "%";
+    inner.style.minHeight = (available / k) + "px";
     inner.style.transform = "scale(" + k + ")";
   }
 
@@ -5387,7 +5420,7 @@ const DB = {
   .tag-komplekt-colheads { padding: 6px 14px 0; font-size: 10px; font-weight: 600; color: #000; }
   .tag-komplekt-colheads span { grid-column: 3; text-align: right; white-space: nowrap; }
   .tag-komplekt-colheads span:last-child { grid-column: 4; }
-  .tag-komplekt-row { padding: 7px 14px; border-bottom: 1px dashed #ddd; }
+  .tag-komplekt-row { padding: 7px 14px; }
   .tag-komplekt-label { grid-column: 2; min-width: 0; font-weight: 700; font-size: 13px; }
   .tag-komplekt-qty { font-weight: 600; color: #000; }
   .tag-komplekt-unit, .tag-komplekt-total { grid-column: 3; text-align: right; font-size: 12px; white-space: nowrap; }
@@ -5517,11 +5550,23 @@ const DB = {
       function fit() {
         inner.style.transform = "";
         inner.style.width = "";
+        inner.style.minHeight = "";
         var available = doc.clientHeight;
-        var natural = inner.scrollHeight;
-        if (!available || !natural || natural <= available) return;
-        var k = available / natural;
+        if (!available) return;
+        var k = 1;
+        for (var i = 0; i < 6; i++) {
+          inner.style.width = (100 / k) + "%";
+          inner.style.minHeight = "0";
+          inner.style.transform = "none";
+          var natural = inner.scrollHeight;
+          if (!natural) break;
+          var next = Math.max(0.5, Math.min(available / natural, 1.8));
+          var settled = Math.abs(next - k) <= 0.004;
+          k = next;
+          if (settled) break;
+        }
         inner.style.width = (100 / k) + "%";
+        inner.style.minHeight = (available / k) + "px";
         inner.style.transform = "scale(" + k + ")";
       }
       fit();
