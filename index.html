@@ -135,7 +135,7 @@ h1 { font-size: 20px; margin: 0 0 4px; }
 .price-row .price-label { flex: 1 1 100%; min-width: 0; font-size: 14px; color: var(--text); }
 .price-row .price-sub { font-size: 12px; color: var(--muted); }
 .price-input-wrap { position: relative; flex: 0 0 auto; }
-.price-row input[type="number"] {
+.price-row input[type="number"], .price-row .pricenum {
   width: 120px; padding: 8px 26px 8px 10px; text-align: right;
   font-variant-numeric: tabular-nums;
 }
@@ -168,7 +168,7 @@ h1 { font-size: 20px; margin: 0 0 4px; }
 .pitem-field { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--muted); }
 .pitem-field > span { flex: 0 0 62px; }
 .pitem-field input[type="text"] { flex: 1; min-width: 0; font-size: 14px; padding: 8px 10px; }
-.pitem-field input[type="number"] { width: 120px; }
+.pitem-field input[type="number"], .pitem-field .pricenum { width: 120px; }
 
 /* Поле «Название» — кликабельное, открывает модалку с полным текстом
    (см. openNameEditModal), а не редактируется прямо в узкой строке. */
@@ -227,7 +227,7 @@ input.edit-name[readonly]:focus { outline: 2px solid var(--accent); outline-offs
    ("ПВХ 2мм, 4 стороны" и т.п.) не обрезались; цена и удаление — ниже. */
 .choice-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .choice-row .edit-name { flex: 1 1 100%; min-width: 0; font-size: 14px; padding: 7px 10px; }
-.choice-row input[type="number"] { width: 92px; }
+.choice-row input[type="number"], .choice-row .pricenum { width: 92px; }
 .choice-row .row-del { padding: 6px 10px; }
 .choice-head { font-size: 12px; font-weight: 700; color: var(--muted); margin-top: 2px; }
 /* Разделительная линия между цветами в списке категории (см. отчёт —
@@ -272,7 +272,16 @@ input.edit-name[readonly]:focus { outline: 2px solid var(--accent); outline-offs
 
 label { font-size: 13px; font-weight: 600; color: var(--muted); }
 
-select, input[type="number"] {
+/* .pricenum — цены в редакторе цен (см. отчёт: на телефоне после нажатия
+   кнопки клавиатуры «Готово»/стрелка на поле цены фокус неожиданно
+   перескакивал на другое поле — известная особенность type="number" на
+   мобильных клавиатурах Android, где системная клавиатура сама уводит
+   фокус на «следующее» поле в разметке, а не просто закрывается; JS
+   такое поведение клавиатуры не всегда получается перехватить). Те же
+   поля, что раньше были type="number" (data-field="price" в редакторе
+   цен) — теперь type="text" + inputmode="decimal": цифровая клавиатура
+   остаётся, а «умного» перехода на следующее поле у неё уже нет. */
+select, input[type="number"], input.pricenum {
   font-size: 15px;
   padding: 10px 12px;
   border-radius: 8px;
@@ -6405,7 +6414,7 @@ const DB = {
     const priceBlock = opts.noPrice ? "" : `
         <label class="pitem-field">
           <span>Цена</span>
-          <span class="price-input-wrap"><input type="number" enterkeyhint="enter" step="10" min="0" value="${priceVal}" data-field="price" ${a}></span>
+          <span class="price-input-wrap"><input type="text" inputmode="decimal" class="pricenum" enterkeyhint="enter" value="${priceVal}" data-field="price" ${a}></span>
         </label>`;
     const delBlock = opts.noDelete ? "" : `
         <div class="pitem-del">
@@ -6431,7 +6440,7 @@ const DB = {
     const a = dataAttrs("optionChoice", { material: mat, opt: optId, choice: i });
     return `<div class="choice-row">
       <input type="text" class="edit-name" value="${esc(label)}" data-field="name" ${a}>
-      <span class="price-input-wrap"><input type="number" enterkeyhint="enter" step="10" min="0" value="${price}" data-field="price" ${a}></span>
+      <span class="price-input-wrap"><input type="text" inputmode="decimal" class="pricenum" enterkeyhint="enter" value="${price}" data-field="price" ${a}></span>
       <div class="pitem-del">
         <label class="switch"><input type="checkbox" class="arm-del"><span class="switch-track"></span></label>
         <span class="switch-label">Разрешить удаление</span>
@@ -6782,7 +6791,7 @@ const DB = {
     const a = dataAttrs("modelMaterialPrice", { model: modelId, material });
     return `<label class="pitem-field">
       <span>Цена — ${esc(DB.materialNames[material] || material)}</span>
-      <span class="price-input-wrap"><input type="number" enterkeyhint="enter" step="10" min="0" value="${price}" data-field="price" ${a}></span>
+      <span class="price-input-wrap"><input type="text" inputmode="decimal" class="pricenum" enterkeyhint="enter" value="${price}" data-field="price" ${a}></span>
     </label>`;
   }
 
@@ -6790,7 +6799,7 @@ const DB = {
     const a = dataAttrs("modelGlass", { model: modelId, id: g.id });
     return `<div class="choice-row">
       <input type="text" class="edit-name" value="${esc(g.name)}" data-field="name" ${a}>
-      <span class="price-input-wrap"><input type="number" enterkeyhint="enter" step="10" min="0" value="${g.price}" data-field="price" ${a}></span>
+      <span class="price-input-wrap"><input type="text" inputmode="decimal" class="pricenum" enterkeyhint="enter" value="${g.price}" data-field="price" ${a}></span>
       <div class="pitem-del">
         <label class="switch"><input type="checkbox" class="arm-del"><span class="switch-track"></span></label>
         <span class="switch-label">Разрешить удаление</span>
@@ -6825,7 +6834,7 @@ const DB = {
     const a = dataAttrs("modelPatina", { model: modelId, id: p.id });
     return `<div class="choice-row">
       <input type="text" class="edit-name" value="${esc(p.name)}" data-field="name" ${a}>
-      <span class="price-input-wrap"><input type="number" enterkeyhint="enter" step="10" min="0" value="${p.price}" data-field="price" ${a}></span>
+      <span class="price-input-wrap"><input type="text" inputmode="decimal" class="pricenum" enterkeyhint="enter" value="${p.price}" data-field="price" ${a}></span>
       <div class="pitem-del">
         <label class="switch"><input type="checkbox" class="arm-del"><span class="switch-track"></span></label>
         <span class="switch-label">Разрешить удаление</span>
@@ -6841,7 +6850,7 @@ const DB = {
     const a = dataAttrs("trimPatina", { item: itemId, id: p.id });
     return `<div class="choice-row">
       <input type="text" class="edit-name" value="${esc(p.name)}" data-field="name" ${a}>
-      <span class="price-input-wrap"><input type="number" enterkeyhint="enter" step="10" min="0" value="${p.price}" data-field="price" ${a}></span>
+      <span class="price-input-wrap"><input type="text" inputmode="decimal" class="pricenum" enterkeyhint="enter" value="${p.price}" data-field="price" ${a}></span>
       <div class="pitem-del">
         <label class="switch"><input type="checkbox" class="arm-del"><span class="switch-track"></span></label>
         <span class="switch-label">Разрешить удаление</span>
@@ -6857,7 +6866,7 @@ const DB = {
     const a = dataAttrs("furnitureColor", { item: itemId, id: c.id });
     return `<div class="choice-row">
       <input type="text" class="edit-name" value="${esc(c.name)}" data-field="name" ${a}>
-      <span class="price-input-wrap"><input type="number" enterkeyhint="enter" step="10" min="0" value="${c.price}" data-field="price" ${a}></span>
+      <span class="price-input-wrap"><input type="text" inputmode="decimal" class="pricenum" enterkeyhint="enter" value="${c.price}" data-field="price" ${a}></span>
       <div class="pitem-del">
         <label class="switch"><input type="checkbox" class="arm-del"><span class="switch-track"></span></label>
         <span class="switch-label">Разрешить удаление</span>
@@ -6873,7 +6882,7 @@ const DB = {
     const a = dataAttrs("trimCustomColor", { item: itemId, id: c.id });
     return `<div class="choice-row">
       <input type="text" class="edit-name" value="${esc(c.name)}" data-field="name" ${a}>
-      <span class="price-input-wrap"><input type="number" enterkeyhint="enter" step="10" min="0" value="${c.price}" data-field="price" ${a}></span>
+      <span class="price-input-wrap"><input type="text" inputmode="decimal" class="pricenum" enterkeyhint="enter" value="${c.price}" data-field="price" ${a}></span>
       <div class="pitem-del">
         <label class="switch"><input type="checkbox" class="arm-del"><span class="switch-track"></span></label>
         <span class="switch-label">Разрешить удаление</span>
@@ -6934,7 +6943,7 @@ const DB = {
       <div class="price-body">
         <div class="price-row">
           <span class="price-label">Надбавка за нестандарт</span>
-          <span class="price-input-wrap is-percent"><input type="number" enterkeyhint="enter" step="1" min="0" value="${DB.nonStandardPercent}" data-kind="nonstandard" data-field="price"></span>
+          <span class="price-input-wrap is-percent"><input type="text" inputmode="decimal" class="pricenum" enterkeyhint="enter" value="${DB.nonStandardPercent}" data-kind="nonstandard" data-field="price"></span>
         </div>
       </div></details>`);
 
@@ -7100,7 +7109,7 @@ const DB = {
               const price = (it.prices && it.prices[cat]) || 0;
               priceHtml += `<div class="price-row">
                 <span class="price-label">${catName(it.material, cat)}</span>
-                <span class="price-input-wrap"><input type="number" enterkeyhint="enter" step="10" min="0" value="${price}" data-field="price" ${a}></span>
+                <span class="price-input-wrap"><input type="text" inputmode="decimal" class="pricenum" enterkeyhint="enter" value="${price}" data-field="price" ${a}></span>
               </div>`;
             });
             // Патина — только у Наличника-Эмаль вида «///» (фрезерованные
@@ -7734,6 +7743,12 @@ const DB = {
       if (!el.nameEditOverlay.hidden && e.key === "Escape") closeNameEditModal();
     });
 
+    // Числовое поле — настоящий type="number" (калькулятор: высота/
+    // ширина/количество и т.п.) ИЛИ .pricenum (цены в редакторе цен —
+    // см. отчёт и комментарий у .pricenum в CSS: там type="text" вместо
+    // "number", чтобы уйти от известного глюка мобильных клавиатур).
+    const isNumericInput = (t) => t && t.tagName === "INPUT" && (t.type === "number" || t.classList.contains("pricenum"));
+
     // «Прилипающий» 0 в числовых полях: при фокусе очищаем поле, если там
     // именно «0», чтобы первая же введённая цифра заменяла его, а не
     // приписывалась после (было «0» + «1» = «01» вместо «1»). Раньше здесь
@@ -7747,23 +7762,23 @@ const DB = {
     // отрисованных позже (редактор цен и т.п.).
     document.addEventListener("focus", (e) => {
       const t = e.target;
-      if (t && t.tagName === "INPUT" && t.type === "number" && t.value === "0") t.value = "";
+      if (isNumericInput(t) && t.value === "0") t.value = "";
     }, true);
     document.addEventListener("blur", (e) => {
       const t = e.target;
-      if (t && t.tagName === "INPUT" && t.type === "number" && t.value === "") t.value = "0";
+      if (isNumericInput(t) && t.value === "") t.value = "0";
     }, true);
 
     // Клавиша подтверждения на цифровой клавиатуре телефона (см. отчёт:
     // в разных полях у неё то стрелка, то галочка — единообразия не было,
     // потому что enterkeyhint нигде не задавался и иконку браузер выбирал
     // сам по контексту поля). Теперь везде задан один и тот же enterkeyhint
-    // (см. атрибут у всех input[type=number] выше) — иконка везде
+    // (см. атрибут у всех input[type=number]/.pricenum выше) — иконка везде
     // одинаковая, а по Enter поле всегда просто закрывает клавиатуру
     // (никакой отправки формы — её тут и нет).
     document.addEventListener("keydown", (e) => {
       const t = e.target;
-      if (t && t.tagName === "INPUT" && t.type === "number" && e.key === "Enter") {
+      if (isNumericInput(t) && e.key === "Enter") {
         e.preventDefault();
         t.blur();
       }
