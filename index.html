@@ -743,11 +743,15 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 /* Без соседней колонки категорий (обычный «1 вариант», см. tagLeafCardHtml)
    .tag-model-cols — единственный ребёнок и растягивается на всю ширину,
    как раньше; когда соседняя колонка есть — делят ширину на фиксированные
-   доли (60/40, не «сколько влезет»), с запасом в пользу левой части —
-   там название цвета/эмали непредсказуемой длины (например «Белоснежная
-   Эмаль» — см. отчёт, слово переносилось посреди «Белоснежна»/«я»),
-   у категорий справа текст всегда короткий и предсказуемый. */
-.tag-model-cols { display: flex; flex-wrap: wrap; gap: 10px 22px; padding: 12px 14px 0; flex: 0 1 60%; min-width: 0; }
+   доли (не «сколько влезет»), с запасом в пользу левой части — там
+   название цвета/эмали непредсказуемой длины (например «Белоснежная
+   Эмаль» — см. отчёт, слово переносилось посреди «Белоснежна»/«я»).
+   Было 60/40, стало 54/46: у моделей с 5-значными ценами строка
+   «4 к-я 10 500 ₽» в 40% не помещалась и подпись переносилась на две
+   строки — ценник вытягивался и на печати вылезал за поля листа
+   (см. отчёт с фото двух распечаток). Колонка категорий сдвинута левее
+   ровно настолько, чтобы самая широкая строка помещалась с запасом. */
+.tag-model-cols { display: flex; flex-wrap: wrap; gap: 10px 22px; padding: 12px 14px 0; flex: 0 1 54%; min-width: 0; }
 .tag-model-cols:only-child { flex: 1 1 auto; }
 .tag-model-col { flex: 1 1 150px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
 .tag-model-field { display: flex; gap: 6px; align-items: flex-start; min-width: 0; }
@@ -766,7 +770,7 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
    между группами (10px), что и между полями слева (.tag-model-col),
    чтобы обе половины смотрелись одним ритмом, а не двумя разными блоками. */
 .tag-model-categories {
-  flex: 0 1 40%; min-width: 0; padding: 12px 14px 0 0; display: flex; flex-direction: column; gap: 10px;
+  flex: 0 1 46%; min-width: 0; padding: 12px 14px 0 0; display: flex; flex-direction: column; gap: 10px;
 }
 .tag-cat-group { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .tag-cat-material { font-weight: 700; font-size: clamp(10px, 3cqw, 12px); }
@@ -787,8 +791,18 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
    слова стал невозможен в принципе, поэтому .tag-cat-num снова может
    спокойно сжиматься при нехватке места: в худшем случае подпись
    перенесётся по ОБЫЧНОМУ пробелу («2» / «к-я», а не «2 к-» / «я»), а
-   цена никогда не окажется ни на новой строке, ни за рамкой. */
-.tag-cat-row { display: flex; justify-content: space-between; gap: 4px 18px; font-size: clamp(11px, 3.4cqw, 13px); font-weight: 600; color: #000; min-width: 0; }
+   цена никогда не окажется ни на новой строке, ни за рамкой.
+   4) Оставался сам дефицит места: на печати у моделей с 5-значными
+      ценами подпись всё равно уезжала на вторую строку (по пробелу),
+      ценник вытягивался и вылезал за поля листа (см. отчёт с фото двух
+      распечаток — один влез, второй нет). Поэтому саму колонку категорий
+      расширили (40% → 46%, см. .tag-model-categories выше), gap вернули
+      к умеренному (18px → 10px) и размер шрифта строки сравняли с
+      подписью материала (.tag-cat-material) — в сумме строке нужно
+      примерно на треть меньше места, чем помещается: «4 к-я 10 500 ₽»
+      (самый широкий реальный вариант) укладывается в одну строку
+      с большим запасом. */
+.tag-cat-row { display: flex; justify-content: space-between; gap: 4px 10px; font-size: clamp(10px, 3cqw, 12px); font-weight: 600; color: #000; min-width: 0; }
 .tag-cat-num { flex: 0 1 auto; min-width: 0; }
 .tag-cat-price { flex: 0 0 auto; font-weight: 600; color: var(--text); white-space: nowrap; }
 .tag-model-price { font-weight: 900; font-size: clamp(26px, 10cqw, 40px); text-align: center; padding: 14px 14px 4px; }
@@ -5264,18 +5278,18 @@ const DB = {
   .tag-check { display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px; margin-top: 2px; border: 1.5px solid #c81e1e; border-radius: 2px; color: #c81e1e; font-size: 11px; font-weight: 900; flex: 0 0 auto; }
   .tag-model-title { font-weight: 900; font-size: 26px; padding: 10px 14px 0; }
   .tag-model-top { display: flex; align-items: flex-start; }
-  .tag-model-cols { display: flex; flex-wrap: wrap; gap: 10px 22px; padding: 12px 14px 0; flex: 0 1 60%; min-width: 0; }
+  .tag-model-cols { display: flex; flex-wrap: wrap; gap: 10px 22px; padding: 12px 14px 0; flex: 0 1 54%; min-width: 0; }
   .tag-model-cols:only-child { flex: 1 1 auto; }
   .tag-model-col { flex: 1 1 150px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
   .tag-model-field { display: flex; gap: 6px; align-items: flex-start; min-width: 0; }
   .tag-model-field-label { font-weight: 700; font-size: 11px; }
   .tag-model-field-value { font-size: 12px; font-weight: 600; color: #000; overflow-wrap: break-word; }
   .tag-model-categories {
-    flex: 0 1 40%; min-width: 0; padding: 12px 14px 0 0; display: flex; flex-direction: column; gap: 10px;
+    flex: 0 1 46%; min-width: 0; padding: 12px 14px 0 0; display: flex; flex-direction: column; gap: 10px;
   }
   .tag-cat-group { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
   .tag-cat-material { font-weight: 700; font-size: 11px; }
-  .tag-cat-row { display: flex; justify-content: space-between; gap: 4px 18px; font-size: 12px; font-weight: 600; color: #000; min-width: 0; }
+  .tag-cat-row { display: flex; justify-content: space-between; gap: 4px 10px; font-size: 11px; font-weight: 600; color: #000; min-width: 0; }
   .tag-cat-num { flex: 0 1 auto; min-width: 0; }
   .tag-cat-price { flex: 0 0 auto; font-weight: 600; color: #1c1f26; white-space: nowrap; }
   .tag-model-price { font-weight: 900; font-size: 32px; text-align: center; padding: 14px 14px 4px; }
