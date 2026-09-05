@@ -770,16 +770,22 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 }
 .tag-cat-group { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .tag-cat-material { font-weight: 700; font-size: clamp(10px, 3cqw, 12px); }
-/* gap увеличен, а .tag-cat-num — nowrap + flex-wrap на самой строке (а
-   не сжатие текста внутри .tag-cat-num) — по отчёту с фото распечатки:
-   «2 к-я» переносилось прямо ВНУТРИ слова («2 к-» / «я») — не хватало
-   места между подписью категории и ценой (в узкой правой колонке
-   «2 варианта» ценника при печати, где на экране то же самое умещалось
-   в одну строку). nowrap не даёт подписи ломаться посреди слова; если
-   места всё равно не хватает, flex-wrap переносит вниз всю цену
-   целиком, а не разрывает подпись. */
-.tag-cat-row { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 14px; font-size: clamp(11px, 3.4cqw, 13px); font-weight: 600; color: #000; min-width: 0; }
-.tag-cat-num { flex: 0 1 auto; min-width: 0; white-space: nowrap; }
+/* И .tag-cat-num, и .tag-cat-price — flex: 0 0 auto (не сжимаются вообще,
+   раньше у .tag-cat-num было flex-shrink: 1), gap увеличен. По отчётам:
+   сначала «2 к-я» переносилось прямо ВНУТРИ слова («2 к-» / «я») при
+   печати — не хватало места в узкой правой колонке «2 варианта» ценника,
+   а .tag-cat-num мог сжиматься и с ним переноситься. Добавленный тогда
+   flex-wrap на всей строке убрал перенос ВНУТРИ слова, но при печати
+   всё равно оказалось мало места — и вместо разрыва слова вниз стала
+   уходить вся цена целиком, у каждой категории — из-за этого ценник
+   вытягивался по высоте и весь заметно сужался при печати нескольких
+   штук на одном листе (см. второй отчёт с фото). И то, и то — следствие
+   того, что .tag-cat-num вообще допускал сжатие. Короткие подписи вида
+   «1 к-я»/«4 к-я» никогда не нуждаются в сжатии — без flex-shrink оба
+   элемента строки всегда остаются на одной строке при своём естественном
+   размере (только сам gap — с запасом, чтобы не выглядело зажатым). */
+.tag-cat-row { display: flex; justify-content: space-between; gap: 4px 18px; font-size: clamp(11px, 3.4cqw, 13px); font-weight: 600; color: #000; min-width: 0; }
+.tag-cat-num { flex: 0 0 auto; white-space: nowrap; }
 .tag-cat-price { flex: 0 0 auto; font-weight: 600; color: var(--text); white-space: nowrap; }
 .tag-model-price { font-weight: 900; font-size: clamp(26px, 10cqw, 40px); text-align: center; padding: 14px 14px 4px; }
 /* Акция: цена полотна зачёркнута жирной чертой, а цена со скидкой — в
@@ -5257,8 +5263,8 @@ const DB = {
   }
   .tag-cat-group { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
   .tag-cat-material { font-weight: 700; font-size: 11px; }
-  .tag-cat-row { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 14px; font-size: 12px; font-weight: 600; color: #000; min-width: 0; }
-  .tag-cat-num { flex: 0 1 auto; min-width: 0; white-space: nowrap; }
+  .tag-cat-row { display: flex; justify-content: space-between; gap: 4px 18px; font-size: 12px; font-weight: 600; color: #000; min-width: 0; }
+  .tag-cat-num { flex: 0 0 auto; white-space: nowrap; }
   .tag-cat-price { flex: 0 0 auto; font-weight: 600; color: #1c1f26; white-space: nowrap; }
   .tag-model-price { font-weight: 900; font-size: 32px; text-align: center; padding: 14px 14px 4px; }
   .tag-komplekt-band { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 14px; background: #1f3a5f; color: #fff; font-weight: 800; font-size: 17px; padding: 8px 14px; margin-top: 10px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
