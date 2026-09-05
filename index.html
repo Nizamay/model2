@@ -658,17 +658,13 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
    лишней разметки. Углы прямые (без border-radius), по образцу. Ширина
    поменьше — на узких телефонных экранах толстая рамка съедала слишком
    много места под контент (см. отчёт со скриншотом реального устройства). */
-/* min-height + flex-column, а не «как получится по контенту» — заказчик
-   продаёт ценники рядами (в магазине, «20 дверей в ряд») и просил
-   одинаковый размер карточки независимо от начинки, даже если в составе
-   всего одна позиция (только дверное полотно, без коробки/наличника) —
-   иначе такой ценник выглядел заметно ниже соседних (см. отчёт с фото
-   двух распечаток разной высоты и, из-за этого, разной ширины при печати
-   рядом — внешний инструмент печати подгонял картинки разной высоты под
-   одну строку и заодно ужимал по ширине). Число подобрано под самый
-   частый состав (полотно + коробка + наличник, см. отчёт) с запасом;
-   у карточек с бОльшим числом позиций высота всё равно продолжает расти
-   от контента — reset не обрезает лишнее, только гарантирует минимум.
+/* Размер карточки не зависит от начинки: заказчик клеит ценники на
+   наличники в ряду дверей (см. видео из зала — «20 дверей в ряд»), и
+   любая разница в размере сразу бросается в глаза. На экране (режим
+   правки, с кнопками «Изменить/Удалить») достаточно min-height —
+   гарантируем нижнюю границу, чтобы ценник из одной позиции не выглядел
+   куцым. В печати/картинке/скачанном файле высота уже строго
+   фиксированная, см. .tag-doc-fixed ниже.
    margin-top: auto на .tag-doc-footer (ниже) прижимает дату/подпись к
    низу карточки, а не оставляет их сразу под контентом. */
 .tag-doc {
@@ -677,6 +673,23 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
   border: 5px double #1c1f26; overflow: hidden; container-type: inline-size;
 }
 .tag-doc-group-with-promo .tag-doc { flex: 0 0 75%; }
+/* Единая высота ценника в печати / картинке / скачанном файле. 950px
+   подобраны по замерам реальных составов (в печати, ширина карточки
+   480px): только полотно — 640px, полотно + коробка + наличник — 702px,
+   полотно + кромка + коробка + наличник (случай из отчёта) — 896px.
+   То есть обычные ценники помещаются как есть, а самый набитый (все
+   опции + фурнитура + Акция) — 1253px, что БОЛЬШЕ листа A4 за вычетом
+   полей (~1010px): именно такой ценник и вылезал за поля. Теперь такие
+   ужимаются целиком (см. fitTagDocHeight) — уменьшается шрифт, но
+   карточка остаётся ровно того же размера, что и соседние. */
+.tag-doc-fixed { height: 950px; min-height: 0; }
+/* Обёртка содержимого — то, что при нехватке места ужимается масштабом
+   (см. fitTagDocHeight). min-height: 100% — чтобы дата/подпись прижимались
+   к низу карточки и при коротком составе. */
+.tag-doc-inner {
+  display: flex; flex-direction: column; min-height: 100%;
+  transform-origin: top left;
+}
 
 /* Жёлтая приставка «Акция» — треть ширины ценника (см. .tag-doc-group-
    with-promo выше), во всю высоту, текст вертикальный (снизу вверх), как
@@ -743,11 +756,15 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 /* Без соседней колонки категорий (обычный «1 вариант», см. tagLeafCardHtml)
    .tag-model-cols — единственный ребёнок и растягивается на всю ширину,
    как раньше; когда соседняя колонка есть — делят ширину на фиксированные
-   доли (60/40, не «сколько влезет»), с запасом в пользу левой части —
-   там название цвета/эмали непредсказуемой длины (например «Белоснежная
-   Эмаль» — см. отчёт, слово переносилось посреди «Белоснежна»/«я»),
-   у категорий справа текст всегда короткий и предсказуемый. */
-.tag-model-cols { display: flex; flex-wrap: wrap; gap: 10px 22px; padding: 12px 14px 0; flex: 0 1 60%; min-width: 0; }
+   доли (не «сколько влезет»), с запасом в пользу левой части — там
+   название цвета/эмали непредсказуемой длины (например «Белоснежная
+   Эмаль» — см. отчёт, слово переносилось посреди «Белоснежна»/«я»).
+   Было 60/40, стало 54/46: у моделей с 5-значными ценами строка
+   «4 к-я 10 500 ₽» в 40% не помещалась и подпись переносилась на две
+   строки — ценник вытягивался и на печати вылезал за поля листа
+   (см. отчёт с фото двух распечаток). Колонка категорий сдвинута левее
+   ровно настолько, чтобы самая широкая строка помещалась с запасом. */
+.tag-model-cols { display: flex; flex-wrap: wrap; gap: 10px 22px; padding: 12px 14px 0; flex: 0 1 54%; min-width: 0; }
 .tag-model-cols:only-child { flex: 1 1 auto; }
 .tag-model-col { flex: 1 1 150px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
 .tag-model-field { display: flex; gap: 6px; align-items: flex-start; min-width: 0; }
@@ -766,7 +783,7 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
    между группами (10px), что и между полями слева (.tag-model-col),
    чтобы обе половины смотрелись одним ритмом, а не двумя разными блоками. */
 .tag-model-categories {
-  flex: 0 1 40%; min-width: 0; padding: 12px 14px 0 0; display: flex; flex-direction: column; gap: 10px;
+  flex: 0 1 46%; min-width: 0; padding: 12px 14px 0 0; display: flex; flex-direction: column; gap: 10px;
 }
 .tag-cat-group { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .tag-cat-material { font-weight: 700; font-size: clamp(10px, 3cqw, 12px); }
@@ -787,8 +804,18 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
    слова стал невозможен в принципе, поэтому .tag-cat-num снова может
    спокойно сжиматься при нехватке места: в худшем случае подпись
    перенесётся по ОБЫЧНОМУ пробелу («2» / «к-я», а не «2 к-» / «я»), а
-   цена никогда не окажется ни на новой строке, ни за рамкой. */
-.tag-cat-row { display: flex; justify-content: space-between; gap: 4px 18px; font-size: clamp(11px, 3.4cqw, 13px); font-weight: 600; color: #000; min-width: 0; }
+   цена никогда не окажется ни на новой строке, ни за рамкой.
+   4) Оставался сам дефицит места: на печати у моделей с 5-значными
+      ценами подпись всё равно уезжала на вторую строку (по пробелу),
+      ценник вытягивался и вылезал за поля листа (см. отчёт с фото двух
+      распечаток — один влез, второй нет). Поэтому саму колонку категорий
+      расширили (40% → 46%, см. .tag-model-categories выше), gap вернули
+      к умеренному (18px → 10px) и размер шрифта строки сравняли с
+      подписью материала (.tag-cat-material) — в сумме строке нужно
+      примерно на треть меньше места, чем помещается: «4 к-я 10 500 ₽»
+      (самый широкий реальный вариант) укладывается в одну строку
+      с большим запасом. */
+.tag-cat-row { display: flex; justify-content: space-between; gap: 4px 10px; font-size: clamp(10px, 3cqw, 12px); font-weight: 600; color: #000; min-width: 0; }
 .tag-cat-num { flex: 0 1 auto; min-width: 0; }
 .tag-cat-price { flex: 0 0 auto; font-weight: 600; color: var(--text); white-space: nowrap; }
 .tag-model-price { font-weight: 900; font-size: clamp(26px, 10cqw, 40px); text-align: center; padding: 14px 14px 4px; }
@@ -918,7 +945,15 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
      лист). Формат/ориентация листа по-прежнему выбираются в диалоге
      печати. */
   #viewTag .tag-doc-group { width: 100%; max-width: 480px; margin: 0 auto; }
-  #viewTag .tag-doc { border: none; overflow: visible; }
+  /* С Акцией жёлтая приставка занимает 25% группы, то есть сама карточка
+     была бы уже обычной на четверть — ценник с Акцией печатался заметно
+     уже соседних. Расширяем на ширину приставки, чтобы САМА КАРТОЧКА
+     всегда была одной и той же ширины (480px), с Акцией и без. */
+  #viewTag .tag-doc-group-with-promo { max-width: 640px; }
+  /* overflow: hidden (а не visible, как было) — вместе с фиксированной
+     высотой .tag-doc-fixed: содержимое ужимается скриптом под эту высоту
+     (см. fitTagDocHeight), а рамка карточки не «уползает» за лист. */
+  #viewTag .tag-doc { border: none; }
   #viewTag .tag-promo-tab-text [contenteditable] { outline: none; }
 }
 
@@ -4440,6 +4475,10 @@ const DB = {
   // используемых в «Спецификации»): по ТЗ у ценника фирменный знак вместо
   // просто текста, и без адреса.
   const TAG_HEADER_SUB_LINES = ["ИП Ихсанов Азат Фаисович"];
+  // Ширина карточки ценника в печати и в картинке — одна и та же, не
+  // зависящая от экрана телефона (см. @media print и tagDocToPngBlob).
+  // Ценники клеятся на наличники в ряду дверей и должны быть одинаковыми.
+  const TAG_DOC_PRINT_WIDTH = 480;
   // Логотип «Двери 1ый Сорт Окна» — реальная картинка из фирменного прайса
   // заказчика (xls), встроена как data URI — печатается как обычное
   // изображение (без зависимости от CSS print-color-adjust) и не требует
@@ -4993,6 +5032,32 @@ const DB = {
     shiftTagPriceTo(docEl.querySelector(".tag-komplekt-band-with-promo .tag-komplekt-band-value"), targetLeft);
   }
 
+  // Ужимает содержимое карточки под её фиксированную высоту (.tag-doc-fixed),
+  // если позиций так много, что содержимое в неё не помещается. Заказчик
+  // клеит ценники на наличники в ряду дверей — они должны быть одного
+  // размера, а самый набитый ценник (все опции + фурнитура + Акция) иначе
+  // получается выше листа A4 и вылезает за поля (см. отчёт с фото).
+  // Масштаб, а не «уплотнение» отступов: так пропорции карточки остаются
+  // ровно теми же, просто чуть мельче шрифт. Ширина компенсируется
+  // (width: 100/k %), чтобы после уменьшения содержимое по-прежнему
+  // занимало всю ширину карточки, а не оставляло поле справа.
+  // Вызывать ПОСЛЕ fitTagModelTitle/alignTagPromoPrices — те меряют
+  // координаты, и на уже отмасштабированном поддереве считали бы неверно.
+  function fitTagDocHeight(groupEl) {
+    if (!groupEl) return;
+    const doc = groupEl.querySelector(".tag-doc");
+    const inner = groupEl.querySelector(".tag-doc-inner");
+    if (!doc || !inner) return;
+    inner.style.transform = "";
+    inner.style.width = "";
+    const available = doc.clientHeight;
+    const natural = inner.scrollHeight;
+    if (!available || !natural || natural <= available) return;
+    const k = available / natural;
+    inner.style.width = (100 / k) + "%";
+    inner.style.transform = "scale(" + k + ")";
+  }
+
   // Заголовок карточки модели (.tag-model-title) — фиксированный размер
   // шрифта ОДИН НА ВСЕ ценники независимо от типа двери (Матрица/Сборные/
   // Щитовые/свои типы), а не под конкретное название ТЕКУЩЕЙ позиции —
@@ -5103,7 +5168,13 @@ const DB = {
       ? `<span class="tag-meta-static">${esc(view.tagDate || "")}</span>`
       : `<input type="text" id="tagDateInput" value="${esc(view.tagDate || "")}" placeholder="дд.мм.гггг">`;
 
-    const docHtml = `<div class="tag-doc">
+    // .tag-doc-inner — обёртка всего содержимого карточки. Нужна для того,
+    // чтобы у ценников была ОДНА И ТА ЖЕ высота независимо от числа позиций
+    // (см. .tag-doc-fixed/fitTagDocHeight): у самой карточки высота
+    // фиксированная, а содержимое при нехватке места ужимается целиком
+    // (масштабом), а не вылезает за лист. Заказчик клеит ценники на
+    // наличники в ряду дверей — разница в размере сразу бросается в глаза.
+    const docHtml = `<div class="tag-doc"><div class="tag-doc-inner">
       ${tagLogoHtml()}
       <div class="tag-header-sub">${TAG_HEADER_SUB_LINES.map(esc).join("<br>")}</div>
       ${leafCardHtml}
@@ -5114,7 +5185,7 @@ const DB = {
           <div class="tag-sign-row">Подпись: _______________</div>
         </div>
       </div>
-    </div>`;
+    </div></div>`;
 
     // Обёртка .tag-doc-group нужна всегда (не только при активной Акции) —
     // чтобы печать/экспорт картинкой (см. downloadTagImage/printCurrentTagDoc)
@@ -5200,8 +5271,32 @@ const DB = {
     const style = document.createElement("style");
     style.textContent = "@page { margin: 10mm; }";
     document.head.appendChild(style);
+
+    // Единая высота карточки — на время печати ставим её и подгоняем
+    // содержимое под неё (см. .tag-doc-fixed/fitTagDocHeight). Меряем в
+    // том же виде, в котором печатается: без кнопок «Изменить/Удалить»
+    // (в @media print они скрыты, а на экране занимают место — иначе
+    // масштаб посчитался бы по лишней высоте) и в печатной ширине
+    // карточки (480px, см. @media print выше).
+    const group = el.tagDocHolder.querySelector(".tag-doc-group");
+    const doc = group && group.querySelector(".tag-doc");
+    const printFitStyle = document.createElement("style");
+    printFitStyle.textContent = "#viewTag .item-actions { display: none !important; }"
+      + " #viewTag .tag-doc-group { width: 100%; max-width: 480px; margin: 0 auto; }";
+    if (doc) {
+      document.head.appendChild(printFitStyle);
+      doc.classList.add("tag-doc-fixed");
+      fitTagDocHeight(group);
+    }
+
     function cleanup() {
       style.remove();
+      if (doc) {
+        printFitStyle.remove();
+        doc.classList.remove("tag-doc-fixed");
+        const inner = group.querySelector(".tag-doc-inner");
+        if (inner) { inner.style.transform = ""; inner.style.width = ""; }
+      }
       if (afterCleanup) afterCleanup();
       window.removeEventListener("afterprint", cleanup);
     }
@@ -5258,24 +5353,29 @@ const DB = {
 <style>
   @page { margin: 10mm; }
   body { font-family: -apple-system, "Segoe UI", Roboto, Arial, sans-serif; max-width: 560px; margin: 24px auto; padding: 0 16px; color: #1c1f26; }
-  .tag-doc { border: 5px double #1c1f26; overflow: hidden; display: flex; flex-direction: column; min-height: 640px; }
+  /* Высота карточки фиксированная и одинаковая у всех ценников (см.
+     .tag-doc-fixed в основном приложении): заказчик клеит их на
+     наличники в ряду дверей. Если позиций много и содержимое не
+     помещается — оно ужимается скриптом внизу файла. */
+  .tag-doc { border: 5px double #1c1f26; overflow: hidden; display: flex; flex-direction: column; height: 950px; }
+  .tag-doc-inner { display: flex; flex-direction: column; min-height: 100%; transform-origin: top left; }
   .tag-logo { display: block; width: 100%; height: auto; }
   .tag-header-sub { text-align: center; font-size: 12px; font-weight: 600; color: #000; padding: 10px 14px 0; line-height: 1.5; }
   .tag-check { display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px; margin-top: 2px; border: 1.5px solid #c81e1e; border-radius: 2px; color: #c81e1e; font-size: 11px; font-weight: 900; flex: 0 0 auto; }
   .tag-model-title { font-weight: 900; font-size: 26px; padding: 10px 14px 0; }
   .tag-model-top { display: flex; align-items: flex-start; }
-  .tag-model-cols { display: flex; flex-wrap: wrap; gap: 10px 22px; padding: 12px 14px 0; flex: 0 1 60%; min-width: 0; }
+  .tag-model-cols { display: flex; flex-wrap: wrap; gap: 10px 22px; padding: 12px 14px 0; flex: 0 1 54%; min-width: 0; }
   .tag-model-cols:only-child { flex: 1 1 auto; }
   .tag-model-col { flex: 1 1 150px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
   .tag-model-field { display: flex; gap: 6px; align-items: flex-start; min-width: 0; }
   .tag-model-field-label { font-weight: 700; font-size: 11px; }
   .tag-model-field-value { font-size: 12px; font-weight: 600; color: #000; overflow-wrap: break-word; }
   .tag-model-categories {
-    flex: 0 1 40%; min-width: 0; padding: 12px 14px 0 0; display: flex; flex-direction: column; gap: 10px;
+    flex: 0 1 46%; min-width: 0; padding: 12px 14px 0 0; display: flex; flex-direction: column; gap: 10px;
   }
   .tag-cat-group { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
   .tag-cat-material { font-weight: 700; font-size: 11px; }
-  .tag-cat-row { display: flex; justify-content: space-between; gap: 4px 18px; font-size: 12px; font-weight: 600; color: #000; min-width: 0; }
+  .tag-cat-row { display: flex; justify-content: space-between; gap: 4px 10px; font-size: 11px; font-weight: 600; color: #000; min-width: 0; }
   .tag-cat-num { flex: 0 1 auto; min-width: 0; }
   .tag-cat-price { flex: 0 0 auto; font-weight: 600; color: #1c1f26; white-space: nowrap; }
   .tag-model-price { font-weight: 900; font-size: 32px; text-align: center; padding: 14px 14px 4px; }
@@ -5319,13 +5419,24 @@ const DB = {
   }
   @media print {
     body { max-width: none; margin: 0; padding: 0; }
-    .tag-doc-group { width: 100%; max-width: 100%; }
+    /* Тот же ограничитель ширины, что и при печати прямо из приложения
+       (см. «#viewTag .tag-doc-group» в @media print основной страницы):
+       компактная карточка по центру листа, а не во всю ширину страницы.
+       Раньше здесь этого ограничителя не было, и один и тот же ценник
+       печатался в двух разных размерах: узким — через кнопку «Печать» в
+       приложении, и растянутым на весь лист — если сначала «Скачать
+       файл», а потом печатать уже его. Ценники должны быть одинаковыми
+       (в магазине они стоят в ряд), поэтому ширина теперь одна и та же
+       в обоих случаях. */
+    .tag-doc-group { width: 100%; max-width: 480px; margin: 0 auto; }
+    /* с Акцией — шире на приставку, чтобы сама карточка осталась 480px */
+    .tag-doc-group-with-promo { max-width: 640px; }
     .tag-doc { border: none; overflow: visible; }
   }
 </style></head>
 <body>
   <div class="${groupClass}">
-  <div class="tag-doc">
+  <div class="tag-doc"><div class="tag-doc-inner">
     <img class="tag-logo" src="${TAG_LOGO_DATA_URI}" alt="Двери 1 Сорт Окна — фирменный магазин">
     <div class="tag-header-sub">${TAG_HEADER_SUB_LINES.map(esc).join("<br>")}</div>
     ${leafCardHtml}
@@ -5336,7 +5447,7 @@ const DB = {
         <span>Подпись: _______________</span>
       </div>
     </div>
-  </div>
+  </div></div>
   ${tagPromoTabHtml(leaf, { ...view, readOnly: true }, fontSizePx)}
   </div>
   ${longestTitleName ? `<scr${""}ipt>
@@ -5394,6 +5505,31 @@ const DB = {
       shiftTo(document.querySelector(".tag-komplekt-band-with-promo .tag-komplekt-band-value"), targetLeft);
     })();
   </scr${""}ipt>` : ""}
+  <scr${""}ipt>
+    // Ужимает содержимое под фиксированную высоту карточки — то же, что
+    // fitTagDocHeight в приложении. Запускается последним: подгонка
+    // заголовка и выравнивание цен выше меряют координаты, а на уже
+    // отмасштабированном поддереве считали бы неверно.
+    (function () {
+      var doc = document.querySelector(".tag-doc");
+      var inner = document.querySelector(".tag-doc-inner");
+      if (!doc || !inner) return;
+      function fit() {
+        inner.style.transform = "";
+        inner.style.width = "";
+        var available = doc.clientHeight;
+        var natural = inner.scrollHeight;
+        if (!available || !natural || natural <= available) return;
+        var k = available / natural;
+        inner.style.width = (100 / k) + "%";
+        inner.style.transform = "scale(" + k + ")";
+      }
+      fit();
+      // Ещё раз после подгрузки логотипа/шрифтов — иначе высота может быть
+      // измерена до того, как картинка займёт своё место.
+      window.addEventListener("load", fit);
+    })();
+  </scr${""}ipt>
 </body></html>`;
     const blob = new Blob([html], { type: "text/html;charset=utf-8" });
     const url = URL.createObjectURL(blob);
@@ -5443,16 +5579,27 @@ const DB = {
       });
       clone.removeAttribute("id");
 
-      const width = Math.ceil(docEl.getBoundingClientRect().width);
-      // Высоту меряем у самого клона (без кнопок правки/удаления), а не у
-      // исходного docEl — иначе картинка выше реального содержимого клона
-      // ровно на высоту убранных .item-actions, и внизу остаётся пустая
-      // полоса (см. отчёт со скриншотом экспортированной картинки).
+      // Размер картинки — всегда один и тот же (TAG_DOC_PRINT_WIDTH ×
+      // высота .tag-doc-fixed), а не «сколько получилось на этом экране».
+      // Раньше ширина бралась из фактического размера на экране, поэтому
+      // у разных телефонов/ориентаций получались картинки разного размера,
+      // а высота вдобавок зависела от числа позиций — ценники в ряду на
+      // наличниках выглядели разными (см. отчёт с фото и видео из зала).
+      // С Акцией группа шире самой карточки на приставку (карточка — 75%
+      // группы, см. .tag-doc-group-with-promo), поэтому у неё своя ширина:
+      // сама карточка при этом всё равно ровно TAG_DOC_PRINT_WIDTH.
+      const withPromo = clone.classList.contains("tag-doc-group-with-promo");
+      const width = withPromo ? Math.round(TAG_DOC_PRINT_WIDTH / 0.75) : TAG_DOC_PRINT_WIDTH;
       clone.style.position = "absolute";
       clone.style.left = "-9999px";
       clone.style.top = "0";
       clone.style.width = width + "px";
+      clone.style.maxWidth = "none";
+      const cloneDoc = clone.querySelector(".tag-doc");
+      if (cloneDoc) cloneDoc.classList.add("tag-doc-fixed");
       document.body.appendChild(clone);
+      // Ужимаем содержимое под фиксированную высоту (если позиций много).
+      fitTagDocHeight(clone);
       // offsetHeight, а не scrollHeight — scrollHeight не включает толщину
       // рамки (border), из-за чего SVG/canvas были на ~10px короче реальной
       // карточки и нижняя часть двойной рамки просто обрезалась (см.
