@@ -424,21 +424,10 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 .scene-view-hint { font-size: 13px; color: var(--muted); margin: 0 0 4px; }
 .scene-controls { display: flex; flex-direction: column; gap: 14px; margin-top: 16px; }
 
-.custom-texture-row { display: flex; flex-direction: column; gap: 8px; }
-.custom-texture-row input[type="file"] { font-size: 13px; }
-.custom-texture-active { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-.custom-texture-name { font-size: 13px; font-weight: 600; color: var(--ok); }
-.custom-texture-modes { display: flex; gap: 12px; font-size: 13px; }
-.custom-texture-modes label { display: inline-flex; align-items: center; gap: 5px; color: var(--text); font-weight: 400; }
-.custom-texture-modes input { width: auto; }
-.custom-texture-clear {
-  font-size: 13px; padding: 5px 12px; border-radius: 999px;
-  border: 1px solid var(--border); background: var(--bg); color: var(--text); cursor: pointer;
-}
-.custom-texture-hint { font-size: 12px; color: var(--muted); margin: 0; }
-
-.prog-texture-row { display: flex; flex-direction: column; gap: 8px; }
-.prog-texture-row select { font-size: 14px; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text); }
+/* Панель «Настроить тон стены» — та же вёрстка, что и у тон-коррекции
+   плёнки в «Изменение цен» (.adjust-panel ниже), поэтому своих правил
+   почти не нужно: только раскрыта по умолчанию и без рамки-обводки. */
+.wall-adjust-panel { margin-top: 0; }
 
 /* Панель тон-коррекции плёнки в «Изменение цен» */
 .adjust-panel { flex: 1 1 100%; min-width: 0; margin-top: 4px; }
@@ -1066,6 +1055,12 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
       <select id="color"></select>
     </div>
 
+    <!-- Быстрый переход к 2D-картинке прямо от выбора цвета: дверь там
+         рисуется с текущими параметрами калькулятора (модель, цвет,
+         стекло, размеры), отдельно ничего выбирать не нужно. Обратно —
+         кнопкой «Возврат на страницу расчёта» на самой странице. -->
+    <button type="button" id="goToSceneBtn" class="btn-goto">🖼️ 2D картинка →</button>
+
     <div class="field" id="glassField">
       <label for="glass">Стекло</label>
       <select id="glass"></select>
@@ -1209,7 +1204,7 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
     </div><!-- /viewCalc -->
 
     <div id="viewScene" hidden>
-      <p class="scene-view-hint">Дверь показана с текущими параметрами из калькулятора (модель, цвет, стекло, размеры). Наличник — в цвет двери. Ниже можно подобрать цвет и текстуру стены.</p>
+      <p class="scene-view-hint">Дверь показана с текущими параметрами из калькулятора (модель, цвет, стекло, размеры). Наличник — в цвет двери. Ниже можно подобрать цвет и текстуру стены, а ползунками — настроить её тон.</p>
       <div class="door-preview">
         <svg id="s_doorPreview" class="door-preview-svg scene" viewBox="0 0 360 400" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Дверь на стене">
           <defs>
@@ -1245,32 +1240,39 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
       </div>
       <div class="scene-controls">
         <div class="wall-color-row">
-          <label for="s_wallColor">Цвет стены</label>
+          <label>Цвет стены</label>
           <div class="wall-swatches" id="s_wallSwatches"></div>
-          <input type="color" id="s_wallColor" aria-label="Свой цвет стены">
         </div>
         <div class="wall-texture-row">
           <label>Текстура стены</label>
           <div class="wall-textures" id="s_wallTextures"></div>
         </div>
-        <div class="prog-texture-row">
-          <label for="s_programTexture">Текстура программная</label>
-          <select id="s_programTexture"></select>
-          <p class="custom-texture-hint">Встроенная плёнка/цвет из каталога — ляжет на дверь.</p>
-        </div>
-        <div class="custom-texture-row">
-          <label for="s_customTexture">Своя текстура двери (плёнка)</label>
-          <input type="file" id="s_customTexture" accept="image/*">
-          <div id="s_customTextureActive" class="custom-texture-active" hidden>
-            <span class="custom-texture-name" id="s_customTextureName">Свой файл активен</span>
-            <div class="custom-texture-modes">
-              <label><input type="radio" name="ctMode" value="tile" checked> Замостить</label>
-              <label><input type="radio" name="ctMode" value="stretch"> Растянуть</label>
+        <!-- Тон стены — те же ползунки, что и у плёнки в «Изменение цен»
+             (см. colorRow/filterCss): готовых образцов цвета всегда мало,
+             а так любой из них подгоняется под реальную стену. Нативный
+             выбор цвета (<input type="color">) убран по просьбе заказчика
+             — системное окно «Тон/Насыщенность/Значение» ему не подошло. -->
+        <details class="adjust-panel wall-adjust-panel" open>
+          <summary>Настроить тон стены</summary>
+          <div class="adjust-body">
+            <div class="arow"><span>Оттенок</span><input type="range" class="adj wall-adj" data-k="h" min="-90" max="90" step="1" value="0"></div>
+            <div class="arow"><span>Насыщенность</span><input type="range" class="adj wall-adj" data-k="s" min="0" max="300" step="1" value="100"></div>
+            <div class="arow"><span>Яркость</span><input type="range" class="adj wall-adj" data-k="b" min="30" max="200" step="1" value="100"></div>
+            <div class="arow"><span>Контраст</span><input type="range" class="adj wall-adj" data-k="c" min="30" max="200" step="1" value="100"></div>
+            <details class="adjust-advanced">
+              <summary>Расширенные настройки (RGB)</summary>
+              <div class="adjust-advanced-body">
+                <div class="arow"><span>Красный</span><input type="range" class="adj wall-adj" data-k="cr" min="0" max="200" step="1" value="100"></div>
+                <div class="arow"><span>Зелёный</span><input type="range" class="adj wall-adj" data-k="cg" min="0" max="200" step="1" value="100"></div>
+                <div class="arow"><span>Синий</span><input type="range" class="adj wall-adj" data-k="cb" min="0" max="200" step="1" value="100"></div>
+              </div>
+            </details>
+            <div class="adjust-actions">
+              <button type="button" id="s_wallAdjustReset">Сбросить тон</button>
             </div>
-            <button type="button" id="s_customTextureClear" class="custom-texture-clear">Убрать</button>
           </div>
-          <p class="custom-texture-hint">Файл остаётся у вас в браузере, никуда не загружается. «Замостить» — для образца плёнки, «Растянуть» — для фото целой двери.</p>
-        </div>
+        </details>
+        <button type="button" id="sceneBackBtn" class="btn-goto">← Возврат на страницу расчёта</button>
       </div>
     </div>
 
@@ -1908,8 +1910,10 @@ const DB = {
     sceneMode: false,
     wallColor: "#e8e2d5",
     wallTexture: "smooth",
-    customTexture: null,          // data-URI своей текстуры двери (или null)
-    customTextureMode: "tile",    // "tile" (образец плёнки) | "stretch" (фото двери)
+    // Тон стены — те же поля, что и у тон-коррекции плёнки (см. adjOf/
+    // filterCss): Оттенок/Насыщенность/Яркость/Контраст + каналы R/G/B.
+    // Применяется ко всей стене целиком (см. buildScene).
+    wallAdjust: { h: 0, s: 100, b: 100, c: 100, cr: 100, cg: 100, cb: 100 },
 
     // --- Погонаж (см. computeOrder/applySectionUI) ---
     trimVid: "короб",
@@ -2045,13 +2049,10 @@ const DB = {
     breakdown: document.getElementById("breakdown"),
     total: document.getElementById("total"),
     sceneWallSwatches: document.getElementById("s_wallSwatches"),
-    sceneWallColor: document.getElementById("s_wallColor"),
     sceneWallTextures: document.getElementById("s_wallTextures"),
-    programTexture: document.getElementById("s_programTexture"),
-    customTexture: document.getElementById("s_customTexture"),
-    customTextureActive: document.getElementById("s_customTextureActive"),
-    customTextureName: document.getElementById("s_customTextureName"),
-    customTextureClear: document.getElementById("s_customTextureClear"),
+    wallAdjustReset: document.getElementById("s_wallAdjustReset"),
+    goToSceneBtn: document.getElementById("goToSceneBtn"),
+    sceneBackBtn: document.getElementById("sceneBackBtn"),
     menuBtn: document.getElementById("menuBtn"),
     menu: document.getElementById("menu"),
     menuStorageFill: document.getElementById("menuStorageFill"),
@@ -2597,23 +2598,6 @@ const DB = {
     el.color.value = state.color;
   }
 
-  // Селектор «Текстура программная» в разделе «2D картинка» — все встроенные
-  // плёнки/цвета каталога, сгруппированные по материалу. Выбор кладёт цвет на
-  // дверь (сбрасывая свою загруженную текстуру).
-  function populateProgramTexture() {
-    if (!el.programTexture) return;
-    const html = Object.keys(DB.colors).map((mat) => {
-      const names = Object.values(DB.colors[mat] || {}).flat().sort((a, b) => RU_COLLATOR.compare(a, b));
-      if (!names.length) return "";
-      const label = (DB.materialNames && DB.materialNames[mat]) || mat;
-      return `<optgroup label="${esc(label)}">` +
-        names.map((n) => `<option value="${esc(n)}">${esc(n)}</option>`).join("") +
-        `</optgroup>`;
-    }).join("");
-    el.programTexture.innerHTML = html;
-    el.programTexture.value = state.color;
-  }
-
   // Список стекол — только у выбранной модели полотна (своё стекло на
   // модель, см. DB.models[i].glasses); «Глухая (без стекла)» — не элемент
   // каталога, а всегда доступный первый вариант (см. computeOrder/
@@ -2882,34 +2866,7 @@ const DB = {
     // расцветки/текстуры, что и дверь.
     let doorFill;
 
-    if (forceScene && state.customTexture) {
-      // Своя текстура пользователя (загружена в разделе «2D картинка»).
-      doorFill = `url(#${c.patternId})`;
-      baseHex = "#b3aca0"; // нейтральный тон для лёгкого затенения/отражения
-      c.textureImage.setAttribute("href", state.customTexture);
-      c.textureImage.setAttribute("preserveAspectRatio", "none");
-      c.textureImage.setAttribute("x", 0);
-      c.textureImage.setAttribute("y", 0);
-      c.texturePattern.setAttribute("x", x);
-      c.texturePattern.setAttribute("y", y);
-      if (state.customTextureMode === "stretch") {
-        // Фото целой двери — растягиваем на всё полотно, без повторов.
-        c.textureImage.setAttribute("width", w);
-        c.textureImage.setAttribute("height", h);
-        c.texturePattern.setAttribute("width", w);
-        c.texturePattern.setAttribute("height", h);
-        c.texturePattern.innerHTML = `<use href="#${c.textureImageId}"/>`;
-      } else {
-        // Образец плёнки — мостим в масштабе 150x200 мм с зеркалированием.
-        c.textureImage.setAttribute("width", tileW);
-        c.textureImage.setAttribute("height", tileH);
-        c.texturePattern.setAttribute("width", tileW * 2);
-        c.texturePattern.setAttribute("height", tileH);
-        c.texturePattern.innerHTML = mirroredTiles(tileW, tileH);
-      }
-      c.leafRect.setAttribute("fill", doorFill);
-      c.varyRect.setAttribute("display", "none");
-    } else if (swatch && swatch.door) {
+    if (swatch && swatch.door) {
       // Готовая текстура полотна (AI/скан): одним изображением на всю дверь
       // (cover — без плитки, шума и зеркал), реальный цвет и мелкая грань.
       doorFill = `url(#${c.patternId})`;
@@ -3236,11 +3193,23 @@ const DB = {
     let s = sceneDefs(baseHex, wallColor, pfx);
 
     // --- Стена: базовый градиент + световое пятно слева-сверху + выбранная
-    //     текстура + виньетка по краям.
+    //     текстура + виньетка по краям. Вся стена целиком — в группе с
+    //     тон-фильтром (см. state.wallAdjust/filterCss): ползунками
+    //     «Настроить тон стены» на странице «2D картинка» готовый образец
+    //     цвета подгоняется под реальную стену, включая каналы R/G/B.
+    //     Фильтр на группе, а не на каждом слое — иначе тон накладывался бы
+    //     несколько раз подряд и уводил цвет.
+    // При значениях по умолчанию фильтр не навешиваем вовсе — лишний
+    // фильтр-контекст ни к чему, когда тон не менялся.
+    const wa = state.wallAdjust || {};
+    const wallTouched = (wa.h || 0) !== 0 || [wa.s, wa.b, wa.c, wa.cr, wa.cg, wa.cb]
+      .some((x) => x != null && Number(x) !== 100);
+    s += wallTouched ? `<g style="filter:${filterCss(wa)}">` : `<g>`;
     s += `<rect x="0" y="0" width="${W}" height="${floorY}" fill="url(#${idf("wall")})"/>`;
     s += `<rect x="0" y="0" width="${W}" height="${floorY}" fill="url(#${idf("wallGlow")})"/>`;
     s += wallTextureSVG(W, floorY, wallColor, wallTexture, idf);
     s += `<rect x="0" y="0" width="${W}" height="${floorY}" fill="url(#${idf("vignette")})"/>`;
+    s += `</g>`;
 
     // --- Пол: паркетная доска в перспективе. Ряды сгущаются к линии пола
     //     (даль), швы между досками смещены. Поверх — волокна дерева и глянец.
@@ -5979,57 +5948,35 @@ const DB = {
       if (selectedTagIds.size) downloadTagImagesForSelected(Array.from(selectedTagIds));
     });
     el.sceneWallSwatches.addEventListener("click", onWallSwatchClick);
-    el.sceneWallColor.addEventListener("input", () => setWallColor(el.sceneWallColor.value));
     el.sceneWallTextures.addEventListener("click", (e) => {
       const btn = e.target.closest(".wall-texture");
       if (btn) setWallTexture(btn.dataset.tex);
     });
-    // Загрузка своей текстуры двери (локально в браузере, без отправки).
-    el.customTexture.addEventListener("change", (e) => {
-      const file = e.target.files && e.target.files[0];
-      if (!file) return;
-      const reader = new FileReader();
-      reader.onload = () => {
-        state.customTexture = reader.result;
-        el.customTextureName.textContent = file.name;
-        el.customTextureActive.hidden = false;
+    // Тон стены — те же ползунки, что и у плёнки в «Изменение цен»
+    // (Оттенок/Насыщенность/Яркость/Контраст + каналы R/G/B), только
+    // применяются ко всей стене сразу (см. state.wallAdjust/buildScene).
+    document.querySelectorAll(".wall-adj").forEach((inp) => {
+      inp.addEventListener("input", () => {
+        const k = inp.dataset.k;
+        if (!k) return;
+        state.wallAdjust[k] = Number(inp.value);
         drawDoor(sceneCtx, true);
-      };
-      reader.readAsDataURL(file);
+      });
     });
-    el.customTextureActive.addEventListener("change", (e) => {
-      if (e.target.name === "ctMode") {
-        state.customTextureMode = e.target.value;
+    if (el.wallAdjustReset) {
+      el.wallAdjustReset.addEventListener("click", () => {
+        state.wallAdjust = { h: 0, s: 100, b: 100, c: 100, cr: 100, cg: 100, cb: 100 };
+        document.querySelectorAll(".wall-adj").forEach((inp) => {
+          const k = inp.dataset.k;
+          if (k) inp.value = state.wallAdjust[k];
+        });
         drawDoor(sceneCtx, true);
-      }
-    });
-    el.customTextureClear.addEventListener("click", () => {
-      state.customTexture = null;
-      el.customTexture.value = "";
-      el.customTextureActive.hidden = true;
-      drawDoor(sceneCtx, true);
-    });
-    // Выбор встроенной плёнки/цвета для двери прямо в разделе «2D картинка».
-    el.programTexture.addEventListener("change", (e) => {
-      const name = e.target.value;
-      let mat = state.material;
-      for (const m of Object.keys(DB.colors)) {
-        if (Object.values(DB.colors[m] || {}).flat().includes(name)) { mat = m; break; }
-      }
-      state.material = mat;
-      state.color = name;
-      // своя загруженная текстура уступает выбранной программной
-      if (state.customTexture) {
-        state.customTexture = null;
-        el.customTexture.value = "";
-        el.customTextureActive.hidden = true;
-      }
-      // синхронизируем калькулятор
-      el.material.value = mat;
-      populateColors();
-      el.color.value = name;
-      drawDoor(sceneCtx, true);
-    });
+      });
+    }
+    // Переходы «Расчёт ⇄ 2D картинка»: на 2D дверь рисуется с текущими
+    // параметрами калькулятора, отдельно ничего выбирать не нужно.
+    if (el.goToSceneBtn) el.goToSceneBtn.addEventListener("click", () => setView("scene"));
+    if (el.sceneBackBtn) el.sceneBackBtn.addEventListener("click", () => setView("calc"));
 
     // Полноэкранный просмотр двери в «2D картинка».
     const fsBtn = document.getElementById("s_fsBtn");
@@ -6061,7 +6008,6 @@ const DB = {
   // картинка», поэтому меняем состояние и синхронизируем обе панели.
   function setWallColor(hex) {
     state.wallColor = hex;
-    el.sceneWallColor.value = hex;
     renderWallSwatches();
     render();
   }
@@ -6151,7 +6097,7 @@ const DB = {
       b.classList.toggle("active", b.dataset.view === view)
     );
     if (view === "prices") renderPriceEditor();
-    if (view === "scene") { populateProgramTexture(); drawDoor(sceneCtx, true); }
+    if (view === "scene") drawDoor(sceneCtx, true);
     if (view === "room3d" && window.initRoom3D) window.initRoom3D();
     if (view === "order") renderOrderPage();
     if (view === "history") renderSpecHistoryPage();
@@ -7776,10 +7722,8 @@ const DB = {
     el.discount.value = state.discount;
     el.promo.value = state.promo;
     el.quantity.value = state.quantity;
-    el.sceneWallColor.value = state.wallColor;
     renderWallSwatches();
     renderWallTextures();
-    populateProgramTexture();
     updateEditBanner();
     bind();
 
