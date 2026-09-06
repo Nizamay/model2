@@ -422,6 +422,10 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 
 /* Раздел «2D картинка». */
 .scene-view-hint { font-size: 13px; color: var(--muted); margin: 0 0 4px; }
+/* Подпись под картинкой: показана дверь фотографией модели или схемой
+   (см. updateModelPhotoNote). */
+.scene-photo-note { font-size: 13px; line-height: 1.35; color: var(--muted); margin: 6px 0 0; text-align: center; }
+.scene-photo-note-empty { color: #b06a1a; }
 .scene-controls { display: flex; flex-direction: column; gap: 14px; margin-top: 16px; }
 
 /* Панель «Настроить тон стены» — та же вёрстка, что и у тон-коррекции
@@ -1204,7 +1208,7 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
     </div><!-- /viewCalc -->
 
     <div id="viewScene" hidden>
-      <p class="scene-view-hint">Дверь показана с текущими параметрами из калькулятора (модель, цвет, стекло, размеры). Наличник — в цвет двери. Ниже можно подобрать цвет и текстуру стены, а ползунками — настроить её тон.</p>
+      <p class="scene-view-hint">Дверь показана по текущему расчёту (модель, размеры). Если у модели загружено фото — полотно показывается фотографией, наличник берёт цвет с неё. Ниже можно подобрать цвет и текстуру стены, а ползунками — настроить её тон.</p>
       <div class="door-preview">
         <svg id="s_doorPreview" class="door-preview-svg scene" viewBox="0 0 360 400" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Дверь на стене">
           <defs>
@@ -1233,6 +1237,7 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
           <g id="s_doorHandleGroup"></g>
         </svg>
       </div>
+      <p class="scene-photo-note" id="s_modelPhotoNote" hidden></p>
       <button type="button" id="s_fsBtn" class="fs-btn">⛶ Во весь экран</button>
       <div id="s_fullscreen" class="fs-overlay" hidden>
         <button type="button" class="fs-close" id="s_fsClose" aria-label="Закрыть">✕</button>
@@ -2802,6 +2807,96 @@ const DB = {
     };
   }
 
+  // --- Фото модели на сцене ---------------------------------------------
+  //
+  // У каждой модели полотна в «Изменение цен» загружается настоящее фото
+  // (см. modelPhotoRow/onModelFileUpload). На фото уже всё настоящее:
+  // рисунок фрезеровки, стоевые профили и царги у сборных, расположение и
+  // цвет стёкол, направление древесных прожилок (вдоль стоек — снизу
+  // вверх, у царг — поперёк полотна). Поэтому на сцене показываем именно
+  // фото, а не схематичное полотно.
+  //
+  // Для раздела «Матрица» это законченная картинка: комплектация модели
+  // зафиксирована производителем и не меняется. Для «Сборные»/«Щитовые»
+  // фото пока показывается в том цвете, в котором снято — перекраска
+  // плёнки по выбору из расчёта делается отдельным шагом.
+  function currentModelPhoto() {
+    const m = getModel(state.modelId);
+    const sw = m && DB.modelSwatches ? DB.modelSwatches[m.id] : null;
+    return sw && sw.image ? sw : null;
+  }
+
+  // Цвет плёнки, снятый с самого фото: узкие полосы у левого и правого
+  // краёв полотна — это стоевой профиль (у сборных) или кромка (у щитовых),
+  // то есть чистая плёнка без стекла, ручки и теней от фрезеровки. Нужен,
+  // чтобы наличник на сцене был ровно в цвет двери с фотографии.
+  // Считается один раз на фото, асинхронно; до готовности возвращает null,
+  // а по готовности сам перерисовывает сцену.
+  const modelPhotoEdgeCache = new WeakMap();
+  function modelPhotoEdgeHex(photo) {
+    const cached = modelPhotoEdgeCache.get(photo);
+    if (cached !== undefined) return cached === "pending" ? null : cached;
+    modelPhotoEdgeCache.set(photo, "pending");
+    const img = new Image();
+    img.onload = () => {
+      let hex = null;
+      try {
+        const W = img.naturalWidth, H = img.naturalHeight;
+        const cv = document.createElement("canvas");
+        cv.width = W; cv.height = H;
+        const cx = cv.getContext("2d");
+        cx.drawImage(img, 0, 0);
+        const band = Math.max(1, Math.round(W * 0.06));
+        const inset = Math.round(W * 0.02);
+        const y0 = Math.round(H * 0.12);
+        const hh = Math.max(1, Math.round(H * 0.76));
+        const px = [];
+        [inset, W - band - inset].forEach((sx) => {
+          if (sx < 0 || sx + band > W) return;
+          const d = cx.getImageData(sx, y0, band, hh).data;
+          for (let i = 0; i < d.length; i += 4) {
+            if (d[i + 3] < 128) continue;
+            px.push([d[i], d[i + 1], d[i + 2], 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]]);
+          }
+        });
+        if (px.length) {
+          // Фото часто снято с сайта — по краям попадают тёмные полосы
+          // интерфейса и тени. Поэтому усредняем не всё подряд, а
+          // серединную половину по яркости: случайная тёмная или пересвеченная
+          // кромка цвет наличника не утянет.
+          px.sort((p, q) => p[3] - q[3]);
+          const lo = Math.floor(px.length * 0.25), hi = Math.ceil(px.length * 0.75);
+          let r = 0, g = 0, b = 0, n = 0;
+          for (let i = lo; i < hi; i++) { r += px[i][0]; g += px[i][1]; b += px[i][2]; n++; }
+          if (n) hex = "#" + [r, g, b].map((v) => Math.round(v / n).toString(16).padStart(2, "0")).join("");
+        }
+      } catch (err) { hex = null; }
+      modelPhotoEdgeCache.set(photo, hex);
+      if (el.viewScene && !el.viewScene.hidden) drawDoor(sceneCtx, true);
+    };
+    img.onerror = () => { modelPhotoEdgeCache.set(photo, null); };
+    img.src = photo.image;
+    return null;
+  }
+
+  // Подпись под картинкой: чем именно показана дверь и что с ней дальше.
+  function updateModelPhotoNote(photo) {
+    const note = document.getElementById("s_modelPhotoNote");
+    if (!note) return;
+    const m = getModel(state.modelId);
+    if (!m) { note.hidden = true; note.textContent = ""; return; }
+    note.hidden = false;
+    if (!photo) {
+      note.className = "scene-photo-note scene-photo-note-empty";
+      note.textContent = `У модели «${m.name}» ещё нет фотографии — показана схема полотна. Фото загружается в «Изменение цен» → модель → «Фото модели».`;
+      return;
+    }
+    note.className = "scene-photo-note";
+    note.textContent = m.type === "матрица"
+      ? `Фото модели «${m.name}». В разделе «Матрица» комплектация зафиксирована производителем — цвет, стекло и опции у этой модели именно такие.`
+      : `Фото модели «${m.name}» в том цвете, в котором снято. Перекраска плёнки под выбранный в расчёте цвет — следующий шаг.`;
+  }
+
   function drawDoor(c, forceScene) {
     const sceneMode = forceScene || state.sceneMode;
     const layout = sceneMode ? LAYOUTS.scene : LAYOUTS.plain;
@@ -2865,8 +2960,32 @@ const DB = {
     // doorFill используется и для наличника, чтобы коробка была той же
     // расцветки/текстуры, что и дверь.
     let doorFill;
+    // Фото модели (если загружено) вытесняет схематичное полотно целиком:
+    // и заливку, и стёкла, и ручку — всё это на фотографии уже есть.
+    const modelPhoto = sceneMode ? currentModelPhoto() : null;
 
-    if (swatch && swatch.door) {
+    if (modelPhoto) {
+      // Фото — одним изображением на всё полотно (slice, без плитки и
+      // зеркал): пропорции сохраняются, лишнее по краям обрезается.
+      c.textureImage.setAttribute("href", modelPhoto.image);
+      c.textureImage.setAttribute("preserveAspectRatio", "xMidYMid slice");
+      c.textureImage.setAttribute("x", 0);
+      c.textureImage.setAttribute("y", 0);
+      c.textureImage.setAttribute("width", w);
+      c.textureImage.setAttribute("height", h);
+      c.texturePattern.setAttribute("x", x);
+      c.texturePattern.setAttribute("y", y);
+      c.texturePattern.setAttribute("width", w);
+      c.texturePattern.setAttribute("height", h);
+      c.texturePattern.innerHTML = `<use href="#${c.textureImageId}"/>`;
+      c.leafRect.setAttribute("fill", `url(#${c.patternId})`);
+      c.varyRect.setAttribute("display", "none");
+      // Наличник — ровный цвет плёнки, снятый с кромки самой фотографии.
+      // Пока цвет не посчитан (первый кадр), берём прежнюю заливку.
+      const edge = modelPhotoEdgeHex(modelPhoto);
+      if (edge) baseHex = edge;
+      doorFill = baseHex;
+    } else if (swatch && swatch.door) {
       // Готовая текстура полотна (AI/скан): одним изображением на всю дверь
       // (cover — без плитки, шума и зеркал), реальный цвет и мелкая грань.
       doorFill = `url(#${c.patternId})`;
@@ -2906,7 +3025,9 @@ const DB = {
     }
     // Тон-коррекция плёнки (оттенок/насыщенность/яркость/контраст) —
     // задаётся в «Изменение цен» и хранится в DB.colorAdjust.
-    const doorFilter = filterCss(adjOf(state.color));
+    // На фото цвет уже настоящий — тон плёнки к нему не применяем (иначе
+    // фотография уедет по цвету от того, что снято).
+    const doorFilter = modelPhoto ? "" : filterCss(adjOf(state.color));
     c.leafRect.style.filter = doorFilter;
     // Мягкий вертикальный свет (сверху чуть светлее, снизу чуть темнее) —
     // ровная плоская дверь. Диагональ/сильная тень давали ложную выпуклость.
@@ -2919,8 +3040,9 @@ const DB = {
     const stileW = w * 0.09;
     const topRail = h * 0.06;
 
-    if (state.glassId === "none") {
-      // Глухая дверь — обычное полотно без остекления.
+    if (modelPhoto || state.glassId === "none") {
+      // Глухая дверь — обычное полотно без остекления. На фото модели
+      // стёкла свои, настоящие, схематичные квадраты поверх не рисуем.
       c.glassGroup.innerHTML = "";
     } else {
       // Остекление — пока 6 одинаковых квадратных стекол (2 колонки × 3 ряда).
@@ -2954,14 +3076,15 @@ const DB = {
       c.glassGroup.innerHTML = panes;
     }
 
-    // Ручка есть на любой двери, независимо от остекления.
+    // Ручка есть на любой двери, независимо от остекления. Исключение —
+    // фото модели: там ручка своя, на снимке.
     const handleY = y + h * 0.47;
     const handleThickness = Math.max(2, w * 0.018);
     const plateH = h * 0.09;
     const plateX = x + w - stileW * 0.62;
     const leverLen = w * 0.14;
 
-    c.handleGroup.innerHTML = `
+    c.handleGroup.innerHTML = modelPhoto ? "" : `
       <rect x="${plateX - handleThickness}" y="${handleY - plateH / 2}" width="${handleThickness * 2}" height="${plateH}" rx="${handleThickness}" fill="#cfd3d6" stroke="#8b8f93" stroke-width="0.6"/>
       <rect x="${plateX - leverLen}" y="${handleY - handleThickness / 2}" width="${leverLen}" height="${handleThickness}" rx="${handleThickness / 2}" fill="#cfd3d6" stroke="#8b8f93" stroke-width="0.6"/>
       <circle cx="${plateX}" cy="${handleY + plateH * 0.32}" r="${handleThickness * 0.55}" fill="#6f7377"/>
@@ -2972,6 +3095,8 @@ const DB = {
     c.sceneGroup.innerHTML = sceneMode
       ? buildScene(layout, { x: x, y: y, w: w, h: h }, baseHex, doorFill, state.wallColor, state.wallTexture, c.pfx, doorFilter, gap)
       : "";
+
+    if (sceneMode) updateModelPhotoNote(modelPhoto);
   }
 
   // --- Сцена интерьера (стена, пол, наличник, мебель) ------------------
