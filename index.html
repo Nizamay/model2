@@ -1913,7 +1913,7 @@ const DB = {
     // Тон стены — те же поля, что и у тон-коррекции плёнки (см. adjOf/
     // filterCss): Оттенок/Насыщенность/Яркость/Контраст + каналы R/G/B.
     // Применяется ко всей стене целиком (см. buildScene).
-    wallAdjust: { h: 0, s: 100, b: 100, c: 100, cr: 100, cg: 100, cb: 100 },
+    wallAdjust: { h: 0, s: 100, b: 100, c: 100, cr: 100, cg: 100, cb: 100 },  // см. WALL_ADJUST_DEFAULTS
 
     // --- Погонаж (см. computeOrder/applySectionUI) ---
     trimVid: "короб",
@@ -5965,11 +5965,7 @@ const DB = {
     });
     if (el.wallAdjustReset) {
       el.wallAdjustReset.addEventListener("click", () => {
-        state.wallAdjust = { h: 0, s: 100, b: 100, c: 100, cr: 100, cg: 100, cb: 100 };
-        document.querySelectorAll(".wall-adj").forEach((inp) => {
-          const k = inp.dataset.k;
-          if (k) inp.value = state.wallAdjust[k];
-        });
+        resetWallAdjust();
         drawDoor(sceneCtx, true);
       });
     }
@@ -6006,8 +6002,27 @@ const DB = {
 
   // Цвет и текстура стены — общие для превью в калькуляторе и раздела «2D
   // картинка», поэтому меняем состояние и синхронизируем обе панели.
+  // Значения тона стены «как есть» — без правок (см. state.wallAdjust).
+  const WALL_ADJUST_DEFAULTS = { h: 0, s: 100, b: 100, c: 100, cr: 100, cg: 100, cb: 100 };
+  // Возвращает ползунки «Настроить тон стены» в исходное положение и
+  // сбрасывает сам тон. Отдельной функцией — нужна и кнопке «Сбросить тон»,
+  // и смене цвета стены (см. setWallColor).
+  function resetWallAdjust() {
+    state.wallAdjust = { ...WALL_ADJUST_DEFAULTS };
+    document.querySelectorAll(".wall-adj").forEach((inp) => {
+      const k = inp.dataset.k;
+      if (k) inp.value = state.wallAdjust[k];
+    });
+  }
+
   function setWallColor(hex) {
     state.wallColor = hex;
+    // Тон сбрасывается вместе со сменой цвета: иначе настройки от прежнего
+    // цвета остаются висеть на новом, и стена на картинке не соответствует
+    // выбранному образцу (см. отчёт с фото — выбран бежевый, а стена
+    // сиреневая от прежней настройки). Подкручивать тон нужно уже ПОСЛЕ
+    // выбора цвета, от него же и отсчитывая.
+    resetWallAdjust();
     renderWallSwatches();
     render();
   }
