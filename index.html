@@ -2877,8 +2877,16 @@ const DB = {
     }
   };
 
-  function modelLayoutOf(modelId) {
-    const key = DB.modelLayouts && DB.modelLayouts[modelId];
+  // Точные раскладки конкретных моделей. Каждая сборная дверь по форме
+  // своя, поэтому шаблоны выше — только грубая заготовка: разбираем модели
+  // по одной и записываем сюда настоящие размеры. Ключ — название модели.
+  const BUILTIN_MODEL_LAYOUTS = {};
+
+  function modelLayoutOf(model) {
+    if (!model) return null;
+    const own = BUILTIN_MODEL_LAYOUTS[model.name];
+    if (own) return own;
+    const key = DB.modelLayouts && DB.modelLayouts[model.id];
     return (key && SBORNOE_LAYOUTS[key]) || null;
   }
 
@@ -2895,26 +2903,28 @@ const DB = {
 
   // Сборка полотна: стойки + ряды. Возвращает готовую SVG-разметку, которую
   // остаётся вставить в группу поверх места полотна.
-  function sbornoeLeafSVG(box, layout, film, glass, pfx) {
-    const { x, y, w, h } = box;
+  // Две заливки одной и той же плёнкой: вертикально — образец как снят
+  // (стойки полотна, боковые наличники), поперёк — тот же образец,
+  // повёрнутый на 90° (царги, филёнки, верхний наличник). Определяются один
+  // раз на отрисовку и используются и полотном, и коробкой.
+  function grainFills(film, pfx) {
     const idv = pfx + "grainV";
     const idh = pfx + "grainH";
+    if (!film.href) return { defs: "", v: film.hex, h: film.hex };
+    const tile = `<image href="${film.href}" x="0" y="0" width="${film.tileW}" height="${film.tileH}" preserveAspectRatio="none"/>`;
+    const defs =
+      `<pattern id="${idv}" patternUnits="userSpaceOnUse" x="${film.ax}" y="${film.ay}" width="${film.tileW}" height="${film.tileH}">${tile}</pattern>` +
+      `<pattern id="${idh}" patternUnits="userSpaceOnUse" x="${film.ax}" y="${film.ay}" width="${film.tileW}" height="${film.tileH}" patternTransform="rotate(90 ${film.ax} ${film.ay})">${tile}</pattern>`;
+    return { defs: `<defs>${defs}</defs>`, v: `url(#${idv})`, h: `url(#${idh})` };
+  }
+
+  function sbornoeLeafSVG(box, layout, film, fills, glass, pfx) {
+    const { x, y, w, h } = box;
     const seam = Math.max(0.5, w * 0.004);
+    const fillV = fills.v;
+    const fillH = fills.h;
 
-    let defs = "";
-    let fillV = film.hex;
-    let fillH = film.hex;
-    if (film.href) {
-      // Один и тот же образец: вертикально — как снят, горизонтально —
-      // повёрнут на 90°, чтобы прожилки легли поперёк полотна.
-      const tile = `<image href="${film.href}" x="0" y="0" width="${film.tileW}" height="${film.tileH}" preserveAspectRatio="none"/>`;
-      defs += `<pattern id="${idv}" patternUnits="userSpaceOnUse" x="${x}" y="${y}" width="${film.tileW}" height="${film.tileH}">${tile}</pattern>`;
-      defs += `<pattern id="${idh}" patternUnits="userSpaceOnUse" x="${x}" y="${y}" width="${film.tileW}" height="${film.tileH}" patternTransform="rotate(90 ${x} ${y})">${tile}</pattern>`;
-      fillV = `url(#${idv})`;
-      fillH = `url(#${idh})`;
-    }
-
-    let s = `<defs>${defs}</defs>`;
+    let s = "";
     const g0 = `<g${film.filter ? ` style="filter:${film.filter}"` : ""}>`;
 
     // Ряды между стойками — сверху вниз.
@@ -3146,7 +3156,7 @@ const DB = {
     // полотно целиком (и заливку, и стёкла, и ручку — всё это на снимке уже
     // есть). Если нет ни того ни другого — прежняя схема.
     const curModel = sceneMode ? getModel(state.modelId) : null;
-    const sbLayout = curModel && curModel.type === "сборное" ? modelLayoutOf(curModel.id) : null;
+    const sbLayout = curModel && curModel.type === "сборное" ? modelLayoutOf(curModel) : null;
     const modelPhoto = sceneMode && !sbLayout ? currentModelPhoto() : null;
 
     if (modelPhoto) {
@@ -3214,6 +3224,15 @@ const DB = {
     // фотография уедет по цвету от того, что снято).
     const doorFilter = modelPhoto ? "" : filterCss(adjOf(state.color));
     c.leafRect.style.filter = doorFilter;
+
+    // Заливки плёнкой по направлению прожилок — ими красятся и три доски
+    // наличника, и детали собранного полотна. Строятся из образца плёнки;
+    // когда образца нет (фото модели, готовая текстура полотна, ровная
+    // эмаль) — обе заливки совпадают с прежней, ничего не меняется.
+    const casingFill = grainFills({
+      href: (swatch && !swatch.door) ? (swatch.tileImage || swatch.image) : "",
+      tileW: tileW, tileH: tileH, hex: doorFill, ax: x, ay: y
+    }, c.pfx);
     // Мягкий вертикальный свет (сверху чуть светлее, снизу чуть темнее) —
     // ровная плоская дверь. Диагональ/сильная тень давали ложную выпуклость.
     c.shadeGradient.innerHTML = `
@@ -3232,11 +3251,8 @@ const DB = {
       const parts = sbornoeLeafSVG(
         { x: x, y: y, w: w, h: h },
         sbLayout,
-        {
-          href: swatch ? (swatch.tileImage || swatch.image) : "",
-          tileW: tileW, tileH: tileH, hex: baseHex,
-          filter: filterCss(adjOf(state.color))
-        },
+        { filter: doorFilter },
+        casingFill,
         { id: state.glassId, name: glassName },
         c.pfx
       );
@@ -3294,7 +3310,7 @@ const DB = {
     // Сцена «на стене» рисуется ПОЗАДИ полотна (группа сцены идёт раньше в
     // DOM), поэтому стена и наличник не перекрывают дверь.
     c.sceneGroup.innerHTML = sceneMode
-      ? buildScene(layout, { x: x, y: y, w: w, h: h }, baseHex, doorFill, state.wallColor, state.wallTexture, c.pfx, doorFilter, gap)
+      ? buildScene(layout, { x: x, y: y, w: w, h: h }, baseHex, casingFill, state.wallColor, state.wallTexture, c.pfx, doorFilter, gap)
       : "";
 
     if (sceneMode) updateModelPhotoNote(modelPhoto, sbLayout);
@@ -3508,7 +3524,7 @@ const DB = {
     return noise("paint", 0.15); // smooth (гладкая окраска) — почти без фактуры
   }
 
-  function buildScene(layout, door, baseHex, doorFill, wallColor, wallTexture, pfx, doorFilter, gap) {
+  function buildScene(layout, door, baseHex, casingFill, wallColor, wallTexture, pfx, doorFilter, gap) {
     gap = gap || 0;
     const W = layout.vbW;
     const H = layout.vbH;
@@ -3516,7 +3532,9 @@ const DB = {
     const floorH = H - floorY;
     const idf = (n) => pfx + "sc-" + n;
 
-    let s = sceneDefs(baseHex, wallColor, pfx);
+    // Заливки плёнкой с двумя направлениями прожилок объявляем здесь: ими
+    // пользуются и наличник, и собранное полотно (см. grainFills).
+    let s = (casingFill.defs || "") + sceneDefs(baseHex, wallColor, pfx);
 
     // --- Стена: базовый градиент + световое пятно слева-сверху + выбранная
     //     текстура + виньетка по краям. Вся стена целиком — в группе с
@@ -3592,25 +3610,36 @@ const DB = {
     const ohSide = oh + gap;
     // Тень коробки на стену (падает вправо-вниз).
     s += `<rect x="${ox + 3}" y="${oy + 3}" width="${ow}" height="${ohSide}" rx="2" fill="rgba(20,12,4,0.20)" filter="url(#${idf("soft")})"/>`;
-    // Лицевые доски коробки — та же текстура И ТОТ ЖЕ ТОН, что у полотна
-    // (тон-фильтр применяем группой, чтобы наличник совпадал с дверью).
+    // Наличник — не одна рамка, а ТРИ отдельные доски, срезанные на ус в
+    // верхних углах: левая, правая и верхняя перемычка. Плёнка на каждой
+    // лежит вдоль доски, как и на настоящем наличнике: на боковых прожилки
+    // вертикально, на верхней — поперёк, повёрнуты на 90° (см. grainFills).
     const df = doorFilter || "none";
+    // Ус: верхняя доска — трапеция, боковые срезаны под 45° сверху.
+    const topPts = `${ox},${oy} ${ox + ow},${oy} ${ox + ow - casing},${oy + casing} ${ox + casing},${oy + casing}`;
+    const leftPts = `${ox},${oy} ${ox + casing},${oy + casing} ${ox + casing},${oy + ohSide} ${ox},${oy + ohSide}`;
+    const rightX = door.x + door.w;
+    const rightPts = `${rightX + casing},${oy} ${rightX + casing},${oy + ohSide} ${rightX},${oy + ohSide} ${rightX},${oy + casing}`;
     s += `<g style="filter:${df}">`;
-    s += `<rect x="${ox}" y="${oy}" width="${casing}" height="${ohSide}" fill="${doorFill}"/>`;
-    s += `<rect x="${door.x + door.w}" y="${oy}" width="${casing}" height="${ohSide}" fill="${doorFill}"/>`;
-    s += `<rect x="${ox}" y="${oy}" width="${ow}" height="${casing}" fill="${doorFill}"/>`;
+    s += `<polygon points="${leftPts}" fill="${casingFill.v}"/>`;
+    s += `<polygon points="${rightPts}" fill="${casingFill.v}"/>`;
+    s += `<polygon points="${topPts}" fill="${casingFill.h}"/>`;
     s += `</g>`;
-    // Лёгкий, мягкий рельеф профиля (без сильных перепадов тона).
-    s += `<rect x="${ox}" y="${oy}" width="${casing}" height="${ohSide}" fill="#ffffff" opacity="0.04"/>`;
-    s += `<rect x="${ox}" y="${oy}" width="${ow}" height="${casing}" fill="#ffffff" opacity="0.03"/>`;
-    s += `<rect x="${door.x + door.w}" y="${oy}" width="${casing}" height="${ohSide}" fill="#000000" opacity="0.07"/>`;
+    // Лёгкий, мягкий рельеф профиля у каждой доски отдельно (без сильных
+    // перепадов тона): свет слева-сверху.
+    s += `<polygon points="${leftPts}" fill="#ffffff" opacity="0.05"/>`;
+    s += `<polygon points="${topPts}" fill="#ffffff" opacity="0.035"/>`;
+    s += `<polygon points="${rightPts}" fill="#000000" opacity="0.07"/>`;
     // Тонкий чёткий кант на внешней грани (свет) и внутренней (тень).
     s += `<rect x="${ox}" y="${oy}" width="0.6" height="${ohSide}" fill="#ffffff" opacity="0.55" shape-rendering="crispEdges"/>`;
     s += `<rect x="${ox}" y="${oy}" width="${ow}" height="0.6" fill="#ffffff" opacity="0.55" shape-rendering="crispEdges"/>`;
     s += `<rect x="${ox + ow - 0.6}" y="${oy}" width="0.6" height="${ohSide}" fill="rgba(0,0,0,0.18)" shape-rendering="crispEdges"/>`;
-    // Косой стык (ус) в верхних углах коробки — тонкий.
-    s += `<line x1="${ox}" y1="${oy}" x2="${door.x}" y2="${door.y}" stroke="rgba(0,0,0,0.18)" stroke-width="0.4"/>`;
-    s += `<line x1="${ox + ow}" y1="${oy}" x2="${door.x + door.w}" y2="${door.y}" stroke="rgba(0,0,0,0.18)" stroke-width="0.4"/>`;
+    // Сам стык на ус — тень и тонкий блик рядом, чтобы доски читались как
+    // отдельные детали, а не как одна гнутая рамка.
+    s += `<line x1="${ox}" y1="${oy}" x2="${door.x}" y2="${door.y}" stroke="rgba(0,0,0,0.30)" stroke-width="0.7"/>`;
+    s += `<line x1="${ox + 0.7}" y1="${oy}" x2="${door.x + 0.7}" y2="${door.y}" stroke="rgba(255,255,255,0.22)" stroke-width="0.5"/>`;
+    s += `<line x1="${ox + ow}" y1="${oy}" x2="${door.x + door.w}" y2="${door.y}" stroke="rgba(0,0,0,0.30)" stroke-width="0.7"/>`;
+    s += `<line x1="${ox + ow - 0.7}" y1="${oy}" x2="${door.x + door.w - 0.7}" y2="${door.y}" stroke="rgba(255,255,255,0.18)" stroke-width="0.5"/>`;
     // Тонкая чёткая теневая четверть между коробкой и полотном.
     s += `<rect x="${door.x - 1}" y="${door.y - 1}" width="${door.w + 2}" height="${door.h + 1}" fill="none" stroke="rgba(0,0,0,0.22)" stroke-width="0.6"/>`;
 
