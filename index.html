@@ -2880,7 +2880,29 @@ const DB = {
   // Точные раскладки конкретных моделей. Каждая сборная дверь по форме
   // своя, поэтому шаблоны выше — только грубая заготовка: разбираем модели
   // по одной и записываем сюда настоящие размеры. Ключ — название модели.
-  const BUILTIN_MODEL_LAYOUTS = {};
+  // Высоты рядов — в тех же единицах, что сняты с фотографии модели (пикселы
+  // снимка): важны только пропорции, сумма нормируется по высоте полотна.
+  const BUILTIN_MODEL_LAYOUTS = {
+    // Снято с фото заказчика: полотно 312 x 944 на снимке. Стойки по 45,
+    // верхняя царга 84, нижняя 47, четыре ряда стекла по два столбца,
+    // между рядами царги по 25, вертикальный средник 30.
+    "Британия ПО": {
+      name: "Британия ПО",
+      stile: 45 / 312,
+      mullion: 30 / 312,
+      rows: [
+        { k: "f", h: 84 },
+        { k: "g", h: 183, cols: 2 },
+        { k: "f", h: 25 },
+        { k: "g", h: 185, cols: 2 },
+        { k: "f", h: 25 },
+        { k: "g", h: 178, cols: 2 },
+        { k: "f", h: 25 },
+        { k: "g", h: 192, cols: 2 },
+        { k: "f", h: 47 }
+      ]
+    }
+  };
 
   function modelLayoutOf(model) {
     if (!model) return null;
@@ -2939,11 +2961,27 @@ const DB = {
       const rh = (r.h / total) * h;
       if (r.k === "g") {
         const p = glassPaint(glass.id, glass.name);
-        // Стекло утоплено: тонкая тень по краю проёма + блик по стеклу.
-        glassMarkup += `<rect x="${innerX}" y="${cy}" width="${innerW}" height="${rh}" fill="${p.fill}"/>`;
-        glassMarkup += `<rect x="${innerX}" y="${cy}" width="${innerW}" height="${rh}" fill="url(#${pfx}glassSheen)" opacity="${p.light}"/>`;
-        glassMarkup += `<rect x="${innerX}" y="${cy}" width="${innerW}" height="${Math.max(0.6, rh * 0.10)}" fill="rgba(0,0,0,0.45)"/>`;
-        glassMarkup += `<rect x="${innerX}" y="${cy + rh - Math.max(0.6, rh * 0.08)}" width="${innerW}" height="${Math.max(0.6, rh * 0.08)}" fill="rgba(255,255,255,0.18)"/>`;
+        // Стекло в ряду может быть разбито вертикальными средниками на
+        // несколько частей (cols) — как на «Британии»: 2 столбца стекла.
+        const cols = Math.max(1, r.cols || 1);
+        const mw = cols > 1 ? Math.max(1.5, w * (layout.mullion || 0.09)) : 0;
+        const paneW = (innerW - mw * (cols - 1)) / cols;
+        for (let ci = 0; ci < cols; ci++) {
+          const px = innerX + ci * (paneW + mw);
+          // Стекло утоплено: тонкая тень по краю проёма + блик по стеклу.
+          glassMarkup += `<rect x="${px}" y="${cy}" width="${paneW}" height="${rh}" fill="${p.fill}"/>`;
+          glassMarkup += `<rect x="${px}" y="${cy}" width="${paneW}" height="${rh}" fill="url(#${pfx}glassSheen)" opacity="${p.light}"/>`;
+          glassMarkup += `<rect x="${px}" y="${cy}" width="${paneW}" height="${Math.max(0.6, rh * 0.06)}" fill="rgba(0,0,0,0.45)"/>`;
+          glassMarkup += `<rect x="${px}" y="${cy + rh - Math.max(0.6, rh * 0.05)}" width="${paneW}" height="${Math.max(0.6, rh * 0.05)}" fill="rgba(255,255,255,0.18)"/>`;
+          glassMarkup += `<rect x="${px}" y="${cy}" width="${Math.max(0.5, paneW * 0.02)}" height="${rh}" fill="rgba(0,0,0,0.25)"/>`;
+        }
+        // Средники — вертикальные детали, прожилки вдоль них.
+        for (let ci = 1; ci < cols; ci++) {
+          const mx = innerX + ci * paneW + (ci - 1) * mw;
+          film_ += `<rect x="${mx}" y="${cy}" width="${mw}" height="${rh}" fill="${fillV}"/>`;
+          film_ += `<rect x="${mx}" y="${cy}" width="${seam * 0.8}" height="${rh}" fill="rgba(255,255,255,0.18)"/>`;
+          film_ += `<rect x="${mx + mw - seam}" y="${cy}" width="${seam}" height="${rh}" fill="rgba(0,0,0,0.18)"/>`;
+        }
       } else {
         // Царга/филёнка — плёнка поперёк полотна.
         film_ += `<rect x="${innerX}" y="${cy}" width="${innerW}" height="${rh}" fill="${fillH}"/>`;
