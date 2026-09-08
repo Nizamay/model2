@@ -430,6 +430,12 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 .model-layout-row { display: flex; flex-direction: column; gap: 4px; padding: 4px 0 8px; }
 .model-layout-row select { width: 100%; }
 .model-layout-hint { font-size: 12px; color: var(--muted); }
+/* Наложение фото модели на собранный макет (см. s_photoOverlayRow). */
+.photo-overlay-row { display: flex; flex-direction: column; gap: 6px; margin: 10px 0; }
+.photo-overlay-toggle { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+.photo-overlay-row .arow { display: flex; align-items: center; gap: 10px; }
+.photo-overlay-row .arow span { font-size: 13px; color: var(--muted); min-width: 96px; }
+.photo-overlay-row .arow input[type="range"] { flex: 1; }
 .scene-controls { display: flex; flex-direction: column; gap: 14px; margin-top: 16px; }
 
 /* Панель «Настроить тон стены» — та же вёрстка, что и у тон-коррекции
@@ -1281,6 +1287,13 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
             </div>
           </div>
         </details>
+        <!-- Сверка макета с оригиналом: фото модели накладывается прямо на
+             собранную дверь, полупрозрачно. Так сразу видно, где раскладка
+             разошлась с настоящей дверью, и что править. -->
+        <div class="photo-overlay-row" id="s_photoOverlayRow" hidden>
+          <label class="photo-overlay-toggle"><input type="checkbox" id="s_photoOverlay"> Наложить фото модели для сверки</label>
+          <div class="arow"><span>Прозрачность</span><input type="range" id="s_photoOverlayOpacity" min="10" max="90" step="5" value="50"></div>
+        </div>
         <button type="button" id="sceneBackBtn" class="btn-goto">← Возврат на страницу расчёта</button>
       </div>
     </div>
@@ -1928,6 +1941,9 @@ const DB = {
     // filterCss): Оттенок/Насыщенность/Яркость/Контраст + каналы R/G/B.
     // Применяется ко всей стене целиком (см. buildScene).
     wallAdjust: { h: 0, s: 100, b: 100, c: 100, cr: 100, cg: 100, cb: 100 },  // см. WALL_ADJUST_DEFAULTS
+    // Сверка собранного макета с фотографией модели (см. s_photoOverlayRow).
+    photoOverlay: false,
+    photoOverlayOpacity: 50,
 
     // --- Погонаж (см. computeOrder/applySectionUI) ---
     trimVid: "короб",
@@ -2963,6 +2979,8 @@ const DB = {
     const innerW = w - stileW * 2;
     // Раскладка внутри стекла (шпросы) — своя, более тонкая планка.
     const barW = Math.max(1, w * ((layout.bar || layout.profile * 0.6) / (layout.leafW || 480)));
+    // Кромка проёма под стеклом — одинаковая со всех четырёх сторон.
+    const bead = Math.max(0.4, w * 0.005);
 
     // Царги занимают фиксированную высоту, остальное делят между собой
     // филёнки и стёкла по своим относительным высотам.
@@ -2990,9 +3008,14 @@ const DB = {
             // Стекло утоплено: тонкая тень по краю проёма + блик по стеклу.
             glassMarkup += `<rect x="${px}" y="${py}" width="${paneW}" height="${paneH}" fill="${p.fill}"/>`;
             glassMarkup += `<rect x="${px}" y="${py}" width="${paneW}" height="${paneH}" fill="url(#${pfx}glassSheen)" opacity="${p.light}"/>`;
-            glassMarkup += `<rect x="${px}" y="${py}" width="${paneW}" height="${Math.max(0.5, paneH * 0.04)}" fill="rgba(0,0,0,0.42)"/>`;
-            glassMarkup += `<rect x="${px}" y="${py + paneH - Math.max(0.5, paneH * 0.03)}" width="${paneW}" height="${Math.max(0.5, paneH * 0.03)}" fill="rgba(255,255,255,0.18)"/>`;
-            glassMarkup += `<rect x="${px}" y="${py}" width="${Math.max(0.4, paneW * 0.02)}" height="${paneH}" fill="rgba(0,0,0,0.22)"/>`;
+            // Стекло утоплено — по краю проёма тонкая ровная кромка одной и
+            // той же толщины со всех сторон. Толстая тень сверху съедала
+            // поперечную рейку: она казалась тоньше продольной, хотя рейки
+            // одинаковые.
+            glassMarkup += `<rect x="${px}" y="${py}" width="${paneW}" height="${bead}" fill="rgba(0,0,0,0.26)"/>`;
+            glassMarkup += `<rect x="${px}" y="${py}" width="${bead}" height="${paneH}" fill="rgba(0,0,0,0.18)"/>`;
+            glassMarkup += `<rect x="${px}" y="${py + paneH - bead}" width="${paneW}" height="${bead}" fill="rgba(255,255,255,0.16)"/>`;
+            glassMarkup += `<rect x="${px + paneW - bead}" y="${py}" width="${bead}" height="${paneH}" fill="rgba(255,255,255,0.10)"/>`;
           }
         }
         // Раскладка: вертикальные планки — прожилки вдоль них, горизонтальные
@@ -3222,7 +3245,8 @@ const DB = {
     // есть). Если нет ни того ни другого — прежняя схема.
     const curModel = sceneMode ? getModel(state.modelId) : null;
     const sbLayout = curModel && curModel.type === "сборное" ? modelLayoutOf(curModel) : null;
-    const modelPhoto = sceneMode && !sbLayout ? currentModelPhoto() : null;
+    const havePhoto = sceneMode ? currentModelPhoto() : null;
+    const modelPhoto = sbLayout ? null : havePhoto;
 
     if (modelPhoto) {
       // Фото — одним изображением на всё полотно (slice, без плитки и
@@ -3321,7 +3345,13 @@ const DB = {
         { id: state.glassId, name: glassName },
         c.pfx
       );
-      c.glassGroup.innerHTML = `<g clip-path="url(#${c.pfx}doorClip)">${parts}</g>`;
+      // Сверка с оригиналом: фото модели поверх макета, полупрозрачно.
+      let overlay = "";
+      if (havePhoto && state.photoOverlay) {
+        const op = Math.max(0, Math.min(100, Number(state.photoOverlayOpacity) || 50)) / 100;
+        overlay = `<image href="${havePhoto.image}" x="${x}" y="${y}" width="${w}" height="${h}" preserveAspectRatio="xMidYMid slice" opacity="${op}"/>`;
+      }
+      c.glassGroup.innerHTML = `<g clip-path="url(#${c.pfx}doorClip)">${parts}${overlay}</g>`;
     } else if (modelPhoto || state.glassId === "none") {
       // Глухая дверь — обычное полотно без остекления. На фото модели
       // стёкла свои, настоящие, схематичные квадраты поверх не рисуем.
@@ -3378,7 +3408,13 @@ const DB = {
       ? buildScene(layout, { x: x, y: y, w: w, h: h }, baseHex, casingFill, state.wallColor, state.wallTexture, c.pfx, doorFilter, gap)
       : "";
 
-    if (sceneMode) updateModelPhotoNote(modelPhoto, sbLayout);
+    if (sceneMode) {
+      updateModelPhotoNote(modelPhoto, sbLayout);
+      // Сверять макет с фотографией есть смысл только там, где есть и то и
+      // другое: собранное полотно и снимок этой же модели.
+      const row = document.getElementById("s_photoOverlayRow");
+      if (row) row.hidden = !(sbLayout && havePhoto);
+    }
   }
 
   // --- Сцена интерьера (стена, пол, наличник, мебель) ------------------
@@ -6388,6 +6424,17 @@ const DB = {
         drawDoor(sceneCtx, true);
       });
     }
+    // Сверка макета с фотографией модели (см. s_photoOverlayRow).
+    const overlayCb = document.getElementById("s_photoOverlay");
+    const overlayOp = document.getElementById("s_photoOverlayOpacity");
+    if (overlayCb) overlayCb.addEventListener("change", () => {
+      state.photoOverlay = overlayCb.checked;
+      drawDoor(sceneCtx, true);
+    });
+    if (overlayOp) overlayOp.addEventListener("input", () => {
+      state.photoOverlayOpacity = Number(overlayOp.value);
+      drawDoor(sceneCtx, true);
+    });
     // Переходы «Расчёт ⇄ 2D картинка»: на 2D дверь рисуется с текущими
     // параметрами калькулятора, отдельно ничего выбирать не нужно.
     if (el.goToSceneBtn) el.goToSceneBtn.addEventListener("click", () => setView("scene"));
