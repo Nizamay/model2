@@ -3610,36 +3610,35 @@ const DB = {
     const ohSide = oh + gap;
     // Тень коробки на стену (падает вправо-вниз).
     s += `<rect x="${ox + 3}" y="${oy + 3}" width="${ow}" height="${ohSide}" rx="2" fill="rgba(20,12,4,0.20)" filter="url(#${idf("soft")})"/>`;
-    // Наличник — не одна рамка, а ТРИ отдельные доски, срезанные на ус в
-    // верхних углах: левая, правая и верхняя перемычка. Плёнка на каждой
-    // лежит вдоль доски, как и на настоящем наличнике: на боковых прожилки
-    // вертикально, на верхней — поперёк, повёрнуты на 90° (см. grainFills).
+    // Наличник — не одна рамка, а ТРИ отдельные доски. Соединение не на ус:
+    // боковые доски идут во всю длину, сверху донизу, а верхняя примыкает
+    // между ними встык. Плёнка на каждой доске лежит вдоль неё, как и на
+    // настоящем наличнике: на боковых прожилки вертикально, на верхней —
+    // поперёк, повёрнуты на 90° (см. grainFills).
     const df = doorFilter || "none";
-    // Ус: верхняя доска — трапеция, боковые срезаны под 45° сверху.
-    const topPts = `${ox},${oy} ${ox + ow},${oy} ${ox + ow - casing},${oy + casing} ${ox + casing},${oy + casing}`;
-    const leftPts = `${ox},${oy} ${ox + casing},${oy + casing} ${ox + casing},${oy + ohSide} ${ox},${oy + ohSide}`;
     const rightX = door.x + door.w;
-    const rightPts = `${rightX + casing},${oy} ${rightX + casing},${oy + ohSide} ${rightX},${oy + ohSide} ${rightX},${oy + casing}`;
+    const topX = ox + casing;
+    const topW = ow - casing * 2;
     s += `<g style="filter:${df}">`;
-    s += `<polygon points="${leftPts}" fill="${casingFill.v}"/>`;
-    s += `<polygon points="${rightPts}" fill="${casingFill.v}"/>`;
-    s += `<polygon points="${topPts}" fill="${casingFill.h}"/>`;
+    s += `<rect x="${ox}" y="${oy}" width="${casing}" height="${ohSide}" fill="${casingFill.v}"/>`;
+    s += `<rect x="${rightX}" y="${oy}" width="${casing}" height="${ohSide}" fill="${casingFill.v}"/>`;
+    s += `<rect x="${topX}" y="${oy}" width="${topW}" height="${casing}" fill="${casingFill.h}"/>`;
     s += `</g>`;
     // Лёгкий, мягкий рельеф профиля у каждой доски отдельно (без сильных
     // перепадов тона): свет слева-сверху.
-    s += `<polygon points="${leftPts}" fill="#ffffff" opacity="0.05"/>`;
-    s += `<polygon points="${topPts}" fill="#ffffff" opacity="0.035"/>`;
-    s += `<polygon points="${rightPts}" fill="#000000" opacity="0.07"/>`;
+    s += `<rect x="${ox}" y="${oy}" width="${casing}" height="${ohSide}" fill="#ffffff" opacity="0.05"/>`;
+    s += `<rect x="${topX}" y="${oy}" width="${topW}" height="${casing}" fill="#ffffff" opacity="0.035"/>`;
+    s += `<rect x="${rightX}" y="${oy}" width="${casing}" height="${ohSide}" fill="#000000" opacity="0.07"/>`;
     // Тонкий чёткий кант на внешней грани (свет) и внутренней (тень).
     s += `<rect x="${ox}" y="${oy}" width="0.6" height="${ohSide}" fill="#ffffff" opacity="0.55" shape-rendering="crispEdges"/>`;
     s += `<rect x="${ox}" y="${oy}" width="${ow}" height="0.6" fill="#ffffff" opacity="0.55" shape-rendering="crispEdges"/>`;
     s += `<rect x="${ox + ow - 0.6}" y="${oy}" width="0.6" height="${ohSide}" fill="rgba(0,0,0,0.18)" shape-rendering="crispEdges"/>`;
-    // Сам стык на ус — тень и тонкий блик рядом, чтобы доски читались как
-    // отдельные детали, а не как одна гнутая рамка.
-    s += `<line x1="${ox}" y1="${oy}" x2="${door.x}" y2="${door.y}" stroke="rgba(0,0,0,0.30)" stroke-width="0.7"/>`;
-    s += `<line x1="${ox + 0.7}" y1="${oy}" x2="${door.x + 0.7}" y2="${door.y}" stroke="rgba(255,255,255,0.22)" stroke-width="0.5"/>`;
-    s += `<line x1="${ox + ow}" y1="${oy}" x2="${door.x + door.w}" y2="${door.y}" stroke="rgba(0,0,0,0.30)" stroke-width="0.7"/>`;
-    s += `<line x1="${ox + ow - 0.7}" y1="${oy}" x2="${door.x + door.w - 0.7}" y2="${door.y}" stroke="rgba(255,255,255,0.18)" stroke-width="0.5"/>`;
+    // Стыки верхней доски с боковыми — вертикальные, тень и тонкий блик
+    // рядом, чтобы доски читались как отдельные детали.
+    [topX, topX + topW].forEach((sx) => {
+      s += `<rect x="${sx - 0.35}" y="${oy}" width="0.7" height="${casing}" fill="rgba(0,0,0,0.28)"/>`;
+      s += `<rect x="${sx + 0.35}" y="${oy}" width="0.5" height="${casing}" fill="rgba(255,255,255,0.20)"/>`;
+    });
     // Тонкая чёткая теневая четверть между коробкой и полотном.
     s += `<rect x="${door.x - 1}" y="${door.y - 1}" width="${door.w + 2}" height="${door.h + 1}" fill="none" stroke="rgba(0,0,0,0.22)" stroke-width="0.6"/>`;
 
