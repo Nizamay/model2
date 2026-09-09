@@ -427,9 +427,20 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 .scene-photo-note { font-size: 13px; line-height: 1.35; color: var(--muted); margin: 6px 0 0; text-align: center; }
 .scene-photo-note-empty { color: #b06a1a; }
 /* Выбор раскладки сборного полотна в редакторе цен (см. modelLayoutRow). */
-.model-layout-row { display: flex; flex-direction: column; gap: 4px; padding: 4px 0 8px; }
-.model-layout-row select { width: 100%; }
-.model-layout-hint { font-size: 12px; color: var(--muted); }
+.model-layout-row { display: flex; flex-direction: column; gap: 8px; padding: 4px 0 10px; }
+.model-layout-hint { font-size: 12px; color: var(--muted); line-height: 1.35; }
+.ml-sizes { display: flex; flex-wrap: wrap; gap: 8px; }
+.ml-f { display: flex; flex-direction: column; gap: 2px; font-size: 12px; color: var(--muted); }
+.ml-f .ml-num { width: 84px; }
+.ml-rows { display: flex; flex-direction: column; gap: 6px; }
+.ml-row { display: flex; align-items: flex-end; gap: 6px; flex-wrap: wrap; }
+.ml-no { font-size: 12px; color: var(--muted); min-width: 14px; padding-bottom: 8px; }
+.ml-row .ml-kind { width: 108px; }
+.ml-btns { display: flex; gap: 4px; margin-left: auto; }
+.ml-btns button { min-width: 34px; padding: 6px 4px; }
+.ml-add { display: flex; flex-wrap: wrap; gap: 6px; }
+.ml-foot { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.ml-foot .ml-tpl { flex: 1; min-width: 160px; }
 /* Наложение фото модели на собранный макет (см. s_photoOverlayRow). */
 .photo-overlay-row { display: flex; flex-direction: column; gap: 6px; margin: 10px 0; }
 .photo-overlay-toggle { display: flex; align-items: center; gap: 8px; font-size: 14px; }
@@ -2860,58 +2871,59 @@ const DB = {
   // Раскладка модели — это ширина стойки и список рядов сверху вниз.
   // Ряд бывает двух видов: "плёнка" (царга или филёнка — заливается плёнкой
   // поперёк) и "стекло". Высоты рядов относительные, сумма нормируется.
-  // ПРАВИЛО КОНСТРУКЦИИ: стоевые профили, царги (верхняя, нижняя и средние)
-  // и вертикальные средники сделаны из ОДНОГО И ТОГО ЖЕ материала, поэтому
-  // ширина у них ОДНА. Задаётся один раз — `profile` (в единицах снимка, из
-  // которого снята раскладка) вместе с `leafW` (ширина полотна на том же
-  // снимке). На картинке масштаб по обеим осям одинаковый, поэтому царга
-  // выходит ровно той же толщины, что и стойка, при любом размере двери.
+  // ПРАВИЛО КОНСТРУКЦИИ: стоевые профили и царги (верхняя, нижняя и средние)
+  // сделаны из ОДНОГО И ТОГО ЖЕ материала, поэтому ширина у них ОДНА.
+  // Задаётся один раз, `profileMm` — в НАСТОЯЩИХ миллиметрах: профиль один и
+  // тот же и на узкой двери, и на широкой, он не тянется вместе с полотном.
+  // `barMm` — ширина рейки раскладки внутри стекла (шпроса), тоже в мм.
   //
   // Ряды (сверху вниз):
-  //   k:"p" — профиль (царга), высота не задаётся, она равна ширине профиля;
+  //   k:"p" — царга, высота не задаётся: она равна ширине профиля;
   //   k:"f" — филёнка (щит), высота своя;
-  //   k:"g" — стекло, высота своя, cols — на сколько столбцов делят средники.
+  //   k:"g" — стекло, высота своя; cols/rws — на сколько столбцов и рядов
+  //           его делит раскладка.
   // Высоты филёнок и стёкол — относительные: делят между собой то, что
-  // осталось от полотна после царг.
+  // осталось от полотна после царг. Так при любой высоте двери царги
+  // остаются прежними, а заполнения растут — как на настоящей двери.
   const SBORNOE_LAYOUTS = {
     pg: {
       name: "Глухая (без стекла)",
-      profile: 40, leafW: 480,
+      profileMm: 80, barMm: 50,
       rows: [{ k: "p" }, { k: "f", h: 3.2 }, { k: "p" }, { k: "f", h: 3.2 }, { k: "p" }, { k: "f", h: 3.2 }, { k: "p" }]
     },
     g1: {
       name: "1 узкое стекло",
-      profile: 40, leafW: 480,
+      profileMm: 80, barMm: 50,
       rows: [{ k: "p" }, { k: "f", h: 4.4 }, { k: "g", h: 0.5 }, { k: "f", h: 5.4 }, { k: "p" }]
     },
     g2: {
       name: "2 узких стекла",
-      profile: 40, leafW: 480,
+      profileMm: 80, barMm: 50,
       rows: [{ k: "p" }, { k: "f", h: 3.0 }, { k: "g", h: 0.5 }, { k: "f", h: 2.6 }, { k: "g", h: 0.5 }, { k: "f", h: 4.0 }, { k: "p" }]
     },
     g3: {
       name: "3 узких стекла",
-      profile: 40, leafW: 480,
+      profileMm: 80, barMm: 50,
       rows: [{ k: "p" }, { k: "f", h: 2.6 }, { k: "g", h: 0.5 }, { k: "f", h: 2.2 }, { k: "g", h: 0.5 }, { k: "f", h: 2.2 }, { k: "g", h: 0.5 }, { k: "f", h: 3.4 }, { k: "p" }]
     },
     g4: {
       name: "4 узких стекла",
-      profile: 40, leafW: 480,
+      profileMm: 80, barMm: 50,
       rows: [{ k: "p" }, { k: "f", h: 2.3 }, { k: "g", h: 0.5 }, { k: "f", h: 1.9 }, { k: "g", h: 0.5 }, { k: "f", h: 1.9 }, { k: "g", h: 0.5 }, { k: "f", h: 1.9 }, { k: "g", h: 0.5 }, { k: "f", h: 3.0 }, { k: "p" }]
     },
     g5: {
       name: "5 узких стёкол",
-      profile: 40, leafW: 480,
+      profileMm: 80, barMm: 50,
       rows: [{ k: "p" }, { k: "f", h: 2.0 }, { k: "g", h: 0.5 }, { k: "f", h: 1.6 }, { k: "g", h: 0.5 }, { k: "f", h: 1.6 }, { k: "g", h: 0.5 }, { k: "f", h: 1.6 }, { k: "g", h: 0.5 }, { k: "f", h: 1.6 }, { k: "g", h: 0.5 }, { k: "f", h: 2.6 }, { k: "p" }]
     },
     gw: {
       name: "1 широкое стекло",
-      profile: 40, leafW: 480,
+      profileMm: 80, barMm: 50,
       rows: [{ k: "p" }, { k: "f", h: 1.6 }, { k: "p" }, { k: "g", h: 4.6 }, { k: "p" }, { k: "f", h: 4.2 }, { k: "p" }]
     },
     gwt: {
       name: "Широкое стекло вверху",
-      profile: 40, leafW: 480,
+      profileMm: 80, barMm: 50,
       rows: [{ k: "p" }, { k: "g", h: 5.2 }, { k: "p" }, { k: "f", h: 5.6 }, { k: "p" }]
     }
   };
@@ -2922,12 +2934,13 @@ const DB = {
   // Высоты рядов — в тех же единицах, что сняты с фотографии модели (пикселы
   // снимка): важны только пропорции, сумма нормируется по высоте полотна.
   const BUILTIN_MODEL_LAYOUTS = {
-    // Снято с фото заказчика: полотно 312 x 944 на снимке, профиль 45.
+    // Снято с фото заказчика: на снимке полотно 312 шириной, профиль 45,
+    // рейка раскладки 27 — в пересчёте на полотно 800 мм это 115 и 69 мм.
     // Средних царг у «Британии» нет — рама (две стойки + верхняя и нижняя
     // царги), внутри одно стекло, разбитое раскладкой 2 столбца x 4 ряда.
     "Британия ПО": {
       name: "Британия ПО",
-      profile: 45, leafW: 312, bar: 27,
+      profileMm: 115, barMm: 69,
       rows: [
         { k: "p" },
         { k: "g", h: 1, cols: 2, rws: 4 },
@@ -2936,13 +2949,27 @@ const DB = {
     }
   };
 
+  // Раскладка, составленная в программе (см. конструктор в «Изменение цен»),
+  // главнее встроенной: её правил сам пользователь под свою дверь. Значение
+  // из старых сохранений могло быть просто ключом шаблона — тогда берём
+  // шаблон.
   function modelLayoutOf(model) {
     if (!model) return null;
-    const own = BUILTIN_MODEL_LAYOUTS[model.name];
-    if (own) return own;
-    const key = DB.modelLayouts && DB.modelLayouts[model.id];
-    return (key && SBORNOE_LAYOUTS[key]) || null;
+    const own = DB.modelLayouts && DB.modelLayouts[model.id];
+    if (own && typeof own === "object" && Array.isArray(own.rows) && own.rows.length) return own;
+    if (typeof own === "string" && SBORNOE_LAYOUTS[own]) return SBORNOE_LAYOUTS[own];
+    return BUILTIN_MODEL_LAYOUTS[model.name] || null;
   }
+
+  // Раскладка для правки в конструкторе: своя, иначе копия встроенной,
+  // иначе пустая заготовка «рама без заполнения».
+  function editableLayoutOf(model) {
+    const cur = modelLayoutOf(model);
+    if (cur) return JSON.parse(JSON.stringify(cur));
+    return { profileMm: 80, barMm: 50, rows: [{ k: "p" }, { k: "f", h: 3 }, { k: "p" }] };
+  }
+
+  const ROW_KIND_NAMES = { p: "Царга", f: "Филёнка", g: "Стекло" };
 
   // Цвет стекла по выбранной позиции «Стекло». Декоративные стёкла
   // (гравировка «Рим», «Венеция» и т.п.) пока показываем как матовые —
@@ -2982,13 +3009,14 @@ const DB = {
     const g0 = `<g${film.filter ? ` style="filter:${film.filter}"` : ""}>`;
 
     // Ширина профиля одна на всю дверь: стойки и царги сделаны из одного
-    // материала (см. SBORNOE_LAYOUTS). Масштаб картинки по обеим осям
-    // одинаковый, поэтому та же величина годится и для высоты царги.
-    const stileW = Math.max(2, w * (layout.profile / (layout.leafW || 480)));
+    // материала (см. SBORNOE_LAYOUTS) и заданы в настоящих миллиметрах.
+    // Масштаб картинки по обеим осям одинаковый, поэтому та же величина
+    // годится и для высоты царги.
+    const stileW = Math.max(2, Math.min(w * 0.4, (layout.profileMm || 80) * box.unitsPerMm));
     const innerX = x + stileW;
     const innerW = w - stileW * 2;
     // Раскладка внутри стекла (шпросы) — своя, более тонкая планка.
-    const barW = Math.max(1, w * ((layout.bar || layout.profile * 0.6) / (layout.leafW || 480)));
+    const barW = Math.max(1, ((layout.barMm || (layout.profileMm || 80) * 0.6) * box.unitsPerMm));
     // Кромка проёма под стеклом — одинаковая со всех четырёх сторон.
     const bead = Math.max(0.4, w * 0.005);
 
@@ -3165,7 +3193,10 @@ const DB = {
     note.hidden = false;
     if (layout) {
       note.className = "scene-photo-note";
-      note.textContent = `Модель «${m.name}» собрана из частей по раскладке «${layout.name}»: стойки, царги, филёнки, стёкла. Плёнка и цвет стекла берутся из расчёта.`;
+      const parts = layout.rows.length;
+      note.textContent = layout.name
+        ? `Модель «${m.name}» собрана из частей по раскладке «${layout.name}»: стойки, царги, филёнки, стёкла. Плёнка и цвет стекла берутся из расчёта.`
+        : `Модель «${m.name}» собрана из частей по своей раскладке: профиль ${layout.profileMm || 80} мм, рядов ${parts}. Плёнка и цвет стекла берутся из расчёта.`;
       return;
     }
     if (!photo && m.type === "сборное") {
@@ -3348,7 +3379,7 @@ const DB = {
       // те же скруглённые углы, что и у полотна.
       const glassName = (modelGlasses(curModel).find((gl) => gl.id === state.glassId) || {}).name;
       const parts = sbornoeLeafSVG(
-        { x: x, y: y, w: w, h: h },
+        { x: x, y: y, w: w, h: h, unitsPerMm: unitsPerMm },
         sbLayout,
         { filter: doorFilter },
         casingFill,
@@ -7249,17 +7280,100 @@ const DB = {
     });
   }
 
-  // Выбор раскладки сборного полотна (см. modelLayoutRow/SBORNOE_LAYOUTS).
-  function onModelLayoutChange(e) {
-    const sel = e.target;
-    if (!sel.classList || !sel.classList.contains("model-layout-select")) return;
-    const id = sel.dataset.model;
+  // --- Конструктор раскладки сборного полотна (см. modelLayoutRow) ------
+  //
+  // Раскладка собирается прямо в программе: ширина профиля и рейки в
+  // миллиметрах плюс список рядов сверху вниз. Всё чтение полей — из самой
+  // разметки блока, поэтому любое изменение (тип ряда, число, порядок,
+  // добавление и удаление) обрабатывается одинаково.
+  function readLayoutBlock(box) {
+    const num = (el, def) => {
+      const v = parseFloat(String(el.value).replace(",", "."));
+      return isFinite(v) && v > 0 ? v : def;
+    };
+    const sizeInput = (f) => box.querySelector(`.ml-sizes .ml-num[data-lf="${f}"]`);
+    const layout = {
+      profileMm: sizeInput("profileMm") ? num(sizeInput("profileMm"), 80) : 80,
+      barMm: sizeInput("barMm") ? num(sizeInput("barMm"), 50) : 50,
+      rows: []
+    };
+    box.querySelectorAll(".ml-row").forEach((rowEl) => {
+      const k = rowEl.querySelector(".ml-kind").value;
+      const row = { k: k };
+      if (k !== "p") {
+        const hEl = rowEl.querySelector('.ml-num[data-lf="h"]');
+        row.h = hEl ? num(hEl, 1) : 1;
+      }
+      if (k === "g") {
+        const cEl = rowEl.querySelector('.ml-num[data-lf="cols"]');
+        const rEl = rowEl.querySelector('.ml-num[data-lf="rws"]');
+        row.cols = Math.max(1, Math.round(cEl ? num(cEl, 1) : 1));
+        row.rws = Math.max(1, Math.round(rEl ? num(rEl, 1) : 1));
+      }
+      layout.rows.push(row);
+    });
+    return layout;
+  }
+
+  function saveLayoutBlock(box, layout) {
+    const id = box.dataset.model;
     if (!id) return;
     if (!DB.modelLayouts) DB.modelLayouts = {};
-    if (sel.value) DB.modelLayouts[id] = sel.value;
+    if (layout && layout.rows.length) DB.modelLayouts[id] = layout;
     else delete DB.modelLayouts[id];
     savePrices();
     render();
+  }
+
+  // Правка числа или типа ряда: перерисовываем редактор только тогда, когда
+  // изменился тип ряда (у стекла появляются свои поля) — иначе поле ввода
+  // потеряет фокус прямо во время набора.
+  function onModelLayoutInput(e) {
+    const box = e.target.closest && e.target.closest(".model-layout-row");
+    if (!box) return;
+    const isKind = e.target.classList.contains("ml-kind");
+    const isNum = e.target.classList.contains("ml-num");
+    const isTpl = e.target.classList.contains("ml-tpl");
+    if (!isKind && !isNum && !isTpl) return;
+    if (isTpl) {
+      const tpl = SBORNOE_LAYOUTS[e.target.value];
+      if (!tpl) return;
+      saveLayoutBlock(box, JSON.parse(JSON.stringify({ profileMm: tpl.profileMm, barMm: tpl.barMm, rows: tpl.rows })));
+      renderPriceEditor();
+      return;
+    }
+    saveLayoutBlock(box, readLayoutBlock(box));
+    if (isKind) renderPriceEditor();
+  }
+
+  function onModelLayoutClick(e) {
+    const btn = e.target.closest && e.target.closest(".ml-up, .ml-down, .ml-del, .ml-add-btn, .ml-clear");
+    if (!btn) return;
+    const box = btn.closest(".model-layout-row");
+    if (!box) return;
+    if (btn.classList.contains("ml-clear")) {
+      saveLayoutBlock(box, null);
+      renderPriceEditor();
+      return;
+    }
+    const layout = readLayoutBlock(box);
+    if (btn.classList.contains("ml-add-btn")) {
+      const k = btn.dataset.k;
+      const row = { k: k };
+      if (k !== "p") row.h = 3;
+      if (k === "g") { row.cols = 1; row.rws = 1; }
+      layout.rows.push(row);
+    } else {
+      const i = Number(btn.closest(".ml-row").dataset.i);
+      if (btn.classList.contains("ml-del")) layout.rows.splice(i, 1);
+      else {
+        const j = btn.classList.contains("ml-up") ? i - 1 : i + 1;
+        if (j < 0 || j >= layout.rows.length) return;
+        const tmp = layout.rows[i]; layout.rows[i] = layout.rows[j]; layout.rows[j] = tmp;
+      }
+    }
+    saveLayoutBlock(box, layout);
+    renderPriceEditor();
   }
 
   // «Удалить файл» — у моделей нет заводского фото (в отличие от 27
@@ -7398,16 +7512,56 @@ const DB = {
   // Раскладка сборного полотна — из каких частей его собирать в 2D (см.
   // SBORNOE_LAYOUTS/sbornoeLeafSVG). Только у «Сборные»: у щитовых полотно
   // цельное, там раскладки нет.
+  // Конструктор раскладки: из чего собрано полотно этой модели. Заводится
+  // один раз на модель и дальше работает со всеми плёнками и стёклами — не
+  // нужно ни картинок на каждое сочетание, ни правки в коде.
   function modelLayoutRow(m) {
-    const cur = (DB.modelLayouts && DB.modelLayouts[m.id]) || "";
-    const opts = [`<option value=""${cur ? "" : " selected"}>— не задана —</option>`]
+    const L = editableLayoutOf(m);
+    const has = !!modelLayoutOf(m);
+    const tplOpts = [`<option value="">— взять шаблон за основу —</option>`]
       .concat(Object.keys(SBORNOE_LAYOUTS).map((k) =>
-        `<option value="${k}"${k === cur ? " selected" : ""}>${esc(SBORNOE_LAYOUTS[k].name)}</option>`))
-      .join("");
+        `<option value="${k}">${esc(SBORNOE_LAYOUTS[k].name)}</option>`)).join("");
+
+    const rowsHtml = L.rows.map((r, i) => {
+      const kindOpts = Object.keys(ROW_KIND_NAMES).map((k) =>
+        `<option value="${k}"${k === r.k ? " selected" : ""}>${ROW_KIND_NAMES[k]}</option>`).join("");
+      let fields = "";
+      if (r.k !== "p") {
+        fields += `<label class="ml-f">высота<input type="text" inputmode="decimal" class="pricenum ml-num" data-lf="h" value="${r.h == null ? 1 : r.h}"></label>`;
+      }
+      if (r.k === "g") {
+        fields += `<label class="ml-f">столбцов<input type="text" inputmode="numeric" class="pricenum ml-num" data-lf="cols" value="${r.cols || 1}"></label>`;
+        fields += `<label class="ml-f">рядов<input type="text" inputmode="numeric" class="pricenum ml-num" data-lf="rws" value="${r.rws || 1}"></label>`;
+      }
+      return `<div class="ml-row" data-i="${i}">
+        <span class="ml-no">${i + 1}</span>
+        <select class="ml-kind">${kindOpts}</select>
+        ${fields}
+        <span class="ml-btns">
+          <button type="button" class="ml-up" title="Выше"${i === 0 ? " disabled" : ""}>↑</button>
+          <button type="button" class="ml-down" title="Ниже"${i === L.rows.length - 1 ? " disabled" : ""}>↓</button>
+          <button type="button" class="ml-del" title="Убрать">✕</button>
+        </span>
+      </div>`;
+    }).join("");
+
     return `<div class="choice-head">Раскладка полотна</div>
-      <div class="model-layout-row">
-        <select class="model-layout-select" data-model="${esc(m.id)}">${opts}</select>
-        <span class="model-layout-hint">Как собрано полотно — по ней 2D перекрашивает плёнку и стекло.</span>
+      <div class="model-layout-row" data-model="${esc(m.id)}">
+        <span class="model-layout-hint">Из каких частей собрано полотно. Заводится один раз — дальше 2D сама красит его любой плёнкой и любым стеклом. Высота царги равна ширине профиля: они из одного материала.</span>
+        <div class="ml-sizes">
+          <label class="ml-f">профиль, мм<input type="text" inputmode="decimal" class="pricenum ml-num" data-lf="profileMm" value="${L.profileMm || 80}"></label>
+          <label class="ml-f">рейка раскладки, мм<input type="text" inputmode="decimal" class="pricenum ml-num" data-lf="barMm" value="${L.barMm || 50}"></label>
+        </div>
+        <div class="ml-rows">${rowsHtml}</div>
+        <div class="ml-add">
+          <button type="button" class="row-add ml-add-btn" data-k="p">+ Царга</button>
+          <button type="button" class="row-add ml-add-btn" data-k="f">+ Филёнка</button>
+          <button type="button" class="row-add ml-add-btn" data-k="g">+ Стекло</button>
+        </div>
+        <div class="ml-foot">
+          <select class="ml-tpl">${tplOpts}</select>
+          ${has ? `<button type="button" class="row-add ml-clear">Убрать раскладку</button>` : ""}
+        </div>
       </div>`;
   }
 
@@ -8304,7 +8458,9 @@ const DB = {
     el.priceEditor.addEventListener("click", onPriceClick);
     el.priceEditor.addEventListener("change", onColorFileUpload);
     el.priceEditor.addEventListener("change", onModelFileUpload);
-    el.priceEditor.addEventListener("change", onModelLayoutChange);
+    el.priceEditor.addEventListener("change", onModelLayoutInput);
+    el.priceEditor.addEventListener("input", onModelLayoutInput);
+    el.priceEditor.addEventListener("click", onModelLayoutClick);
     el.priceEditor.addEventListener("click", (e) => {
       const input = e.target.closest("input.edit-name[data-field='name']");
       if (input) openNameEditModal(input);
