@@ -1293,6 +1293,13 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
         <div class="photo-overlay-row" id="s_photoOverlayRow" hidden>
           <label class="photo-overlay-toggle"><input type="checkbox" id="s_photoOverlay"> Наложить фото модели для сверки</label>
           <div class="arow"><span>Прозрачность</span><input type="range" id="s_photoOverlayOpacity" min="10" max="90" step="5" value="50"></div>
+          <!-- Фото сняты с разным полем вокруг двери, поэтому снимок почти
+               никогда не ложится на макет сам собой. Этими движками его
+               подгоняют по месту, и уже тогда сверяют размеры деталей. -->
+          <div class="arow"><span>Размер фото</span><input type="range" id="s_photoOverlayScale" min="50" max="160" step="1" value="100"></div>
+          <div class="arow"><span>Сдвиг вбок</span><input type="range" id="s_photoOverlayDx" min="-40" max="40" step="1" value="0"></div>
+          <div class="arow"><span>Сдвиг вверх-вниз</span><input type="range" id="s_photoOverlayDy" min="-40" max="40" step="1" value="0"></div>
+          <div class="adjust-actions"><button type="button" id="s_photoOverlayReset">Сбросить подгонку</button></div>
         </div>
         <button type="button" id="sceneBackBtn" class="btn-goto">← Возврат на страницу расчёта</button>
       </div>
@@ -1944,6 +1951,9 @@ const DB = {
     // Сверка собранного макета с фотографией модели (см. s_photoOverlayRow).
     photoOverlay: false,
     photoOverlayOpacity: 50,
+    photoOverlayScale: 100,
+    photoOverlayDx: 0,
+    photoOverlayDy: 0,
 
     // --- Погонаж (см. computeOrder/applySectionUI) ---
     trimVid: "короб",
@@ -3349,7 +3359,14 @@ const DB = {
       let overlay = "";
       if (havePhoto && state.photoOverlay) {
         const op = Math.max(0, Math.min(100, Number(state.photoOverlayOpacity) || 50)) / 100;
-        overlay = `<image href="${havePhoto.image}" x="${x}" y="${y}" width="${w}" height="${h}" preserveAspectRatio="xMidYMid slice" opacity="${op}"/>`;
+        // Снимок подгоняется по месту: размер и сдвиг задаются движками —
+        // фото сняты с разным полем вокруг двери и сами по себе на макет
+        // не ложатся.
+        const k = (Number(state.photoOverlayScale) || 100) / 100;
+        const ow2 = w * k, oh2 = h * k;
+        const ox2 = x + (w - ow2) / 2 + w * ((Number(state.photoOverlayDx) || 0) / 100);
+        const oy2 = y + (h - oh2) / 2 + h * ((Number(state.photoOverlayDy) || 0) / 100);
+        overlay = `<image href="${havePhoto.image}" x="${ox2}" y="${oy2}" width="${ow2}" height="${oh2}" preserveAspectRatio="xMidYMid meet" opacity="${op}"/>`;
       }
       c.glassGroup.innerHTML = `<g clip-path="url(#${c.pfx}doorClip)">${parts}${overlay}</g>`;
     } else if (modelPhoto || state.glassId === "none") {
@@ -6433,6 +6450,31 @@ const DB = {
     });
     if (overlayOp) overlayOp.addEventListener("input", () => {
       state.photoOverlayOpacity = Number(overlayOp.value);
+      drawDoor(sceneCtx, true);
+    });
+    // Подгонка снимка по месту: размер и сдвиг.
+    const overlayFit = [
+      ["s_photoOverlayScale", "photoOverlayScale"],
+      ["s_photoOverlayDx", "photoOverlayDx"],
+      ["s_photoOverlayDy", "photoOverlayDy"]
+    ];
+    overlayFit.forEach(([id, key]) => {
+      const inp = document.getElementById(id);
+      if (!inp) return;
+      inp.addEventListener("input", () => {
+        state[key] = Number(inp.value);
+        drawDoor(sceneCtx, true);
+      });
+    });
+    const overlayReset = document.getElementById("s_photoOverlayReset");
+    if (overlayReset) overlayReset.addEventListener("click", () => {
+      state.photoOverlayScale = 100;
+      state.photoOverlayDx = 0;
+      state.photoOverlayDy = 0;
+      overlayFit.forEach(([id, key]) => {
+        const inp = document.getElementById(id);
+        if (inp) inp.value = state[key];
+      });
       drawDoor(sceneCtx, true);
     });
     // Переходы «Расчёт ⇄ 2D картинка»: на 2D дверь рисуется с текущими
