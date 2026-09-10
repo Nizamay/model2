@@ -428,22 +428,29 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 .scene-photo-note-empty { color: #b06a1a; }
 /* Выбор раскладки сборного полотна в редакторе цен (см. modelLayoutRow). */
 .model-layout-row { display: flex; flex-direction: column; gap: 8px; padding: 4px 0 10px; }
-.model-layout-hint { font-size: 12px; color: var(--muted); line-height: 1.35; }
+/* Картинка слева, органы управления справа: на телефоне видно сразу и что
+   правишь, и что от этого меняется. Картинка «липнет» при прокрутке. */
+.ml-body { display: flex; gap: 10px; align-items: flex-start; }
+.ml-preview { flex: 0 0 82px; position: sticky; top: 8px; }
+.ml-preview-svg { display: block; width: 82px; height: auto; border-radius: 3px; }
+.ml-controls { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
 .ml-sizes { display: flex; flex-wrap: wrap; gap: 8px; }
-.ml-f { display: flex; flex-direction: column; gap: 2px; font-size: 12px; color: var(--muted); }
-.ml-f .ml-num { width: 84px; }
-.ml-rows { display: flex; flex-direction: column; gap: 6px; }
-.ml-row { display: flex; align-items: flex-end; gap: 6px; flex-wrap: wrap; }
-.ml-no { font-size: 12px; color: var(--muted); min-width: 14px; padding-bottom: 8px; }
-.ml-row .ml-kind { width: 108px; }
-.ml-btns { display: flex; gap: 4px; margin-left: auto; }
-.ml-btns button { min-width: 34px; padding: 6px 4px; }
-.ml-add { display: flex; flex-wrap: wrap; gap: 6px; }
+.ml-f { display: flex; flex-direction: column; gap: 2px; font-size: 11px; color: var(--muted); }
+.ml-f .ml-num { width: 74px; }
+.ml-rows { display: flex; flex-direction: column; gap: 8px; }
+.ml-row { display: flex; flex-direction: column; gap: 4px; }
+.ml-head { display: flex; align-items: center; gap: 4px; }
+.ml-row .ml-kind { flex: 1 1 auto; min-width: 0; padding: 6px 4px; font-size: 13px; }
+.ml-fields { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; padding-left: 2px; }
+.ml-row .ml-num { width: 44px; padding: 6px 2px; text-align: center; }
+.ml-lbl, .ml-x { font-size: 11px; color: var(--muted); }
+.ml-btns { display: flex; gap: 2px; margin-left: auto; }
+.ml-btns button { min-width: 26px; padding: 5px 2px; font-size: 13px; }
+.ml-add { display: flex; flex-wrap: wrap; gap: 4px; }
+.ml-add .row-add { padding: 5px 8px; font-size: 12px; }
 .ml-foot { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
-.ml-foot .ml-tpl { flex: 1; min-width: 160px; }
+.ml-foot .ml-tpl { flex: 1; min-width: 140px; }
 /* Наложение фото модели на собранный макет (см. s_photoOverlayRow). */
-.photo-overlay-row { display: flex; flex-direction: column; gap: 6px; margin: 10px 0; }
-.photo-overlay-toggle { display: flex; align-items: center; gap: 8px; font-size: 14px; }
 .photo-overlay-row .arow { display: flex; align-items: center; gap: 10px; }
 .photo-overlay-row .arow span { font-size: 13px; color: var(--muted); min-width: 96px; }
 .photo-overlay-row .arow input[type="range"] { flex: 1; }
@@ -1229,7 +1236,7 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
     </div><!-- /viewCalc -->
 
     <div id="viewScene" hidden>
-      <p class="scene-view-hint">Дверь показана по текущему расчёту (модель, размеры). Если у модели загружено фото — полотно показывается фотографией, наличник берёт цвет с неё. Ниже можно подобрать цвет и текстуру стены, а ползунками — настроить её тон.</p>
+      <p class="scene-view-hint">Дверь — по текущему расчёту.</p>
       <div class="door-preview">
         <svg id="s_doorPreview" class="door-preview-svg scene" viewBox="0 0 360 400" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Дверь на стене">
           <defs>
@@ -1265,20 +1272,26 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
         <div class="fs-body" id="s_fsBody"></div>
       </div>
       <div class="scene-controls">
-        <div class="wall-color-row">
-          <label>Цвет стены</label>
-          <div class="wall-swatches" id="s_wallSwatches"></div>
-        </div>
-        <div class="wall-texture-row">
-          <label>Текстура стены</label>
-          <div class="wall-textures" id="s_wallTextures"></div>
-        </div>
+        <!-- Всё, кроме самой картинки, свёрнуто: программой пользуются с
+             телефона, и раскрытые списки образцов занимали целый экран. -->
+        <details class="adjust-panel">
+          <summary>Цвет стены</summary>
+          <div class="adjust-body">
+            <div class="wall-swatches" id="s_wallSwatches"></div>
+          </div>
+        </details>
+        <details class="adjust-panel">
+          <summary>Текстура стены</summary>
+          <div class="adjust-body">
+            <div class="wall-textures" id="s_wallTextures"></div>
+          </div>
+        </details>
         <!-- Тон стены — те же ползунки, что и у плёнки в «Изменение цен»
              (см. colorRow/filterCss): готовых образцов цвета всегда мало,
              а так любой из них подгоняется под реальную стену. Нативный
              выбор цвета (<input type="color">) убран по просьбе заказчика
              — системное окно «Тон/Насыщенность/Значение» ему не подошло. -->
-        <details class="adjust-panel wall-adjust-panel" open>
+        <details class="adjust-panel wall-adjust-panel">
           <summary>Настроить тон стены</summary>
           <div class="adjust-body">
             <div class="arow"><span>Оттенок</span><input type="range" class="adj wall-adj" data-k="h" min="-90" max="90" step="1" value="0"></div>
@@ -1301,17 +1314,20 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
         <!-- Сверка макета с оригиналом: фото модели накладывается прямо на
              собранную дверь, полупрозрачно. Так сразу видно, где раскладка
              разошлась с настоящей дверью, и что править. -->
-        <div class="photo-overlay-row" id="s_photoOverlayRow" hidden>
-          <label class="photo-overlay-toggle"><input type="checkbox" id="s_photoOverlay"> Наложить фото модели для сверки</label>
-          <div class="arow"><span>Прозрачность</span><input type="range" id="s_photoOverlayOpacity" min="10" max="90" step="5" value="50"></div>
-          <!-- Фото сняты с разным полем вокруг двери, поэтому снимок почти
-               никогда не ложится на макет сам собой. Этими движками его
-               подгоняют по месту, и уже тогда сверяют размеры деталей. -->
-          <div class="arow"><span>Размер фото</span><input type="range" id="s_photoOverlayScale" min="50" max="160" step="1" value="100"></div>
-          <div class="arow"><span>Сдвиг вбок</span><input type="range" id="s_photoOverlayDx" min="-40" max="40" step="1" value="0"></div>
-          <div class="arow"><span>Сдвиг вверх-вниз</span><input type="range" id="s_photoOverlayDy" min="-40" max="40" step="1" value="0"></div>
-          <div class="adjust-actions"><button type="button" id="s_photoOverlayReset">Сбросить подгонку</button></div>
-        </div>
+        <!-- Наложение включается самим раскрытием блока: отдельная галочка
+             внутри требовала бы второго касания. Фото сняты с разным полем
+             вокруг двери, поэтому снимок почти никогда не ложится на макет
+             сам собой — движки подгоняют его по месту. -->
+        <details class="adjust-panel photo-overlay-row" id="s_photoOverlayRow" hidden>
+          <summary>Наложить фото модели для сверки</summary>
+          <div class="adjust-body">
+            <div class="arow"><span>Прозрачность</span><input type="range" id="s_photoOverlayOpacity" min="10" max="90" step="5" value="50"></div>
+            <div class="arow"><span>Размер фото</span><input type="range" id="s_photoOverlayScale" min="50" max="160" step="1" value="100"></div>
+            <div class="arow"><span>Сдвиг вбок</span><input type="range" id="s_photoOverlayDx" min="-40" max="40" step="1" value="0"></div>
+            <div class="arow"><span>Сдвиг вверх-вниз</span><input type="range" id="s_photoOverlayDy" min="-40" max="40" step="1" value="0"></div>
+            <div class="adjust-actions"><button type="button" id="s_photoOverlayReset">Сбросить подгонку</button></div>
+          </div>
+        </details>
         <button type="button" id="sceneBackBtn" class="btn-goto">← Возврат на страницу расчёта</button>
       </div>
     </div>
@@ -3191,28 +3207,27 @@ const DB = {
     const m = getModel(state.modelId);
     if (!m) { note.hidden = true; note.textContent = ""; return; }
     note.hidden = false;
+    // Подпись — в одну строку: экран телефона узкий, длинные пояснения
+    // съедали половину картинки.
     if (layout) {
       note.className = "scene-photo-note";
-      const parts = layout.rows.length;
-      note.textContent = layout.name
-        ? `Модель «${m.name}» собрана из частей по раскладке «${layout.name}»: стойки, царги, филёнки, стёкла. Плёнка и цвет стекла берутся из расчёта.`
-        : `Модель «${m.name}» собрана из частей по своей раскладке: профиль ${layout.profileMm || 80} мм, рядов ${parts}. Плёнка и цвет стекла берутся из расчёта.`;
+      note.textContent = `${m.name} — собрана из частей.`;
       return;
     }
     if (!photo && m.type === "сборное") {
       note.className = "scene-photo-note scene-photo-note-empty";
-      note.textContent = `У сборной модели «${m.name}» не задана раскладка полотна — показана схема. Раскладка назначается в «Изменение цен» → модель → «Раскладка полотна».`;
+      note.textContent = `${m.name} — раскладка не задана, показана схема.`;
       return;
     }
     if (!photo) {
       note.className = "scene-photo-note scene-photo-note-empty";
-      note.textContent = `У модели «${m.name}» ещё нет фотографии — показана схема полотна. Фото загружается в «Изменение цен» → модель → «Фото модели».`;
+      note.textContent = `${m.name} — фото не загружено, показана схема.`;
       return;
     }
     note.className = "scene-photo-note";
     note.textContent = m.type === "матрица"
-      ? `Фото модели «${m.name}». В разделе «Матрица» комплектация зафиксирована производителем — цвет, стекло и опции у этой модели именно такие.`
-      : `Фото модели «${m.name}» в том цвете, в котором снято. Перекраска плёнки под выбранный в расчёте цвет — следующий шаг.`;
+      ? `${m.name} — фото модели, комплектация зафиксирована.`
+      : `${m.name} — фото модели, в цвете съёмки.`;
   }
 
   function drawDoor(c, forceScene) {
@@ -3461,7 +3476,12 @@ const DB = {
       // Сверять макет с фотографией есть смысл только там, где есть и то и
       // другое: собранное полотно и снимок этой же модели.
       const row = document.getElementById("s_photoOverlayRow");
-      if (row) row.hidden = !(sbLayout && havePhoto);
+      if (row) {
+        const show = !!(sbLayout && havePhoto);
+        row.hidden = !show;
+        // Свернули блок — наложение выключается само (см. обработчик toggle).
+        if (!show && row.open) row.open = false;
+      }
     }
   }
 
@@ -6473,10 +6493,10 @@ const DB = {
       });
     }
     // Сверка макета с фотографией модели (см. s_photoOverlayRow).
-    const overlayCb = document.getElementById("s_photoOverlay");
+    const overlayBox = document.getElementById("s_photoOverlayRow");
     const overlayOp = document.getElementById("s_photoOverlayOpacity");
-    if (overlayCb) overlayCb.addEventListener("change", () => {
-      state.photoOverlay = overlayCb.checked;
+    if (overlayBox) overlayBox.addEventListener("toggle", () => {
+      state.photoOverlay = overlayBox.open;
       drawDoor(sceneCtx, true);
     });
     if (overlayOp) overlayOp.addEventListener("input", () => {
@@ -7342,8 +7362,10 @@ const DB = {
       renderPriceEditor();
       return;
     }
-    saveLayoutBlock(box, readLayoutBlock(box));
+    const layout = readLayoutBlock(box);
+    saveLayoutBlock(box, layout);
     if (isKind) renderPriceEditor();
+    else updateLayoutPreview(box, layout);
   }
 
   function onModelLayoutClick(e) {
@@ -7525,44 +7547,80 @@ const DB = {
     const rowsHtml = L.rows.map((r, i) => {
       const kindOpts = Object.keys(ROW_KIND_NAMES).map((k) =>
         `<option value="${k}"${k === r.k ? " selected" : ""}>${ROW_KIND_NAMES[k]}</option>`).join("");
+      // Одна строка на ряд: тип, высота, а у стекла ещё «столбцы x ряды».
+      // Подписей нет — экран телефона узкий, назначение видно по картинке
+      // слева и по подсказке при долгом нажатии.
+      // Ряд в две строчки: сверху тип и кнопки, снизу числа. В одну строку
+      // на телефоне не влезало — у стекла чисел трое.
       let fields = "";
       if (r.k !== "p") {
-        fields += `<label class="ml-f">высота<input type="text" inputmode="decimal" class="pricenum ml-num" data-lf="h" value="${r.h == null ? 1 : r.h}"></label>`;
+        fields += `<span class="ml-lbl">выс</span><input type="text" inputmode="decimal" class="pricenum ml-num" data-lf="h" title="Высота заполнения" value="${r.h == null ? 1 : r.h}">`;
       }
       if (r.k === "g") {
-        fields += `<label class="ml-f">столбцов<input type="text" inputmode="numeric" class="pricenum ml-num" data-lf="cols" value="${r.cols || 1}"></label>`;
-        fields += `<label class="ml-f">рядов<input type="text" inputmode="numeric" class="pricenum ml-num" data-lf="rws" value="${r.rws || 1}"></label>`;
+        fields += `<input type="text" inputmode="numeric" class="pricenum ml-num" data-lf="cols" title="Столбцов стекла" value="${r.cols || 1}">`;
+        fields += `<span class="ml-x">×</span>`;
+        fields += `<input type="text" inputmode="numeric" class="pricenum ml-num" data-lf="rws" title="Рядов стекла" value="${r.rws || 1}">`;
       }
       return `<div class="ml-row" data-i="${i}">
-        <span class="ml-no">${i + 1}</span>
-        <select class="ml-kind">${kindOpts}</select>
-        ${fields}
-        <span class="ml-btns">
-          <button type="button" class="ml-up" title="Выше"${i === 0 ? " disabled" : ""}>↑</button>
-          <button type="button" class="ml-down" title="Ниже"${i === L.rows.length - 1 ? " disabled" : ""}>↓</button>
-          <button type="button" class="ml-del" title="Убрать">✕</button>
-        </span>
+        <div class="ml-head">
+          <select class="ml-kind">${kindOpts}</select>
+          <span class="ml-btns">
+            <button type="button" class="ml-up" title="Выше"${i === 0 ? " disabled" : ""}>↑</button>
+            <button type="button" class="ml-down" title="Ниже"${i === L.rows.length - 1 ? " disabled" : ""}>↓</button>
+            <button type="button" class="ml-del" title="Убрать">✕</button>
+          </span>
+        </div>
+        ${fields ? `<div class="ml-fields">${fields}</div>` : ""}
       </div>`;
     }).join("");
 
+    // Картинка рядом со списком: видно, что делает каждое число, сразу и
+    // без перехода на «2D картинку».
     return `<div class="choice-head">Раскладка полотна</div>
       <div class="model-layout-row" data-model="${esc(m.id)}">
-        <span class="model-layout-hint">Из каких частей собрано полотно. Заводится один раз — дальше 2D сама красит его любой плёнкой и любым стеклом. Высота царги равна ширине профиля: они из одного материала.</span>
-        <div class="ml-sizes">
-          <label class="ml-f">профиль, мм<input type="text" inputmode="decimal" class="pricenum ml-num" data-lf="profileMm" value="${L.profileMm || 80}"></label>
-          <label class="ml-f">рейка раскладки, мм<input type="text" inputmode="decimal" class="pricenum ml-num" data-lf="barMm" value="${L.barMm || 50}"></label>
-        </div>
-        <div class="ml-rows">${rowsHtml}</div>
-        <div class="ml-add">
-          <button type="button" class="row-add ml-add-btn" data-k="p">+ Царга</button>
-          <button type="button" class="row-add ml-add-btn" data-k="f">+ Филёнка</button>
-          <button type="button" class="row-add ml-add-btn" data-k="g">+ Стекло</button>
+        <div class="ml-body">
+          <div class="ml-preview">${layoutPreviewSVG(L, m.id)}</div>
+          <div class="ml-controls">
+            <div class="ml-sizes">
+              <label class="ml-f">профиль, мм<input type="text" inputmode="decimal" class="pricenum ml-num" data-lf="profileMm" value="${L.profileMm || 80}"></label>
+              <label class="ml-f">рейка, мм<input type="text" inputmode="decimal" class="pricenum ml-num" data-lf="barMm" value="${L.barMm || 50}"></label>
+            </div>
+            <div class="ml-rows">${rowsHtml}</div>
+            <div class="ml-add">
+              <button type="button" class="row-add ml-add-btn" data-k="p">+ Царга</button>
+              <button type="button" class="row-add ml-add-btn" data-k="f">+ Филёнка</button>
+              <button type="button" class="row-add ml-add-btn" data-k="g">+ Стекло</button>
+            </div>
+          </div>
         </div>
         <div class="ml-foot">
           <select class="ml-tpl">${tplOpts}</select>
-          ${has ? `<button type="button" class="row-add ml-clear">Убрать раскладку</button>` : ""}
+          ${has ? `<button type="button" class="row-add ml-clear">Убрать</button>` : ""}
         </div>
       </div>`;
+  }
+
+  // Схематичная картинка раскладки для конструктора: те же детали, что и на
+  // «2D картинке», только ровными цветами — здесь важна форма, а не плёнка.
+  function layoutPreviewSVG(layout, modelId) {
+    const W = 104, H = 260;
+    const box = { x: 2, y: 2, w: W - 4, h: H - 4, unitsPerMm: (W - 4) / 800 };
+    const fills = { v: "#c8b79a", h: "#bda98a" };
+    let parts = "";
+    try {
+      parts = sbornoeLeafSVG(box, layout, { filter: "" }, fills, { id: "satin", name: "Сатин" }, "mlp" + modelId + "-");
+    } catch (err) { parts = ""; }
+    return `<svg viewBox="0 0 ${W} ${H}" class="ml-preview-svg" role="img" aria-label="Раскладка полотна">
+      <rect x="0" y="0" width="${W}" height="${H}" fill="#f4f5f6"/>${parts}
+      <rect x="2" y="2" width="${W - 4}" height="${H - 4}" fill="none" stroke="rgba(0,0,0,.3)" stroke-width="0.8"/>
+    </svg>`;
+  }
+
+  // Перерисовать только картинку — не весь редактор: иначе поле ввода
+  // теряет фокус прямо во время набора числа.
+  function updateLayoutPreview(box, layout) {
+    const prev = box.querySelector(".ml-preview");
+    if (prev) prev.innerHTML = layoutPreviewSVG(layout, box.dataset.model || "");
   }
 
   // Строка патины внутри конкретной модели «Щитовые» (см.
