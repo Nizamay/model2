@@ -3063,33 +3063,46 @@ const DB = {
   // Фаска филёнки: поле приподнято, по краю — скос. Свет слева-сверху,
   // поэтому внешняя кромка скоса в тени, а само поле с той же стороны
   // подсвечено — так рельеф читается объёмным, а не нарисованной рамкой.
-  function bevelSVG(px, py, pw, ph) {
-    // Фрезеровка не одна фаска, а ступенчатый профиль: от края внутрь идут
-    // узкая полка, глубокая канавка, подъём-скос и уже потом приподнятое
-    // поле. Поэтому рисуем не одну рамку, а четыре вложенных, каждая со
-    // своим светом: свет слева-сверху, значит у канавки верх-лево в тени, а
-    // у подъёма — наоборот, освещён.
-    const t = Math.max(0.6, Math.min(pw, ph) * 0.028);
-    // [отступ от края, тень сверху-слева, свет снизу-справа]
-    const steps = [
-      [0, 0.10, 0.10],        // полка по краю проёма
-      [t, 0.34, 0.26],        // канавка — самая глубокая тень
-      [t * 2, 0.20, 0.18],    // дно канавки
-      [t * 3, -0.26, -0.20]   // подъём к полю: свет и тень меняются местами
-    ];
-    let s = "";
-    steps.forEach(([off, dark, light]) => {
-      const rx = px + off, ry = py + off;
-      const rw = Math.max(0, pw - off * 2), rh = Math.max(0, ph - off * 2);
-      if (rw <= 0 || rh <= 0) return;
-      const topC = dark >= 0 ? `rgba(0,0,0,${dark})` : `rgba(255,255,255,${-dark})`;
-      const botC = light >= 0 ? `rgba(255,255,255,${light})` : `rgba(0,0,0,${-light})`;
-      s += `<rect x="${rx}" y="${ry}" width="${rw}" height="${t}" fill="${topC}"/>`;
-      s += `<rect x="${rx}" y="${ry}" width="${t}" height="${rh}" fill="${topC}" opacity="0.8"/>`;
-      s += `<rect x="${rx}" y="${ry + rh - t}" width="${rw}" height="${t}" fill="${botC}"/>`;
-      s += `<rect x="${rx + rw - t}" y="${ry}" width="${t}" height="${rh}" fill="${botC}" opacity="0.8"/>`;
-    });
-    return s;
+  // Фаска филёнки. На фотографии переход от рамки к полю плавный и широкий:
+  // от края идёт лёгкая тень, потом подъём со светом, и только затем ровное
+  // поле. Резкие полосы читались как нарисованные, поэтому скос рисуется
+  // четырьмя трапециями (углы сходятся на ус, как у настоящей фрезеровки),
+  // а внутри каждой — мягкая растяжка.
+  function bevelGradients(pfx) {
+    const g = (id, x1, y1, x2, y2, stops) =>
+      `<linearGradient id="${pfx}${id}" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}">${stops}</linearGradient>`;
+    // от внешнего края к полю: тень у самого края, затем подсветка подъёма,
+    // затем плавно в ноль
+    const lit = `<stop offset="0" stop-color="#000" stop-opacity="0.16"/>
+      <stop offset="22%" stop-color="#000" stop-opacity="0.05"/>
+      <stop offset="62%" stop-color="#fff" stop-opacity="0.20"/>
+      <stop offset="100%" stop-color="#fff" stop-opacity="0"/>`;
+    const shade = `<stop offset="0" stop-color="#fff" stop-opacity="0.16"/>
+      <stop offset="26%" stop-color="#fff" stop-opacity="0.04"/>
+      <stop offset="64%" stop-color="#000" stop-opacity="0.15"/>
+      <stop offset="100%" stop-color="#000" stop-opacity="0"/>`;
+    return `<defs>
+      ${g("bevT", 0, 0, 0, 1, lit)}
+      ${g("bevL", 0, 0, 1, 0, lit)}
+      ${g("bevB", 0, 1, 0, 0, shade)}
+      ${g("bevR", 1, 0, 0, 0, shade)}
+    </defs>`;
+  }
+
+  function bevelSVG(px, py, pw, ph, pfx) {
+    const b = Math.max(1.2, Math.min(pw, ph) * 0.09);
+    const x2 = px + pw, y2 = py + ph;
+    const ix = px + b, iy = py + b, ix2 = x2 - b, iy2 = y2 - b;
+    if (ix2 <= ix || iy2 <= iy) return "";
+    const poly = (pts, id) => `<polygon points="${pts}" fill="url(#${pfx}${id})"/>`;
+    return (
+      poly(`${px},${py} ${x2},${py} ${ix2},${iy} ${ix},${iy}`, "bevT") +
+      poly(`${px},${y2} ${x2},${y2} ${ix2},${iy2} ${ix},${iy2}`, "bevB") +
+      poly(`${px},${py} ${ix},${iy} ${ix},${iy2} ${px},${y2}`, "bevL") +
+      poly(`${x2},${py} ${ix2},${iy} ${ix2},${iy2} ${x2},${y2}`, "bevR") +
+      // тонкая чёткая линия по самому краю проёма — она есть и на фото
+      `<rect x="${px}" y="${py}" width="${pw}" height="${Math.max(0.4, b * 0.13)}" fill="rgba(0,0,0,0.16)"/>`
+    );
   }
 
   // Вертикальные бороздки по филёнке — фрезеровка «водопадом»: линии разной
@@ -3119,7 +3132,7 @@ const DB = {
     const fillV = fills.v;
     const fillH = fills.h;
 
-    let s = "";
+    let s = bevelGradients(pfx);
     const g0 = `<g${film.filter ? ` style="filter:${film.filter}"` : ""}>`;
 
     // Ширина профиля одна на всю дверь: стойки и царги сделаны из одного
@@ -3188,7 +3201,7 @@ const DB = {
             } else {
               // Филёнка — щит из того же материала, плёнка поперёк.
               film_ += `<rect x="${px}" y="${py}" width="${paneW}" height="${paneH}" fill="${r.gv ? fillV : fillH}"/>`;
-              if (r.k === "b") film_ += bevelSVG(px, py, paneW, paneH);
+              if (r.k === "b") film_ += bevelSVG(px, py, paneW, paneH, pfx);
               if (r.k === "v") film_ += groovesSVG(px, py, paneW, paneH, r.n);
             }
           }
