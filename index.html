@@ -2973,6 +2973,35 @@ const DB = {
         { k: "b", h: 1, cols: 2, rws: 4 },
         { k: "p" }
       ]
+    },
+    // Глухая: рама и одна филёнка во всю высоту, по ней вертикальные
+    // бороздки разной длины — та самая фрезеровка «водопадом».
+    "Водопад ПГ": {
+      name: "Водопад ПГ",
+      profileMm: 110,
+      rows: [
+        { k: "p" },
+        { k: "v", h: 1, n: 26 },
+        { k: "p" }
+      ]
+    },
+    // Четыре узкие полосы стекла, поля между ними ровные, заподлицо с рамой.
+    "Модерн 1 ПО": {
+      name: "Модерн 1 ПО",
+      profileMm: 100,
+      rows: [
+        { k: "p" },
+        { k: "f", h: 190 },
+        { k: "g", h: 30 },
+        { k: "f", h: 135 },
+        { k: "g", h: 30 },
+        { k: "f", h: 130 },
+        { k: "g", h: 30 },
+        { k: "f", h: 130 },
+        { k: "g", h: 30 },
+        { k: "f", h: 150 },
+        { k: "p" }
+      ]
     }
   };
 
@@ -2998,7 +3027,7 @@ const DB = {
 
   // Виды рядов: царга, ровная филёнка, филёнка с фаской (приподнятое поле,
   // как у «Британии ПГ») и стекло.
-  const ROW_KIND_NAMES = { p: "Царга", f: "Филёнка", b: "Филёнка с фаской", g: "Стекло" };
+  const ROW_KIND_NAMES = { p: "Царга", f: "Филёнка", b: "Филёнка с фаской", v: "Филёнка в бороздках", g: "Стекло" };
 
   // Цвет стекла по выбранной позиции «Стекло». Декоративные стёкла
   // (гравировка «Рим», «Венеция» и т.п.) пока показываем как матовые —
@@ -3044,6 +3073,25 @@ const DB = {
       `<rect x="${ix}" y="${iy + ih - b * 0.8}" width="${iw}" height="${b * 0.8}" fill="rgba(0,0,0,0.14)"/>` +
       `<rect x="${ix + iw - b * 0.8}" y="${iy}" width="${b * 0.8}" height="${ih}" fill="rgba(0,0,0,0.10)"/>`
     );
+  }
+
+  // Вертикальные бороздки по филёнке — фрезеровка «водопадом»: линии разной
+  // длины, все от верха филёнки вниз. Длины берутся не случайно, а по номеру
+  // бороздки, чтобы рисунок не прыгал при каждой перерисовке.
+  function groovesSVG(px, py, pw, ph, n) {
+    const count = Math.max(1, Math.min(60, Math.round(n || 24)));
+    const step = pw / count;
+    const gw = Math.max(0.5, Math.min(step * 0.32, pw * 0.012));
+    let s = "";
+    for (let i = 0; i < count; i++) {
+      // простая устойчивая «случайность» по номеру бороздки
+      const r = Math.abs(Math.sin((i + 1) * 12.9898) * 43758.5453) % 1;
+      const len = ph * (0.28 + r * 0.66);
+      const gx = px + step * (i + 0.5) - gw / 2;
+      s += `<rect x="${gx}" y="${py}" width="${gw}" height="${len}" fill="rgba(0,0,0,0.20)"/>`;
+      s += `<rect x="${gx + gw}" y="${py}" width="${gw * 0.7}" height="${len}" fill="rgba(255,255,255,0.22)"/>`;
+    }
+    return s;
   }
 
   function sbornoeLeafSVG(box, layout, film, fills, glass, pfx) {
@@ -3116,6 +3164,7 @@ const DB = {
               // Филёнка — щит из того же материала, плёнка поперёк.
               film_ += `<rect x="${px}" y="${py}" width="${paneW}" height="${paneH}" fill="${fillH}"/>`;
               if (r.k === "b") film_ += bevelSVG(px, py, paneW, paneH);
+              if (r.k === "v") film_ += groovesSVG(px, py, paneW, paneH, r.n);
             }
           }
         }
@@ -7361,6 +7410,10 @@ const DB = {
         const hEl = rowEl.querySelector('.ml-num[data-lf="h"]');
         row.h = hEl ? num(hEl, 1) : 1;
       }
+      if (k === "v") {
+        const nEl = rowEl.querySelector('.ml-num[data-lf="n"]');
+        row.n = Math.max(1, Math.round(nEl ? num(nEl, 24) : 24));
+      }
       if (k !== "p") {
         const cEl = rowEl.querySelector('.ml-num[data-lf="cols"]');
         const rEl = rowEl.querySelector('.ml-num[data-lf="rws"]');
@@ -7421,6 +7474,7 @@ const DB = {
       const row = { k: k };
       if (k !== "p") row.h = 3;
       if (k === "g") { row.cols = 1; row.rws = 1; }
+      if (k === "v") row.n = 24;
       layout.rows.push(row);
     } else {
       const i = Number(btn.closest(".ml-row").dataset.i);
@@ -7593,6 +7647,9 @@ const DB = {
       if (r.k !== "p") {
         fields += `<span class="ml-lbl">выс</span><input type="text" inputmode="decimal" class="pricenum ml-num" data-lf="h" title="Высота заполнения" value="${r.h == null ? 1 : r.h}">`;
       }
+      if (r.k === "v") {
+        fields += `<span class="ml-lbl">борозд</span><input type="text" inputmode="numeric" class="pricenum ml-num" data-lf="n" title="Число бороздок" value="${r.n || 24}">`;
+      }
       if (r.k !== "p") {
         fields += `<input type="text" inputmode="numeric" class="pricenum ml-num" data-lf="cols" title="Столбцов" value="${r.cols || 1}">`;
         fields += `<span class="ml-x">×</span>`;
@@ -7627,6 +7684,7 @@ const DB = {
               <button type="button" class="row-add ml-add-btn" data-k="p">+ Царга</button>
               <button type="button" class="row-add ml-add-btn" data-k="f">+ Филёнка</button>
               <button type="button" class="row-add ml-add-btn" data-k="b">+ С фаской</button>
+              <button type="button" class="row-add ml-add-btn" data-k="v">+ В бороздках</button>
               <button type="button" class="row-add ml-add-btn" data-k="g">+ Стекло</button>
             </div>
           </div>
