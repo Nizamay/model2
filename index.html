@@ -2962,6 +2962,49 @@ const DB = {
         { k: "g", h: 1, cols: 2, rws: 4 },
         { k: "p" }
       ]
+    },
+    // Та же рама и та же раскладка, что у «Британии ПО», только вместо
+    // стёкол филёнки с фаской — приподнятые поля со скосом по краю.
+    "Британия ПГ": {
+      name: "Британия ПГ",
+      profileMm: 115, barMm: 69,
+      rows: [
+        { k: "p" },
+        // gv — прожилки на филёнках идут вдоль, а не поперёк (по фото).
+        { k: "b", h: 1, cols: 2, rws: 4, gv: true },
+        { k: "p" }
+      ]
+    },
+    // Глухая: рама и одна филёнка во всю высоту, по ней вертикальные
+    // бороздки разной длины — та самая фрезеровка «водопадом».
+    "Водопад ПГ": {
+      name: "Водопад ПГ",
+      profileMm: 110,
+      rows: [
+        { k: "p" },
+        { k: "v", h: 1, n: 32 },
+        { k: "p" }
+      ]
+    },
+    // Четыре узкие полосы стекла, поля между ними ровные, заподлицо с рамой.
+    "Модерн 1 ПО": {
+      name: "Модерн 1 ПО",
+      profileMm: 100,
+      rows: [
+        { k: "p" },
+        // Стекло замерено: 30 мм, поэтому высота фиксированная в мм.
+        // Филёнки между ними равные — стёкла распределены равномерно.
+        { k: "f", h: 1 },
+        { k: "g", hMm: 30 },
+        { k: "f", h: 1 },
+        { k: "g", hMm: 30 },
+        { k: "f", h: 1 },
+        { k: "g", hMm: 30 },
+        { k: "f", h: 1 },
+        { k: "g", hMm: 30 },
+        { k: "f", h: 1 },
+        { k: "p" }
+      ]
     }
   };
 
@@ -2985,7 +3028,9 @@ const DB = {
     return { profileMm: 80, barMm: 50, rows: [{ k: "p" }, { k: "f", h: 3 }, { k: "p" }] };
   }
 
-  const ROW_KIND_NAMES = { p: "Царга", f: "Филёнка", g: "Стекло" };
+  // Виды рядов: царга, ровная филёнка, филёнка с фаской (приподнятое поле,
+  // как у «Британии ПГ») и стекло.
+  const ROW_KIND_NAMES = { p: "Царга", f: "Филёнка", b: "Филёнка с фаской", v: "Филёнка в бороздках", g: "Стекло" };
 
   // Цвет стекла по выбранной позиции «Стекло». Декоративные стёкла
   // (гравировка «Рим», «Венеция» и т.п.) пока показываем как матовые —
@@ -3015,13 +3060,79 @@ const DB = {
     return { defs: `<defs>${defs}</defs>`, v: `url(#${idv})`, h: `url(#${idh})` };
   }
 
+  // Фаска филёнки: поле приподнято, по краю — скос. Свет слева-сверху,
+  // поэтому внешняя кромка скоса в тени, а само поле с той же стороны
+  // подсвечено — так рельеф читается объёмным, а не нарисованной рамкой.
+  // Фаска филёнки. На фотографии переход от рамки к полю плавный и широкий:
+  // от края идёт лёгкая тень, потом подъём со светом, и только затем ровное
+  // поле. Резкие полосы читались как нарисованные, поэтому скос рисуется
+  // четырьмя трапециями (углы сходятся на ус, как у настоящей фрезеровки),
+  // а внутри каждой — мягкая растяжка.
+  function bevelGradients(pfx) {
+    const g = (id, x1, y1, x2, y2, stops) =>
+      `<linearGradient id="${pfx}${id}" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}">${stops}</linearGradient>`;
+    // от внешнего края к полю: тень у самого края, затем подсветка подъёма,
+    // затем плавно в ноль
+    const lit = `<stop offset="0" stop-color="#000" stop-opacity="0.16"/>
+      <stop offset="22%" stop-color="#000" stop-opacity="0.05"/>
+      <stop offset="62%" stop-color="#fff" stop-opacity="0.20"/>
+      <stop offset="100%" stop-color="#fff" stop-opacity="0"/>`;
+    const shade = `<stop offset="0" stop-color="#fff" stop-opacity="0.16"/>
+      <stop offset="26%" stop-color="#fff" stop-opacity="0.04"/>
+      <stop offset="64%" stop-color="#000" stop-opacity="0.15"/>
+      <stop offset="100%" stop-color="#000" stop-opacity="0"/>`;
+    return `<defs>
+      ${g("bevT", 0, 0, 0, 1, lit)}
+      ${g("bevL", 0, 0, 1, 0, lit)}
+      ${g("bevB", 0, 1, 0, 0, shade)}
+      ${g("bevR", 1, 0, 0, 0, shade)}
+    </defs>`;
+  }
+
+  function bevelSVG(px, py, pw, ph, pfx) {
+    const b = Math.max(1.2, Math.min(pw, ph) * 0.09);
+    const x2 = px + pw, y2 = py + ph;
+    const ix = px + b, iy = py + b, ix2 = x2 - b, iy2 = y2 - b;
+    if (ix2 <= ix || iy2 <= iy) return "";
+    const poly = (pts, id) => `<polygon points="${pts}" fill="url(#${pfx}${id})"/>`;
+    return (
+      poly(`${px},${py} ${x2},${py} ${ix2},${iy} ${ix},${iy}`, "bevT") +
+      poly(`${px},${y2} ${x2},${y2} ${ix2},${iy2} ${ix},${iy2}`, "bevB") +
+      poly(`${px},${py} ${ix},${iy} ${ix},${iy2} ${px},${y2}`, "bevL") +
+      poly(`${x2},${py} ${ix2},${iy} ${ix2},${iy2} ${x2},${y2}`, "bevR") +
+      // тонкая чёткая линия по самому краю проёма — она есть и на фото
+      `<rect x="${px}" y="${py}" width="${pw}" height="${Math.max(0.4, b * 0.13)}" fill="rgba(0,0,0,0.16)"/>`
+    );
+  }
+
+  // Вертикальные бороздки по филёнке — фрезеровка «водопадом»: линии разной
+  // длины, все от верха филёнки вниз. Длины берутся не случайно, а по номеру
+  // бороздки, чтобы рисунок не прыгал при каждой перерисовке.
+  function groovesSVG(px, py, pw, ph, n) {
+    const count = Math.max(1, Math.min(80, Math.round(n || 32)));
+    const step = pw / count;
+    const gw = Math.max(0.5, Math.min(step * 0.30, pw * 0.010));
+    let s = "";
+    for (let i = 0; i < count; i++) {
+      // простая устойчивая «случайность» по номеру бороздки
+      const r = Math.abs(Math.sin((i + 1) * 12.9898) * 43758.5453) % 1;
+      // Бороздки короткие и разной длины: свисают из-под верхней царги,
+      // самая длинная не доходит и до двух третей филёнки.
+      const len = ph * (0.10 + r * 0.55);
+      const gx = px + step * (i + 0.5) - gw / 2;
+      s += `<rect x="${gx}" y="${py}" width="${gw}" height="${len}" fill="rgba(0,0,0,0.20)"/>`;
+      s += `<rect x="${gx + gw}" y="${py}" width="${gw * 0.7}" height="${len}" fill="rgba(255,255,255,0.22)"/>`;
+    }
+    return s;
+  }
+
   function sbornoeLeafSVG(box, layout, film, fills, glass, pfx) {
     const { x, y, w, h } = box;
     const seam = Math.max(0.5, w * 0.004);
     const fillV = fills.v;
     const fillH = fills.h;
 
-    let s = "";
+    let s = bevelGradients(pfx);
     const g0 = `<g${film.filter ? ` style="filter:${film.filter}"` : ""}>`;
 
     // Ширина профиля одна на всю дверь: стойки и царги сделаны из одного
@@ -3038,38 +3149,61 @@ const DB = {
 
     // Царги занимают фиксированную высоту, остальное делят между собой
     // филёнки и стёкла по своим относительным высотам.
-    const railCount = layout.rows.filter((r) => r.k === "p").length;
-    const flexTotal = layout.rows.reduce((a, r) => a + (r.k === "p" ? 0 : r.h), 0) || 1;
-    const flexSpace = Math.max(0, h - railCount * stileW);
+    // Ряд бывает трёх видов по высоте: царга (ровно ширина профиля), ряд с
+    // размером в настоящих миллиметрах (hMm — стекло «Модерна» замерено, оно
+    // 30 мм и не тянется вместе с дверью) и относительный (делит остаток).
+    const fixedH = (r) => (r.k === "p" ? stileW : (r.hMm ? r.hMm * box.unitsPerMm : 0));
+    const fixedTotal = layout.rows.reduce((a, r) => a + fixedH(r), 0);
+    const flexTotal = layout.rows.reduce((a, r) => a + (fixedH(r) ? 0 : (r.h || 0)), 0) || 1;
+    const flexSpace = Math.max(0, h - fixedTotal);
 
     let cy = y;
     let film_ = "";
     let glassMarkup = "";
     layout.rows.forEach((r, i) => {
-      const rh = r.k === "p" ? stileW : (r.h / flexTotal) * flexSpace;
-      if (r.k === "g") {
-        const p = glassPaint(glass.id, glass.name);
-        // Одно стекло на весь проём, разбитое раскладкой на cols столбцов и
-        // rws рядов (как у «Британии ПО» — 2 столбца на 4 ряда).
+      const rh = fixedH(r) || ((r.h || 0) / flexTotal) * flexSpace;
+      if (r.k === "p") {
+        // Царга — плёнка поперёк полотна.
+        film_ += `<rect x="${innerX}" y="${cy}" width="${innerW}" height="${rh}" fill="${fillH}"/>`;
+        // Шов между деталями: снизу тень, сверху тонкий блик.
+        if (i < layout.rows.length - 1) {
+          film_ += `<rect x="${innerX}" y="${cy + rh - seam}" width="${innerW}" height="${seam}" fill="rgba(0,0,0,0.34)"/>`;
+          film_ += `<rect x="${innerX}" y="${cy + rh}" width="${innerW}" height="${seam * 0.9}" fill="rgba(255,255,255,0.26)"/>`;
+        }
+        if (i > 0) {
+          film_ += `<rect x="${innerX}" y="${cy - seam * 0.9}" width="${innerW}" height="${seam * 0.9}" fill="rgba(0,0,0,0.30)"/>`;
+          film_ += `<rect x="${innerX}" y="${cy}" width="${innerW}" height="${seam * 0.9}" fill="rgba(255,255,255,0.26)"/>`;
+        }
+      } else {
+        // Заполнение проёма: стекло или филёнка. И то и другое может быть
+        // разбито раскладкой на cols столбцов и rws рядов — у «Британии»
+        // это 2 на 4 и в остеклённой, и в глухой версии.
         const cols = Math.max(1, r.cols || 1);
         const rws = Math.max(1, r.rws || 1);
         const paneW = (innerW - barW * (cols - 1)) / cols;
         const paneH = (rh - barW * (rws - 1)) / rws;
+        const p = r.k === "g" ? glassPaint(glass.id, glass.name) : null;
         for (let ri = 0; ri < rws; ri++) {
           for (let ci = 0; ci < cols; ci++) {
             const px = innerX + ci * (paneW + barW);
             const py = cy + ri * (paneH + barW);
-            // Стекло утоплено: тонкая тень по краю проёма + блик по стеклу.
-            glassMarkup += `<rect x="${px}" y="${py}" width="${paneW}" height="${paneH}" fill="${p.fill}"/>`;
-            glassMarkup += `<rect x="${px}" y="${py}" width="${paneW}" height="${paneH}" fill="url(#${pfx}glassSheen)" opacity="${p.light}"/>`;
-            // Стекло утоплено — по краю проёма тонкая ровная кромка одной и
-            // той же толщины со всех сторон. Толстая тень сверху съедала
-            // поперечную рейку: она казалась тоньше продольной, хотя рейки
-            // одинаковые.
-            glassMarkup += `<rect x="${px}" y="${py}" width="${paneW}" height="${bead}" fill="rgba(0,0,0,0.26)"/>`;
-            glassMarkup += `<rect x="${px}" y="${py}" width="${bead}" height="${paneH}" fill="rgba(0,0,0,0.18)"/>`;
-            glassMarkup += `<rect x="${px}" y="${py + paneH - bead}" width="${paneW}" height="${bead}" fill="rgba(255,255,255,0.16)"/>`;
-            glassMarkup += `<rect x="${px + paneW - bead}" y="${py}" width="${bead}" height="${paneH}" fill="rgba(255,255,255,0.10)"/>`;
+            if (r.k === "g") {
+              glassMarkup += `<rect x="${px}" y="${py}" width="${paneW}" height="${paneH}" fill="${p.fill}"/>`;
+              glassMarkup += `<rect x="${px}" y="${py}" width="${paneW}" height="${paneH}" fill="url(#${pfx}glassSheen)" opacity="${p.light}"/>`;
+              // Стекло утоплено — по краю проёма тонкая ровная кромка одной и
+              // той же толщины со всех сторон. Толстая тень сверху съедала
+              // поперечную рейку: она казалась тоньше продольной, хотя рейки
+              // одинаковые.
+              glassMarkup += `<rect x="${px}" y="${py}" width="${paneW}" height="${bead}" fill="rgba(0,0,0,0.26)"/>`;
+              glassMarkup += `<rect x="${px}" y="${py}" width="${bead}" height="${paneH}" fill="rgba(0,0,0,0.18)"/>`;
+              glassMarkup += `<rect x="${px}" y="${py + paneH - bead}" width="${paneW}" height="${bead}" fill="rgba(255,255,255,0.16)"/>`;
+              glassMarkup += `<rect x="${px + paneW - bead}" y="${py}" width="${bead}" height="${paneH}" fill="rgba(255,255,255,0.10)"/>`;
+            } else {
+              // Филёнка — щит из того же материала, плёнка поперёк.
+              film_ += `<rect x="${px}" y="${py}" width="${paneW}" height="${paneH}" fill="${r.gv ? fillV : fillH}"/>`;
+              if (r.k === "b") film_ += bevelSVG(px, py, paneW, paneH, pfx);
+              if (r.k === "v") film_ += groovesSVG(px, py, paneW, paneH, r.n);
+            }
           }
         }
         // Раскладка: вертикальные планки — прожилки вдоль них, горизонтальные
@@ -3085,16 +3219,6 @@ const DB = {
           film_ += `<rect x="${innerX}" y="${my}" width="${innerW}" height="${barW}" fill="${fillH}"/>`;
           film_ += `<rect x="${innerX}" y="${my}" width="${innerW}" height="${seam * 0.8}" fill="rgba(255,255,255,0.18)"/>`;
           film_ += `<rect x="${innerX}" y="${my + barW - seam}" width="${innerW}" height="${seam}" fill="rgba(0,0,0,0.18)"/>`;
-        }
-      } else {
-        // Царга или филёнка — плёнка поперёк полотна.
-        film_ += `<rect x="${innerX}" y="${cy}" width="${innerW}" height="${rh}" fill="${fillH}"/>`;
-        // Шов между деталями: снизу тень, сверху тонкий блик.
-        if (i < layout.rows.length - 1) {
-          film_ += `<rect x="${innerX}" y="${cy + rh - seam}" width="${innerW}" height="${seam}" fill="rgba(0,0,0,0.20)"/>`;
-        }
-        if (i > 0) {
-          film_ += `<rect x="${innerX}" y="${cy}" width="${innerW}" height="${seam * 0.8}" fill="rgba(255,255,255,0.20)"/>`;
         }
       }
       cy += rh;
@@ -7321,10 +7445,19 @@ const DB = {
       const k = rowEl.querySelector(".ml-kind").value;
       const row = { k: k };
       if (k !== "p") {
-        const hEl = rowEl.querySelector('.ml-num[data-lf="h"]');
-        row.h = hEl ? num(hEl, 1) : 1;
+        const mmEl = rowEl.querySelector('.ml-num[data-lf="hMm"]');
+        if (mmEl) row.hMm = num(mmEl, 30);
+        else {
+          const hEl = rowEl.querySelector('.ml-num[data-lf="h"]');
+          row.h = hEl ? num(hEl, 1) : 1;
+        }
+        if (rowEl.querySelector(".ml-grain").textContent.trim() === "↕") row.gv = true;
       }
-      if (k === "g") {
+      if (k === "v") {
+        const nEl = rowEl.querySelector('.ml-num[data-lf="n"]');
+        row.n = Math.max(1, Math.round(nEl ? num(nEl, 24) : 24));
+      }
+      if (k !== "p") {
         const cEl = rowEl.querySelector('.ml-num[data-lf="cols"]');
         const rEl = rowEl.querySelector('.ml-num[data-lf="rws"]');
         row.cols = Math.max(1, Math.round(cEl ? num(cEl, 1) : 1));
@@ -7369,7 +7502,7 @@ const DB = {
   }
 
   function onModelLayoutClick(e) {
-    const btn = e.target.closest && e.target.closest(".ml-up, .ml-down, .ml-del, .ml-add-btn, .ml-clear");
+    const btn = e.target.closest && e.target.closest(".ml-up, .ml-down, .ml-del, .ml-add-btn, .ml-clear, .ml-mm, .ml-grain");
     if (!btn) return;
     const box = btn.closest(".model-layout-row");
     if (!box) return;
@@ -7379,11 +7512,20 @@ const DB = {
       return;
     }
     const layout = readLayoutBlock(box);
-    if (btn.classList.contains("ml-add-btn")) {
+    if (btn.classList.contains("ml-mm") || btn.classList.contains("ml-grain")) {
+      const i = Number(btn.closest(".ml-row").dataset.i);
+      const row = layout.rows[i];
+      if (row) {
+        if (btn.classList.contains("ml-grain")) row.gv = !row.gv;
+        else if (row.hMm) { delete row.hMm; row.h = 1; }
+        else { delete row.h; row.hMm = 30; }
+      }
+    } else if (btn.classList.contains("ml-add-btn")) {
       const k = btn.dataset.k;
       const row = { k: k };
       if (k !== "p") row.h = 3;
       if (k === "g") { row.cols = 1; row.rws = 1; }
+      if (k === "v") row.n = 24;
       layout.rows.push(row);
     } else {
       const i = Number(btn.closest(".ml-row").dataset.i);
@@ -7554,12 +7696,19 @@ const DB = {
       // на телефоне не влезало — у стекла чисел трое.
       let fields = "";
       if (r.k !== "p") {
-        fields += `<span class="ml-lbl">выс</span><input type="text" inputmode="decimal" class="pricenum ml-num" data-lf="h" title="Высота заполнения" value="${r.h == null ? 1 : r.h}">`;
+        fields += r.hMm
+          ? `<span class="ml-lbl">мм</span><input type="text" inputmode="decimal" class="pricenum ml-num" data-lf="hMm" title="Высота в миллиметрах" value="${r.hMm}">`
+          : `<span class="ml-lbl">выс</span><input type="text" inputmode="decimal" class="pricenum ml-num" data-lf="h" title="Высота: доля от остатка" value="${r.h == null ? 1 : r.h}">`;
+        fields += `<button type="button" class="ml-mm" title="${r.hMm ? "Сейчас в миллиметрах" : "Сейчас доля"}">${r.hMm ? "мм" : "доля"}</button>`;
+        fields += `<button type="button" class="ml-grain" title="${r.gv ? "Прожилки вдоль" : "Прожилки поперёк"}">${r.gv ? "↕" : "↔"}</button>`;
       }
-      if (r.k === "g") {
-        fields += `<input type="text" inputmode="numeric" class="pricenum ml-num" data-lf="cols" title="Столбцов стекла" value="${r.cols || 1}">`;
+      if (r.k === "v") {
+        fields += `<span class="ml-lbl">борозд</span><input type="text" inputmode="numeric" class="pricenum ml-num" data-lf="n" title="Число бороздок" value="${r.n || 24}">`;
+      }
+      if (r.k !== "p") {
+        fields += `<input type="text" inputmode="numeric" class="pricenum ml-num" data-lf="cols" title="Столбцов" value="${r.cols || 1}">`;
         fields += `<span class="ml-x">×</span>`;
-        fields += `<input type="text" inputmode="numeric" class="pricenum ml-num" data-lf="rws" title="Рядов стекла" value="${r.rws || 1}">`;
+        fields += `<input type="text" inputmode="numeric" class="pricenum ml-num" data-lf="rws" title="Рядов" value="${r.rws || 1}">`;
       }
       return `<div class="ml-row" data-i="${i}">
         <div class="ml-head">
@@ -7589,6 +7738,8 @@ const DB = {
             <div class="ml-add">
               <button type="button" class="row-add ml-add-btn" data-k="p">+ Царга</button>
               <button type="button" class="row-add ml-add-btn" data-k="f">+ Филёнка</button>
+              <button type="button" class="row-add ml-add-btn" data-k="b">+ С фаской</button>
+              <button type="button" class="row-add ml-add-btn" data-k="v">+ В бороздках</button>
               <button type="button" class="row-add ml-add-btn" data-k="g">+ Стекло</button>
             </div>
           </div>
