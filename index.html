@@ -2962,6 +2962,17 @@ const DB = {
         { k: "g", h: 1, cols: 2, rws: 4 },
         { k: "p" }
       ]
+    },
+    // Та же рама и та же раскладка, что у «Британии ПО», только вместо
+    // стёкол филёнки с фаской — приподнятые поля со скосом по краю.
+    "Британия ПГ": {
+      name: "Британия ПГ",
+      profileMm: 115, barMm: 69,
+      rows: [
+        { k: "p" },
+        { k: "b", h: 1, cols: 2, rws: 4 },
+        { k: "p" }
+      ]
     }
   };
 
@@ -2985,7 +2996,9 @@ const DB = {
     return { profileMm: 80, barMm: 50, rows: [{ k: "p" }, { k: "f", h: 3 }, { k: "p" }] };
   }
 
-  const ROW_KIND_NAMES = { p: "Царга", f: "Филёнка", g: "Стекло" };
+  // Виды рядов: царга, ровная филёнка, филёнка с фаской (приподнятое поле,
+  // как у «Британии ПГ») и стекло.
+  const ROW_KIND_NAMES = { p: "Царга", f: "Филёнка", b: "Филёнка с фаской", g: "Стекло" };
 
   // Цвет стекла по выбранной позиции «Стекло». Декоративные стёкла
   // (гравировка «Рим», «Венеция» и т.п.) пока показываем как матовые —
@@ -3013,6 +3026,24 @@ const DB = {
       `<pattern id="${idv}" patternUnits="userSpaceOnUse" x="${film.ax}" y="${film.ay}" width="${film.tileW}" height="${film.tileH}">${tile}</pattern>` +
       `<pattern id="${idh}" patternUnits="userSpaceOnUse" x="${film.ax}" y="${film.ay}" width="${film.tileW}" height="${film.tileH}" patternTransform="rotate(90 ${film.ax} ${film.ay})">${tile}</pattern>`;
     return { defs: `<defs>${defs}</defs>`, v: `url(#${idv})`, h: `url(#${idh})` };
+  }
+
+  // Фаска филёнки: поле приподнято, по краю — скос. Свет слева-сверху,
+  // поэтому внешняя кромка скоса в тени, а само поле с той же стороны
+  // подсвечено — так рельеф читается объёмным, а не нарисованной рамкой.
+  function bevelSVG(px, py, pw, ph) {
+    const b = Math.max(0.7, Math.min(pw, ph) * 0.05);
+    const ix = px + b, iy = py + b, iw = Math.max(0, pw - b * 2), ih = Math.max(0, ph - b * 2);
+    return (
+      `<rect x="${px}" y="${py}" width="${pw}" height="${b}" fill="rgba(0,0,0,0.22)"/>` +
+      `<rect x="${px}" y="${py}" width="${b}" height="${ph}" fill="rgba(0,0,0,0.16)"/>` +
+      `<rect x="${px}" y="${py + ph - b}" width="${pw}" height="${b}" fill="rgba(255,255,255,0.22)"/>` +
+      `<rect x="${px + pw - b}" y="${py}" width="${b}" height="${ph}" fill="rgba(255,255,255,0.14)"/>` +
+      `<rect x="${ix}" y="${iy}" width="${iw}" height="${b * 0.8}" fill="rgba(255,255,255,0.20)"/>` +
+      `<rect x="${ix}" y="${iy}" width="${b * 0.8}" height="${ih}" fill="rgba(255,255,255,0.14)"/>` +
+      `<rect x="${ix}" y="${iy + ih - b * 0.8}" width="${iw}" height="${b * 0.8}" fill="rgba(0,0,0,0.14)"/>` +
+      `<rect x="${ix + iw - b * 0.8}" y="${iy}" width="${b * 0.8}" height="${ih}" fill="rgba(0,0,0,0.10)"/>`
+    );
   }
 
   function sbornoeLeafSVG(box, layout, film, fills, glass, pfx) {
@@ -3047,29 +3078,45 @@ const DB = {
     let glassMarkup = "";
     layout.rows.forEach((r, i) => {
       const rh = r.k === "p" ? stileW : (r.h / flexTotal) * flexSpace;
-      if (r.k === "g") {
-        const p = glassPaint(glass.id, glass.name);
-        // Одно стекло на весь проём, разбитое раскладкой на cols столбцов и
-        // rws рядов (как у «Британии ПО» — 2 столбца на 4 ряда).
+      if (r.k === "p") {
+        // Царга — плёнка поперёк полотна.
+        film_ += `<rect x="${innerX}" y="${cy}" width="${innerW}" height="${rh}" fill="${fillH}"/>`;
+        // Шов между деталями: снизу тень, сверху тонкий блик.
+        if (i < layout.rows.length - 1) {
+          film_ += `<rect x="${innerX}" y="${cy + rh - seam}" width="${innerW}" height="${seam}" fill="rgba(0,0,0,0.20)"/>`;
+        }
+        if (i > 0) {
+          film_ += `<rect x="${innerX}" y="${cy}" width="${innerW}" height="${seam * 0.8}" fill="rgba(255,255,255,0.20)"/>`;
+        }
+      } else {
+        // Заполнение проёма: стекло или филёнка. И то и другое может быть
+        // разбито раскладкой на cols столбцов и rws рядов — у «Британии»
+        // это 2 на 4 и в остеклённой, и в глухой версии.
         const cols = Math.max(1, r.cols || 1);
         const rws = Math.max(1, r.rws || 1);
         const paneW = (innerW - barW * (cols - 1)) / cols;
         const paneH = (rh - barW * (rws - 1)) / rws;
+        const p = r.k === "g" ? glassPaint(glass.id, glass.name) : null;
         for (let ri = 0; ri < rws; ri++) {
           for (let ci = 0; ci < cols; ci++) {
             const px = innerX + ci * (paneW + barW);
             const py = cy + ri * (paneH + barW);
-            // Стекло утоплено: тонкая тень по краю проёма + блик по стеклу.
-            glassMarkup += `<rect x="${px}" y="${py}" width="${paneW}" height="${paneH}" fill="${p.fill}"/>`;
-            glassMarkup += `<rect x="${px}" y="${py}" width="${paneW}" height="${paneH}" fill="url(#${pfx}glassSheen)" opacity="${p.light}"/>`;
-            // Стекло утоплено — по краю проёма тонкая ровная кромка одной и
-            // той же толщины со всех сторон. Толстая тень сверху съедала
-            // поперечную рейку: она казалась тоньше продольной, хотя рейки
-            // одинаковые.
-            glassMarkup += `<rect x="${px}" y="${py}" width="${paneW}" height="${bead}" fill="rgba(0,0,0,0.26)"/>`;
-            glassMarkup += `<rect x="${px}" y="${py}" width="${bead}" height="${paneH}" fill="rgba(0,0,0,0.18)"/>`;
-            glassMarkup += `<rect x="${px}" y="${py + paneH - bead}" width="${paneW}" height="${bead}" fill="rgba(255,255,255,0.16)"/>`;
-            glassMarkup += `<rect x="${px + paneW - bead}" y="${py}" width="${bead}" height="${paneH}" fill="rgba(255,255,255,0.10)"/>`;
+            if (r.k === "g") {
+              glassMarkup += `<rect x="${px}" y="${py}" width="${paneW}" height="${paneH}" fill="${p.fill}"/>`;
+              glassMarkup += `<rect x="${px}" y="${py}" width="${paneW}" height="${paneH}" fill="url(#${pfx}glassSheen)" opacity="${p.light}"/>`;
+              // Стекло утоплено — по краю проёма тонкая ровная кромка одной и
+              // той же толщины со всех сторон. Толстая тень сверху съедала
+              // поперечную рейку: она казалась тоньше продольной, хотя рейки
+              // одинаковые.
+              glassMarkup += `<rect x="${px}" y="${py}" width="${paneW}" height="${bead}" fill="rgba(0,0,0,0.26)"/>`;
+              glassMarkup += `<rect x="${px}" y="${py}" width="${bead}" height="${paneH}" fill="rgba(0,0,0,0.18)"/>`;
+              glassMarkup += `<rect x="${px}" y="${py + paneH - bead}" width="${paneW}" height="${bead}" fill="rgba(255,255,255,0.16)"/>`;
+              glassMarkup += `<rect x="${px + paneW - bead}" y="${py}" width="${bead}" height="${paneH}" fill="rgba(255,255,255,0.10)"/>`;
+            } else {
+              // Филёнка — щит из того же материала, плёнка поперёк.
+              film_ += `<rect x="${px}" y="${py}" width="${paneW}" height="${paneH}" fill="${fillH}"/>`;
+              if (r.k === "b") film_ += bevelSVG(px, py, paneW, paneH);
+            }
           }
         }
         // Раскладка: вертикальные планки — прожилки вдоль них, горизонтальные
@@ -3085,16 +3132,6 @@ const DB = {
           film_ += `<rect x="${innerX}" y="${my}" width="${innerW}" height="${barW}" fill="${fillH}"/>`;
           film_ += `<rect x="${innerX}" y="${my}" width="${innerW}" height="${seam * 0.8}" fill="rgba(255,255,255,0.18)"/>`;
           film_ += `<rect x="${innerX}" y="${my + barW - seam}" width="${innerW}" height="${seam}" fill="rgba(0,0,0,0.18)"/>`;
-        }
-      } else {
-        // Царга или филёнка — плёнка поперёк полотна.
-        film_ += `<rect x="${innerX}" y="${cy}" width="${innerW}" height="${rh}" fill="${fillH}"/>`;
-        // Шов между деталями: снизу тень, сверху тонкий блик.
-        if (i < layout.rows.length - 1) {
-          film_ += `<rect x="${innerX}" y="${cy + rh - seam}" width="${innerW}" height="${seam}" fill="rgba(0,0,0,0.20)"/>`;
-        }
-        if (i > 0) {
-          film_ += `<rect x="${innerX}" y="${cy}" width="${innerW}" height="${seam * 0.8}" fill="rgba(255,255,255,0.20)"/>`;
         }
       }
       cy += rh;
@@ -7324,7 +7361,7 @@ const DB = {
         const hEl = rowEl.querySelector('.ml-num[data-lf="h"]');
         row.h = hEl ? num(hEl, 1) : 1;
       }
-      if (k === "g") {
+      if (k !== "p") {
         const cEl = rowEl.querySelector('.ml-num[data-lf="cols"]');
         const rEl = rowEl.querySelector('.ml-num[data-lf="rws"]');
         row.cols = Math.max(1, Math.round(cEl ? num(cEl, 1) : 1));
@@ -7556,10 +7593,10 @@ const DB = {
       if (r.k !== "p") {
         fields += `<span class="ml-lbl">выс</span><input type="text" inputmode="decimal" class="pricenum ml-num" data-lf="h" title="Высота заполнения" value="${r.h == null ? 1 : r.h}">`;
       }
-      if (r.k === "g") {
-        fields += `<input type="text" inputmode="numeric" class="pricenum ml-num" data-lf="cols" title="Столбцов стекла" value="${r.cols || 1}">`;
+      if (r.k !== "p") {
+        fields += `<input type="text" inputmode="numeric" class="pricenum ml-num" data-lf="cols" title="Столбцов" value="${r.cols || 1}">`;
         fields += `<span class="ml-x">×</span>`;
-        fields += `<input type="text" inputmode="numeric" class="pricenum ml-num" data-lf="rws" title="Рядов стекла" value="${r.rws || 1}">`;
+        fields += `<input type="text" inputmode="numeric" class="pricenum ml-num" data-lf="rws" title="Рядов" value="${r.rws || 1}">`;
       }
       return `<div class="ml-row" data-i="${i}">
         <div class="ml-head">
@@ -7589,6 +7626,7 @@ const DB = {
             <div class="ml-add">
               <button type="button" class="row-add ml-add-btn" data-k="p">+ Царга</button>
               <button type="button" class="row-add ml-add-btn" data-k="f">+ Филёнка</button>
+              <button type="button" class="row-add ml-add-btn" data-k="b">+ С фаской</button>
               <button type="button" class="row-add ml-add-btn" data-k="g">+ Стекло</button>
             </div>
           </div>
