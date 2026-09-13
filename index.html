@@ -2970,7 +2970,8 @@ const DB = {
       profileMm: 115, barMm: 69,
       rows: [
         { k: "p" },
-        { k: "b", h: 1, cols: 2, rws: 4 },
+        // gv — прожилки на филёнках идут вдоль, а не поперёк (по фото).
+        { k: "b", h: 1, cols: 2, rws: 4, gv: true },
         { k: "p" }
       ]
     },
@@ -2981,7 +2982,7 @@ const DB = {
       profileMm: 110,
       rows: [
         { k: "p" },
-        { k: "v", h: 1, n: 26 },
+        { k: "v", h: 1, n: 32 },
         { k: "p" }
       ]
     },
@@ -2991,15 +2992,17 @@ const DB = {
       profileMm: 100,
       rows: [
         { k: "p" },
-        { k: "f", h: 190 },
-        { k: "g", h: 30 },
-        { k: "f", h: 135 },
-        { k: "g", h: 30 },
-        { k: "f", h: 130 },
-        { k: "g", h: 30 },
-        { k: "f", h: 130 },
-        { k: "g", h: 30 },
-        { k: "f", h: 150 },
+        // Стекло замерено: 30 мм, поэтому высота фиксированная в мм.
+        // Филёнки между ними равные — стёкла распределены равномерно.
+        { k: "f", h: 1 },
+        { k: "g", hMm: 30 },
+        { k: "f", h: 1 },
+        { k: "g", hMm: 30 },
+        { k: "f", h: 1 },
+        { k: "g", hMm: 30 },
+        { k: "f", h: 1 },
+        { k: "g", hMm: 30 },
+        { k: "f", h: 1 },
         { k: "p" }
       ]
     }
@@ -3061,32 +3064,48 @@ const DB = {
   // поэтому внешняя кромка скоса в тени, а само поле с той же стороны
   // подсвечено — так рельеф читается объёмным, а не нарисованной рамкой.
   function bevelSVG(px, py, pw, ph) {
-    const b = Math.max(0.7, Math.min(pw, ph) * 0.05);
-    const ix = px + b, iy = py + b, iw = Math.max(0, pw - b * 2), ih = Math.max(0, ph - b * 2);
-    return (
-      `<rect x="${px}" y="${py}" width="${pw}" height="${b}" fill="rgba(0,0,0,0.22)"/>` +
-      `<rect x="${px}" y="${py}" width="${b}" height="${ph}" fill="rgba(0,0,0,0.16)"/>` +
-      `<rect x="${px}" y="${py + ph - b}" width="${pw}" height="${b}" fill="rgba(255,255,255,0.22)"/>` +
-      `<rect x="${px + pw - b}" y="${py}" width="${b}" height="${ph}" fill="rgba(255,255,255,0.14)"/>` +
-      `<rect x="${ix}" y="${iy}" width="${iw}" height="${b * 0.8}" fill="rgba(255,255,255,0.20)"/>` +
-      `<rect x="${ix}" y="${iy}" width="${b * 0.8}" height="${ih}" fill="rgba(255,255,255,0.14)"/>` +
-      `<rect x="${ix}" y="${iy + ih - b * 0.8}" width="${iw}" height="${b * 0.8}" fill="rgba(0,0,0,0.14)"/>` +
-      `<rect x="${ix + iw - b * 0.8}" y="${iy}" width="${b * 0.8}" height="${ih}" fill="rgba(0,0,0,0.10)"/>`
-    );
+    // Фрезеровка не одна фаска, а ступенчатый профиль: от края внутрь идут
+    // узкая полка, глубокая канавка, подъём-скос и уже потом приподнятое
+    // поле. Поэтому рисуем не одну рамку, а четыре вложенных, каждая со
+    // своим светом: свет слева-сверху, значит у канавки верх-лево в тени, а
+    // у подъёма — наоборот, освещён.
+    const t = Math.max(0.6, Math.min(pw, ph) * 0.028);
+    // [отступ от края, тень сверху-слева, свет снизу-справа]
+    const steps = [
+      [0, 0.10, 0.10],        // полка по краю проёма
+      [t, 0.34, 0.26],        // канавка — самая глубокая тень
+      [t * 2, 0.20, 0.18],    // дно канавки
+      [t * 3, -0.26, -0.20]   // подъём к полю: свет и тень меняются местами
+    ];
+    let s = "";
+    steps.forEach(([off, dark, light]) => {
+      const rx = px + off, ry = py + off;
+      const rw = Math.max(0, pw - off * 2), rh = Math.max(0, ph - off * 2);
+      if (rw <= 0 || rh <= 0) return;
+      const topC = dark >= 0 ? `rgba(0,0,0,${dark})` : `rgba(255,255,255,${-dark})`;
+      const botC = light >= 0 ? `rgba(255,255,255,${light})` : `rgba(0,0,0,${-light})`;
+      s += `<rect x="${rx}" y="${ry}" width="${rw}" height="${t}" fill="${topC}"/>`;
+      s += `<rect x="${rx}" y="${ry}" width="${t}" height="${rh}" fill="${topC}" opacity="0.8"/>`;
+      s += `<rect x="${rx}" y="${ry + rh - t}" width="${rw}" height="${t}" fill="${botC}"/>`;
+      s += `<rect x="${rx + rw - t}" y="${ry}" width="${t}" height="${rh}" fill="${botC}" opacity="0.8"/>`;
+    });
+    return s;
   }
 
   // Вертикальные бороздки по филёнке — фрезеровка «водопадом»: линии разной
   // длины, все от верха филёнки вниз. Длины берутся не случайно, а по номеру
   // бороздки, чтобы рисунок не прыгал при каждой перерисовке.
   function groovesSVG(px, py, pw, ph, n) {
-    const count = Math.max(1, Math.min(60, Math.round(n || 24)));
+    const count = Math.max(1, Math.min(80, Math.round(n || 32)));
     const step = pw / count;
-    const gw = Math.max(0.5, Math.min(step * 0.32, pw * 0.012));
+    const gw = Math.max(0.5, Math.min(step * 0.30, pw * 0.010));
     let s = "";
     for (let i = 0; i < count; i++) {
       // простая устойчивая «случайность» по номеру бороздки
       const r = Math.abs(Math.sin((i + 1) * 12.9898) * 43758.5453) % 1;
-      const len = ph * (0.28 + r * 0.66);
+      // Бороздки короткие и разной длины: свисают из-под верхней царги,
+      // самая длинная не доходит и до двух третей филёнки.
+      const len = ph * (0.10 + r * 0.55);
       const gx = px + step * (i + 0.5) - gw / 2;
       s += `<rect x="${gx}" y="${py}" width="${gw}" height="${len}" fill="rgba(0,0,0,0.20)"/>`;
       s += `<rect x="${gx + gw}" y="${py}" width="${gw * 0.7}" height="${len}" fill="rgba(255,255,255,0.22)"/>`;
@@ -3117,24 +3136,30 @@ const DB = {
 
     // Царги занимают фиксированную высоту, остальное делят между собой
     // филёнки и стёкла по своим относительным высотам.
-    const railCount = layout.rows.filter((r) => r.k === "p").length;
-    const flexTotal = layout.rows.reduce((a, r) => a + (r.k === "p" ? 0 : r.h), 0) || 1;
-    const flexSpace = Math.max(0, h - railCount * stileW);
+    // Ряд бывает трёх видов по высоте: царга (ровно ширина профиля), ряд с
+    // размером в настоящих миллиметрах (hMm — стекло «Модерна» замерено, оно
+    // 30 мм и не тянется вместе с дверью) и относительный (делит остаток).
+    const fixedH = (r) => (r.k === "p" ? stileW : (r.hMm ? r.hMm * box.unitsPerMm : 0));
+    const fixedTotal = layout.rows.reduce((a, r) => a + fixedH(r), 0);
+    const flexTotal = layout.rows.reduce((a, r) => a + (fixedH(r) ? 0 : (r.h || 0)), 0) || 1;
+    const flexSpace = Math.max(0, h - fixedTotal);
 
     let cy = y;
     let film_ = "";
     let glassMarkup = "";
     layout.rows.forEach((r, i) => {
-      const rh = r.k === "p" ? stileW : (r.h / flexTotal) * flexSpace;
+      const rh = fixedH(r) || ((r.h || 0) / flexTotal) * flexSpace;
       if (r.k === "p") {
         // Царга — плёнка поперёк полотна.
         film_ += `<rect x="${innerX}" y="${cy}" width="${innerW}" height="${rh}" fill="${fillH}"/>`;
         // Шов между деталями: снизу тень, сверху тонкий блик.
         if (i < layout.rows.length - 1) {
-          film_ += `<rect x="${innerX}" y="${cy + rh - seam}" width="${innerW}" height="${seam}" fill="rgba(0,0,0,0.20)"/>`;
+          film_ += `<rect x="${innerX}" y="${cy + rh - seam}" width="${innerW}" height="${seam}" fill="rgba(0,0,0,0.34)"/>`;
+          film_ += `<rect x="${innerX}" y="${cy + rh}" width="${innerW}" height="${seam * 0.9}" fill="rgba(255,255,255,0.26)"/>`;
         }
         if (i > 0) {
-          film_ += `<rect x="${innerX}" y="${cy}" width="${innerW}" height="${seam * 0.8}" fill="rgba(255,255,255,0.20)"/>`;
+          film_ += `<rect x="${innerX}" y="${cy - seam * 0.9}" width="${innerW}" height="${seam * 0.9}" fill="rgba(0,0,0,0.30)"/>`;
+          film_ += `<rect x="${innerX}" y="${cy}" width="${innerW}" height="${seam * 0.9}" fill="rgba(255,255,255,0.26)"/>`;
         }
       } else {
         // Заполнение проёма: стекло или филёнка. И то и другое может быть
@@ -3162,7 +3187,7 @@ const DB = {
               glassMarkup += `<rect x="${px + paneW - bead}" y="${py}" width="${bead}" height="${paneH}" fill="rgba(255,255,255,0.10)"/>`;
             } else {
               // Филёнка — щит из того же материала, плёнка поперёк.
-              film_ += `<rect x="${px}" y="${py}" width="${paneW}" height="${paneH}" fill="${fillH}"/>`;
+              film_ += `<rect x="${px}" y="${py}" width="${paneW}" height="${paneH}" fill="${r.gv ? fillV : fillH}"/>`;
               if (r.k === "b") film_ += bevelSVG(px, py, paneW, paneH);
               if (r.k === "v") film_ += groovesSVG(px, py, paneW, paneH, r.n);
             }
@@ -7407,8 +7432,13 @@ const DB = {
       const k = rowEl.querySelector(".ml-kind").value;
       const row = { k: k };
       if (k !== "p") {
-        const hEl = rowEl.querySelector('.ml-num[data-lf="h"]');
-        row.h = hEl ? num(hEl, 1) : 1;
+        const mmEl = rowEl.querySelector('.ml-num[data-lf="hMm"]');
+        if (mmEl) row.hMm = num(mmEl, 30);
+        else {
+          const hEl = rowEl.querySelector('.ml-num[data-lf="h"]');
+          row.h = hEl ? num(hEl, 1) : 1;
+        }
+        if (rowEl.querySelector(".ml-grain").textContent.trim() === "↕") row.gv = true;
       }
       if (k === "v") {
         const nEl = rowEl.querySelector('.ml-num[data-lf="n"]');
@@ -7459,7 +7489,7 @@ const DB = {
   }
 
   function onModelLayoutClick(e) {
-    const btn = e.target.closest && e.target.closest(".ml-up, .ml-down, .ml-del, .ml-add-btn, .ml-clear");
+    const btn = e.target.closest && e.target.closest(".ml-up, .ml-down, .ml-del, .ml-add-btn, .ml-clear, .ml-mm, .ml-grain");
     if (!btn) return;
     const box = btn.closest(".model-layout-row");
     if (!box) return;
@@ -7469,7 +7499,15 @@ const DB = {
       return;
     }
     const layout = readLayoutBlock(box);
-    if (btn.classList.contains("ml-add-btn")) {
+    if (btn.classList.contains("ml-mm") || btn.classList.contains("ml-grain")) {
+      const i = Number(btn.closest(".ml-row").dataset.i);
+      const row = layout.rows[i];
+      if (row) {
+        if (btn.classList.contains("ml-grain")) row.gv = !row.gv;
+        else if (row.hMm) { delete row.hMm; row.h = 1; }
+        else { delete row.h; row.hMm = 30; }
+      }
+    } else if (btn.classList.contains("ml-add-btn")) {
       const k = btn.dataset.k;
       const row = { k: k };
       if (k !== "p") row.h = 3;
@@ -7645,7 +7683,11 @@ const DB = {
       // на телефоне не влезало — у стекла чисел трое.
       let fields = "";
       if (r.k !== "p") {
-        fields += `<span class="ml-lbl">выс</span><input type="text" inputmode="decimal" class="pricenum ml-num" data-lf="h" title="Высота заполнения" value="${r.h == null ? 1 : r.h}">`;
+        fields += r.hMm
+          ? `<span class="ml-lbl">мм</span><input type="text" inputmode="decimal" class="pricenum ml-num" data-lf="hMm" title="Высота в миллиметрах" value="${r.hMm}">`
+          : `<span class="ml-lbl">выс</span><input type="text" inputmode="decimal" class="pricenum ml-num" data-lf="h" title="Высота: доля от остатка" value="${r.h == null ? 1 : r.h}">`;
+        fields += `<button type="button" class="ml-mm" title="${r.hMm ? "Сейчас в миллиметрах" : "Сейчас доля"}">${r.hMm ? "мм" : "доля"}</button>`;
+        fields += `<button type="button" class="ml-grain" title="${r.gv ? "Прожилки вдоль" : "Прожилки поперёк"}">${r.gv ? "↕" : "↔"}</button>`;
       }
       if (r.k === "v") {
         fields += `<span class="ml-lbl">борозд</span><input type="text" inputmode="numeric" class="pricenum ml-num" data-lf="n" title="Число бороздок" value="${r.n || 24}">`;
