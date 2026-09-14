@@ -437,17 +437,18 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 /* touch-action только на самих деталях: страница под фотографией продолжает
    листаться пальцем, а начатое на детали движение уже не перехватывается
    прокруткой. */
-.part { position: absolute; display: flex; align-items: center; justify-content: center; box-sizing: border-box; border: 1px solid rgba(0,0,0,.7); touch-action: none; }
+.part, .part .ph { touch-action: none; }
+.part { position: absolute; display: flex; align-items: center; justify-content: center; box-sizing: border-box; border: 1px solid rgba(0,0,0,.7); }
 .part > span { min-width: 16px; padding: 1px 4px; border-radius: 9px; font-size: 10px; font-weight: 700; color: #fff; text-align: center; text-shadow: 0 1px 2px rgba(0,0,0,.6); pointer-events: none; }
 /* Выбранная деталь ничем не обводится дополнительно: любая вторая линия
    рядом с чёрной мешает целиться по фотографии. Что деталь выбрана, видно
    по жёлтым углам-маркерам. */
 /* Углы выбранной детали — крупные, под палец. */
-.part .ph { position: absolute; width: 15px; height: 15px; background: #ffd54a; border: 1.5px solid #6b5200; border-radius: 3px; }
-.part .ph-nw { left: -8px; top: -8px; }
-.part .ph-ne { right: -8px; top: -8px; }
-.part .ph-sw { left: -8px; bottom: -8px; }
-.part .ph-se { right: -8px; bottom: -8px; }
+.part .ph { position: absolute; width: 9px; height: 9px; background: #ffd54a; border: 1px solid #6b5200; border-radius: 2px; }
+.part .ph-nw { left: -5px; top: -5px; }
+.part .ph-ne { right: -5px; top: -5px; }
+.part .ph-sw { left: -5px; bottom: -5px; }
+.part .ph-se { right: -5px; bottom: -5px; }
 /* Цвет детали = её вид. Те же цвета у кнопок вида ниже. Заливка нарочно
    очень слабая: под ней фотография, по которой и ведётся разметка, — при
    плотной заливке дверь под ней пропадала и ориентиров не оставалось.
@@ -3307,6 +3308,12 @@ const DB = {
     panel.hidden = !ctx;
     if (!ctx) { panel.open = false; return; }
     if (!panel.open) return;
+    // Пока палец ведёт деталь, разметку не перестраиваем. Перекраска двери
+    // считается в фоне и по готовности перерисовывает сцену; если в этот
+    // момент заменить прямоугольники новыми, браузер отменяет начатое
+    // движение (pointercancel) и отдаёт жест прокрутке страницы — деталь
+    // «прилипала» к месту, а вместо неё ехал экран.
+    if (partsDrag) return;
     const els = partsStageEls();
     const hint = document.getElementById("s_partsHint");
     const kinds = document.getElementById("s_partsKinds");
@@ -3392,7 +3399,7 @@ const DB = {
         const dist = Math.sqrt(dx * dx + dy * dy);
         if (!near || dist < near.dist) near = { name: name, dist: dist };
       });
-      if (near && near.dist < 26) {
+      if (near && near.dist < 22) {
         partsDrag = { mode: "resize", i: partsSel, corner: near.name, modelId: ctx.model.id, moved: false };
         els.stage.setPointerCapture(e.pointerId);
         e.preventDefault();
@@ -6824,6 +6831,13 @@ const DB = {
       partsStage.addEventListener("pointermove", onPartsPointerMove);
       partsStage.addEventListener("pointerup", onPartsPointerUp);
       partsStage.addEventListener("pointercancel", onPartsPointerUp);
+      // Касание приходит раньше как pointerdown, потом как touchstart. Если к
+      // этому моменту деталь взята — запрещаем браузеру считать жест
+      // прокруткой. Одного touch-action в стилях не хватало: палец нередко
+      // попадает на угол-маркер, а он торчит за край детали.
+      const holdTouch = (e) => { if (partsDrag) e.preventDefault(); };
+      partsStage.addEventListener("touchstart", holdTouch, { passive: false });
+      partsStage.addEventListener("touchmove", holdTouch, { passive: false });
     }
     const partsKinds = document.getElementById("s_partsKinds");
     const partsTools = document.getElementById("s_partsTools");
