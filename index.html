@@ -3378,19 +3378,25 @@ const DB = {
     if (!box.width || !box.height) return;
     const fx = (e.clientX - box.left) / box.width;
     const fy = (e.clientY - box.top) / box.height;
-    const tolX = 26 / box.width, tolY = 26 / box.height;
 
-    // Сначала углы выбранной детали: они мелкие, и перекрываются соседями.
+    // Сначала углы активной детали: они мелкие, и перекрываются соседями.
+    // Берём ИМЕННО БЛИЖАЙШИЙ угол, а не первый подходящий: у узкой детали
+    // (стойка, планка раскладки) под палец попадают сразу оба угла, и первый
+    // по списку оказывался левым — правый край тянули, а схлопывался левый.
     if (partsSel !== null && doc.parts[partsSel]) {
       const p = doc.parts[partsSel];
       const corners = [["nw", p.x, p.y], ["ne", p.x + p.w, p.y], ["sw", p.x, p.y + p.h], ["se", p.x + p.w, p.y + p.h]];
-      for (const [name, cx2, cy2] of corners) {
-        if (Math.abs(fx - cx2) < tolX && Math.abs(fy - cy2) < tolY) {
-          partsDrag = { mode: "resize", i: partsSel, corner: name, modelId: ctx.model.id, moved: false };
-          els.stage.setPointerCapture(e.pointerId);
-          e.preventDefault();
-          return;
-        }
+      let near = null;
+      corners.forEach(([name, cx2, cy2]) => {
+        const dx = (fx - cx2) * box.width, dy = (fy - cy2) * box.height;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (!near || dist < near.dist) near = { name: name, dist: dist };
+      });
+      if (near && near.dist < 26) {
+        partsDrag = { mode: "resize", i: partsSel, corner: near.name, modelId: ctx.model.id, moved: false };
+        els.stage.setPointerCapture(e.pointerId);
+        e.preventDefault();
+        return;
       }
     }
     // Деталь берётся в два касания: первое делает её активной, и только
