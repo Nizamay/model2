@@ -439,9 +439,9 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
    прокруткой. */
 .part { position: absolute; display: flex; align-items: center; justify-content: center; box-sizing: border-box; border: 1px solid rgba(0,0,0,.7); touch-action: none; }
 .part > span { min-width: 16px; padding: 1px 4px; border-radius: 9px; font-size: 10px; font-weight: 700; color: #fff; text-align: center; text-shadow: 0 1px 2px rgba(0,0,0,.6); pointer-events: none; }
-/* Выбранная деталь — та же тонкая чёрная рамка плюс жёлтая нить внутри и
-   углы-маркеры: обводка не утолщается, фотография под ней не теряется. */
-.part.sel { box-shadow: inset 0 0 0 1px #ffc107; }
+/* Выбранная деталь ничем не обводится дополнительно: любая вторая линия
+   рядом с чёрной мешает целиться по фотографии. Что деталь выбрана, видно
+   по жёлтым углам-маркерам. */
 /* Углы выбранной детали — крупные, под палец. */
 .part .ph { position: absolute; width: 15px; height: 15px; background: #ffd54a; border: 1.5px solid #6b5200; border-radius: 3px; }
 .part .ph-nw { left: -8px; top: -8px; }
@@ -3318,10 +3318,10 @@ const DB = {
 
     if (hint) {
       hint.textContent = !parts.length
-        ? "Нажмите вид детали — на фото появится прямоугольник. Поставьте его на деталь: тянуть за середину — место, за угол — размер."
+        ? "Нажмите вид детали — на фото появится прямоугольник. Он сразу активен: тяните за середину — место, за угол — размер."
         : (partsSel === null
-          ? "Нажмите на деталь, чтобы выбрать её. Кнопка вида добавляет новую."
-          : `Выбрана деталь: ${PART_KINDS[parts[partsSel].k].name.toLowerCase()}. Тяните за середину или за углы; кнопка вида меняет вид.`);
+          ? "Нажмите на деталь — она станет активной, и только тогда её можно двигать. Кнопка вида добавляет новую."
+          : `Активна: ${PART_KINDS[parts[partsSel].k].name.toLowerCase()}. Тяните за середину — место, за углы — размер; кнопка вида меняет вид. Нажатие мимо снимает.`);
     }
     const pct = (v) => (v * 100).toFixed(3) + "%";
     if (els) {
@@ -3393,14 +3393,20 @@ const DB = {
         }
       }
     }
+    // Деталь берётся в два касания: первое делает её активной, и только
+    // после этого она двигается. Иначе любое касание фотографии сдвигало
+    // деталь под пальцем, и поставленную на место было не удержать.
     for (let i = doc.parts.length - 1; i >= 0; i--) {
       const p = doc.parts[i];
       if (fx >= p.x && fx <= p.x + p.w && fy >= p.y && fy <= p.y + p.h) {
-        partsSel = i;
+        if (i !== partsSel) {
+          partsSel = i;
+          updatePartsEditor();
+          return;
+        }
         partsDrag = { mode: "move", i: i, dx: fx - p.x, dy: fy - p.y, modelId: ctx.model.id, moved: false };
         els.stage.setPointerCapture(e.pointerId);
         e.preventDefault();
-        updatePartsEditor();
         return;
       }
     }
