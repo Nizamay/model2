@@ -461,6 +461,10 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 .part.k-f > span { background: rgba(200,120,10,.85); }
 .part.k-g { background: rgba(0,190,215,.10); }
 .part.k-g > span { background: rgba(0,150,175,.85); }
+/* Рамка полотна — ориентир, а не деталь: только пунктир, без заливки,
+   чтобы не мешала смотреть на дверь. */
+.part.k-d { background: none; border-style: dashed; }
+.part.k-d > span { background: rgba(0,0,0,.7); }
 .part.k-rv, .part.k-rh { background: rgba(214,51,132,.10); }
 .part.k-rv > span, .part.k-rh > span { background: rgba(190,40,118,.85); }
 .part.k-nv, .part.k-nh { background: rgba(124,77,255,.10); }
@@ -3014,6 +3018,10 @@ const DB = {
   // Наличник (нал.) — доски коробки вокруг двери, они на том же снимке;
   // раскладка (раскл.) — planки-шпросы внутри стекла и филёнок.
   const PART_KINDS = {
+    // «Полотно» — не деталь, а рамка полотна на снимке: по ней программа
+    // знает, где на фотографии дверь и сколько в ней миллиметров, и ставит
+    // все остальные детали точно по месту. Сама не красится.
+    d: { name: "Полотно", short: "П", ref: true },
     s: { name: "Стойка", short: "С", grain: "v" },
     p: { name: "Царга", short: "Ц", grain: "h" },
     f: { name: "Филёнка", short: "Ф", grain: "v" },
@@ -3049,6 +3057,9 @@ const DB = {
   // приходилось бы совмещать с полотном на глаз.
   function partsLeafBox(doc) {
     if (!doc) return null;
+    // Обведено «Полотно» — оно и есть ответ, гадать по деталям не нужно.
+    const ref = doc.parts.find((p) => p.k === "d");
+    if (ref) return { x: ref.x, y: ref.y, w: ref.w, h: ref.h };
     const leaf = doc.parts.filter((p) => PART_KINDS[p.k] && !PART_KINDS[p.k].casing);
     if (!leaf.length) return null;
     let x0 = 1, y0 = 1, x1 = 0, y1 = 0;
@@ -3113,16 +3124,29 @@ const DB = {
   const LEAF_MM = { w: 700, h: 2000 };
   const PROFILE_MM = 110, CASING_MM = 70;
   const INNER_MM = LEAF_MM.w - PROFILE_MM * 2;
+  // fix — размер задан правилами, за углы тянуть нечего (деталь только
+  // переносится); free — размер свой у каждой модели, углы нужны.
   const PART_MM = {
+    d: { w: LEAF_MM.w, h: LEAF_MM.h, fix: true, ratio: true },
     s: { w: PROFILE_MM, h: LEAF_MM.h, fix: true },
     p: { w: INNER_MM, h: PROFILE_MM, fix: true },
-    f: { w: INNER_MM, h: 400 },
-    g: { w: INNER_MM, h: 400 },
-    rv: { w: CASING_MM, h: 1000 },
-    rh: { w: INNER_MM, h: CASING_MM },
+    f: { w: INNER_MM, h: 400, free: true },
+    g: { w: INNER_MM, h: 400, free: true },
+    rv: { w: CASING_MM, h: 1000, free: true },
+    rh: { w: INNER_MM, h: CASING_MM, free: true },
     nv: { w: CASING_MM, h: LEAF_MM.h + CASING_MM, fix: true },
     nh: { w: LEAF_MM.w, h: CASING_MM, fix: true }
   };
+
+  // Тянуть за углы имеет смысл только там, где размер не задан правилами:
+  // рамка полотна (её подгоняют по снимку, пропорции 700x2000 держатся
+  // сами) и филёнка, стекло, раскладка — у них размер свой у каждой модели.
+  // У стоек, царг и наличников размер известен, поэтому углов у них нет и
+  // случайно растянуть их нельзя: они только переносятся.
+  function partsResizable(kind) {
+    const mm = PART_MM[kind];
+    return !!(mm && (mm.free || mm.ratio));
+  }
 
   // Сколько долей снимка приходится на миллиметр. Масштаб снимаем с уже
   // поставленных деталей, размер которых задан правилами (стойка, царга,
@@ -3181,7 +3205,8 @@ const DB = {
     const has = (k) => parts.some((p) => p.k === k);
     let x = leaf.x + (leaf.w - w) / 2;
     let y = leaf.y + (leaf.h - h) / 2;
-    if (kind === "s") { x = has("s") ? leaf.x + leaf.w - w : leaf.x; y = leaf.y; }
+    if (kind === "d") { x = leaf.x; y = leaf.y; }
+    else if (kind === "s") { x = has("s") ? leaf.x + leaf.w - w : leaf.x; y = leaf.y; }
     else if (kind === "p") { x = leaf.x + PROFILE_MM * sc.x; y = has("p") ? leaf.y + leaf.h - h : leaf.y; }
     else if (kind === "f" || kind === "g" || kind === "rh") { x = leaf.x + PROFILE_MM * sc.x; }
     else if (kind === "nv") { x = has("nv") ? leaf.x + leaf.w : leaf.x - w; y = leaf.y - CASING_MM * sc.y; }
@@ -3263,7 +3288,7 @@ const DB = {
     // их обвели.
     const ordered = doc.parts.slice().sort((a, b) => (b.w * b.h) - (a.w * a.h));
     ordered.forEach((part) => {
-      if (!PART_KINDS[part.k]) return;
+      if (!PART_KINDS[part.k] || PART_KINDS[part.k].ref) return;
       const x0 = Math.max(0, Math.min(cw, Math.round(part.x * cw)));
       const y0 = Math.max(0, Math.min(ch, Math.round(part.y * ch)));
       const x1 = Math.max(0, Math.min(cw, Math.round((part.x + part.w) * cw)));
@@ -3324,6 +3349,8 @@ const DB = {
     if (!model || !photo || !photo.image) return null;
     const doc = partsOf(model.id);
     if (!doc) return null;
+    // Обведено только полотно — красить ещё нечего, показываем сам снимок.
+    if (!doc.parts.some((p) => PART_KINDS[p.k] && !PART_KINDS[p.k].ref)) return null;
     const swatch = DB.colorSwatches[state.color];
     const filmHref = swatch && !swatch.door ? (swatch.tileImage || swatch.image) : "";
     const filmHex = (swatch && swatch.hex) || EMAL_COLOR_HEX[state.color] || "#c9cbcd";
@@ -3413,24 +3440,31 @@ const DB = {
     if (els && els.img.getAttribute("src") !== ctx.photo.image) els.img.setAttribute("src", ctx.photo.image);
 
     if (hint) {
+      const activeKind = partsSel === null ? null : parts[partsSel].k;
       hint.textContent = !parts.length
-        ? "Нажмите вид детали — прямоугольник появится сразу в своём размере (стойка и царга 110 мм, наличник 70 мм). Его остаётся поставить на место: тяните за середину."
+        ? "Начните с «Полотна»: обведите им само полотно двери, углами — по его краям. Дальше стойки, царги и наличники встанут по месту сами, их останется только подвинуть."
         : (partsSel === null
           ? "Нажмите на деталь — она станет активной, и только тогда её можно двигать. Кнопка вида добавляет новую."
-          : `Активна: ${PART_KINDS[parts[partsSel].k].name.toLowerCase()}. Тяните за середину — место, за углы — размер; кнопка вида меняет вид. Нажатие мимо снимает.`);
+          : (partsResizable(activeKind)
+            ? `Активна: ${PART_KINDS[activeKind].name.toLowerCase()}. Тяните за середину — место, за углы — размер. Нажатие мимо снимает.`
+            : `Активна: ${PART_KINDS[activeKind].name.toLowerCase()}. Размер у неё по правилам, тянуть нечего — поставьте на место. Нажатие мимо снимает.`));
     }
     const pct = (v) => (v * 100).toFixed(3) + "%";
     if (els) {
       els.layer.innerHTML = parts.map((p, i) => {
         const sel = i === partsSel;
-        const handles = sel ? ["nw", "ne", "sw", "se"].map((c) => `<i class="ph ph-${c}"></i>`).join("") : "";
+        const handles = sel && partsResizable(p.k)
+          ? ["nw", "ne", "sw", "se"].map((c) => `<i class="ph ph-${c}"></i>`).join("") : "";
         return `<div class="part k-${p.k}${sel ? " sel" : ""}" data-i="${i}"`
           + ` style="left:${pct(p.x)};top:${pct(p.y)};width:${pct(p.w)};height:${pct(p.h)}">`
           + `<span>${PART_KINDS[p.k].short}</span>${handles}</div>`;
       }).join("");
     }
     if (kinds) {
-      const lead = partsSel === null ? "Добавить:" : "Сделать:";
+      // Когда активна рамка полотна, кнопки вида добавляют новую деталь, а не
+      // переделывают рамку — подпись должна говорить именно это.
+      const refActive = partsSel !== null && parts[partsSel] && parts[partsSel].k === "d";
+      const lead = partsSel === null || refActive ? "Добавить:" : "Сделать:";
       kinds.innerHTML = `<span class="parts-lead">${lead}</span>` + Object.keys(PART_KINDS).map((k) =>
         `<button type="button" class="parts-kind k-${k}" data-kind="${k}">${PART_KINDS[k].name}</button>`).join("");
     }
@@ -3479,7 +3513,7 @@ const DB = {
     // Берём ИМЕННО БЛИЖАЙШИЙ угол, а не первый подходящий: у узкой детали
     // (стойка, планка раскладки) под палец попадают сразу оба угла, и первый
     // по списку оказывался левым — правый край тянули, а схлопывался левый.
-    if (partsSel !== null && doc.parts[partsSel]) {
+    if (partsSel !== null && doc.parts[partsSel] && partsResizable(doc.parts[partsSel].k)) {
       const p = doc.parts[partsSel];
       const corners = [["nw", p.x, p.y], ["ne", p.x + p.w, p.y], ["sw", p.x, p.y + p.h], ["se", p.x + p.w, p.y + p.h]];
       let near = null;
@@ -3556,6 +3590,20 @@ const DB = {
         const nb = Math.max(p.y + MIN, Math.min(1, partsSnap(fy, ys, tolY)));
         p.h = nb - p.y;
       }
+      if (PART_MM[p.k] && PART_MM[p.k].ratio) {
+        // Рамка полотна держит пропорции 700x2000 сама: тянется она только
+        // по размеру, форма остаётся дверной. Доли по ширине и по высоте
+        // считаются от разных сторон кадра, поэтому в пересчёт входят и
+        // пропорции самого снимка.
+        const k = Math.min(60, (LEAF_MM.h / LEAF_MM.w) * (box.width / box.height));
+        const w2 = Math.min(1 / k, Math.max(p.w, p.h / k));
+        const h2 = w2 * k;
+        if (west) p.x = right - w2;
+        if (north) p.y = bottom - h2;
+        p.w = w2; p.h = h2;
+        p.x = Math.max(0, Math.min(1 - p.w, p.x));
+        p.y = Math.max(0, Math.min(1 - p.h, p.y));
+      }
     }
     partsDrag.moved = true;
     // Пока палец на экране — двигаем только прямоугольник: перерисовывать всю
@@ -3591,7 +3639,18 @@ const DB = {
     const kind = btn.dataset.kind;
     const act = btn.dataset.act;
     if (kind) {
-      if (partsSel !== null && doc.parts[partsSel]) doc.parts[partsSel].k = kind;
+      // Полотно на модели одно, и оно не деталь: в другой вид не
+      // превращается и из детали не получается. Нажали «Полотно» — рамка
+      // становится активной (или появляется), нажали вид детали при активной
+      // рамке — добавляется новая деталь, а рамка остаётся рамкой.
+      const refAt = doc.parts.findIndex((p) => p.k === "d");
+      const refActive = partsSel !== null && doc.parts[partsSel] && doc.parts[partsSel].k === "d";
+      if (kind === "d" && refAt >= 0) {
+        partsSel = refAt;
+        updatePartsEditor();
+        return;
+      }
+      if (partsSel !== null && doc.parts[partsSel] && !refActive && kind !== "d") doc.parts[partsSel].k = kind;
       else {
         const els = partsStageEls();
         const box = els ? els.stage.getBoundingClientRect() : null;
