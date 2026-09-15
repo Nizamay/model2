@@ -1310,7 +1310,12 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
              (см. colorRow/filterCss): готовых образцов цвета всегда мало,
              а так любой из них подгоняется под реальную стену. Нативный
              выбор цвета (<input type="color">) убран по просьбе заказчика
-             — системное окно «Тон/Насыщенность/Значение» ему не подошло. -->
+             — системное окно «Тон/Насыщенность/Значение» ему не подошло.
+             Каналов R/G/B здесь нет: стену подгоняют на глаз четырьмя
+             ползунками, а разбор цвета по каналам на телефоне только занимал
+             место (у плёнки в «Изменение цен» он остался). Сами поля
+             state.wallAdjust.cr/cg/cb сохранены — они нужны фильтру и
+             остаются нейтральными. -->
         <details class="adjust-panel wall-adjust-panel">
           <summary>Настроить тон стены</summary>
           <div class="adjust-body">
@@ -1318,14 +1323,6 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
             <div class="arow"><span>Насыщенность</span><input type="range" class="adj wall-adj" data-k="s" min="0" max="300" step="1" value="100"></div>
             <div class="arow"><span>Яркость</span><input type="range" class="adj wall-adj" data-k="b" min="30" max="200" step="1" value="100"></div>
             <div class="arow"><span>Контраст</span><input type="range" class="adj wall-adj" data-k="c" min="30" max="200" step="1" value="100"></div>
-            <details class="adjust-advanced">
-              <summary>Расширенные настройки (RGB)</summary>
-              <div class="adjust-advanced-body">
-                <div class="arow"><span>Красный</span><input type="range" class="adj wall-adj" data-k="cr" min="0" max="200" step="1" value="100"></div>
-                <div class="arow"><span>Зелёный</span><input type="range" class="adj wall-adj" data-k="cg" min="0" max="200" step="1" value="100"></div>
-                <div class="arow"><span>Синий</span><input type="range" class="adj wall-adj" data-k="cb" min="0" max="200" step="1" value="100"></div>
-              </div>
-            </details>
             <div class="adjust-actions">
               <button type="button" id="s_wallAdjustReset">Сбросить тон</button>
             </div>
@@ -3174,9 +3171,19 @@ const DB = {
     const tiles = filmImg ? partsFilmTiles(filmImg, cw, doorWidthMm) : null;
     const flat = partsRgb(filmHex);
     const glassRgb = partsRgb(glass.fill);
-    // Свет: затемнение прямое (умножением), высветление — к белому, иначе
-    // блик на тёмной плёнке просто упирался бы в её собственный цвет.
-    const lift = (v, rel) => (rel <= 1 ? v * rel : v + (255 - v) * Math.min(1, (rel - 1) * 0.85));
+    // Свет. Затемнение и подсветку до четверти считаем умножением: так цвет
+    // плёнки остаётся собой, и деталь садится ровно в тот цвет, что выбран в
+    // расчёте. Раньше любое превышение уводило к белому, и филёнка — а она
+    // светлее стоек почти на всех снимках — выходила бледнее наличника,
+    // будто другой плёнкой. К белому теперь уходит только настоящий блик
+    // (ярче своего ровного поля больше чем на четверть).
+    const clampRel = (r) => Math.max(0.28, Math.min(1.85, r));
+    const lift = (v, rel) => {
+      if (rel <= 1) return v * rel;
+      const base = Math.min(255, v * Math.min(rel, 1.25));
+      const glare = Math.max(0, rel - 1.25);
+      return base + (255 - base) * Math.min(1, glare * 0.6);
+    };
 
     // Красим от крупных деталей к мелким: планка раскладки лежит поверх
     // стекла, а стекло поверх филёнки — независимо от того, в каком порядке
@@ -3201,13 +3208,22 @@ const DB = {
       if (!sample.length) return;
       sample.sort((a, b) => a - b);
       const ref = sample[sample.length >> 1] || 1;
+      // Приводим деталь к цвету плёнки: рельеф по ячейке в среднем должен
+      // давать единицу, иначе деталь садится светлее или темнее выбранного
+      // цвета — и рядом с наличником, у которого плёнка своя, ровная, это
+      // читается как другая плёнка. Тени и блики внутри детали при этом
+      // остаются: меняется только общий уровень.
+      let meanRel = 0;
+      for (let i = 0; i < sample.length; i++) meanRel += clampRel(sample[i] / ref);
+      meanRel = meanRel / sample.length;
+      const norm = meanRel > 0.05 ? 1 / meanRel : 1;
       const glassPart = part.k === "g";
       const tile = glassPart || !tiles ? null : (PART_KINDS[part.k].grain === "h" ? tiles.h : tiles.v);
       for (let y = y0; y < y1; y++) {
         for (let x = x0; x < x1; x++) {
           const i = (y * cw + x) * 4;
           const lum = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
-          const rel = Math.max(0.28, Math.min(1.85, lum / ref));
+          const rel = clampRel(clampRel(lum / ref) * norm);
           let fr, fg, fb;
           if (glassPart) { fr = glassRgb[0]; fg = glassRgb[1]; fb = glassRgb[2]; }
           else if (tile) {
