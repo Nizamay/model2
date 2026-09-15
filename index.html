@@ -3101,20 +3101,93 @@ const DB = {
   // узкой полосой слева, царга широкой сверху, филёнка и стекло в середине.
   // Если такая деталь уже есть — новая встаёт рядом со сдвигом, чтобы её было
   // видно и можно было сразу утащить на место.
-  function newPart(kind, parts) {
-    const base = {
-      s: { x: 0.06, y: 0.05, w: 0.12, h: 0.90 },
-      p: { x: 0.06, y: 0.05, w: 0.88, h: 0.10 },
-      f: { x: 0.22, y: 0.25, w: 0.56, h: 0.40 },
-      g: { x: 0.28, y: 0.25, w: 0.44, h: 0.30 },
-      rv: { x: 0.49, y: 0.20, w: 0.03, h: 0.55 },
-      rh: { x: 0.22, y: 0.48, w: 0.56, h: 0.03 },
-      nv: { x: 0.00, y: 0.00, w: 0.06, h: 1.00 },
-      nh: { x: 0.00, y: 0.00, w: 1.00, h: 0.06 }
-    }[kind] || { x: 0.3, y: 0.3, w: 0.4, h: 0.3 };
-    const same = parts.filter((p) => p.k === kind).length;
-    const off = Math.min(0.3, same * 0.05);
-    return { x: Math.min(0.95 - base.w, base.x + off), y: Math.min(0.95 - base.h, base.y + off), w: base.w, h: base.h, k: kind };
+  // Размеры деталей в НАСТОЯЩИХ миллиметрах — правила заказчика при полотне
+  // 700x2000: стойки и царги шириной 110 мм, стойка во всю высоту полотна,
+  // царга между стойками (700 - 110x2 = 480), наличник шириной 70 мм,
+  // вертикальный наличник длиннее полотна на ширину верхнего (2000 + 70),
+  // горизонтальный равен ширине полотна. Новая деталь появляется сразу в
+  // своём размере — её остаётся поставить на место, за углы тянуть не нужно.
+  //
+  // Высота филёнки, стекла и вертикальной раскладки правилами не задана —
+  // она своя у каждой модели, поэтому там размер только начальный.
+  const LEAF_MM = { w: 700, h: 2000 };
+  const PROFILE_MM = 110, CASING_MM = 70;
+  const INNER_MM = LEAF_MM.w - PROFILE_MM * 2;
+  const PART_MM = {
+    s: { w: PROFILE_MM, h: LEAF_MM.h, fix: true },
+    p: { w: INNER_MM, h: PROFILE_MM, fix: true },
+    f: { w: INNER_MM, h: 400 },
+    g: { w: INNER_MM, h: 400 },
+    rv: { w: CASING_MM, h: 1000 },
+    rh: { w: INNER_MM, h: CASING_MM },
+    nv: { w: CASING_MM, h: LEAF_MM.h + CASING_MM, fix: true },
+    nh: { w: LEAF_MM.w, h: CASING_MM, fix: true }
+  };
+
+  // Сколько долей снимка приходится на миллиметр. Масштаб снимаем с уже
+  // поставленных деталей, размер которых задан правилами (стойка, царга,
+  // наличник): по ним он известен точно, и каждая следующая деталь встаёт
+  // в тот же масштаб. Пока таких нет — считаем, что полотно занимает почти
+  // всю высоту кадра, а ширину берём из пропорций самого снимка: миллиметр
+  // по вертикали и по горизонтали один и тот же.
+  function partsScale(parts, box) {
+    const aspect = box && box.width ? box.height / box.width : LEAF_MM.h / LEAF_MM.w;
+    const xs = [], ys = [];
+    parts.forEach((p) => {
+      const mm = PART_MM[p.k];
+      if (!mm || !mm.fix) return;
+      xs.push(p.w / mm.w);
+      ys.push(p.h / mm.h);
+    });
+    const mid = (a) => { a.sort((u, v) => u - v); return a.length ? a[a.length >> 1] : 0; };
+    let y = mid(ys), x = mid(xs);
+    if (!y) y = 0.90 / LEAF_MM.h;
+    if (!x) x = y * aspect;
+    return { x: x, y: y };
+  }
+
+  // Где на снимке полотно. Каждая деталь, размер и место которой заданы
+  // правилами, показывает на его угол: стойка стоит у края полотна, царга —
+  // между стойками, вертикальный наличник примыкает снаружи, горизонтальный
+  // лежит сверху. По ним и восстанавливаем рамку полотна; деталей нет —
+  // ставим её посередине кадра в своём размере.
+  function partsLeafPlace(parts, sc) {
+    const w = Math.min(1, LEAF_MM.w * sc.x), h = Math.min(1, LEAF_MM.h * sc.y);
+    const xs = [], ys = [];
+    parts.forEach((p) => {
+      if (p.k === "s") { xs.push(p.x < 0.5 ? p.x : p.x + p.w - w); ys.push(p.y); }
+      else if (p.k === "p") { xs.push(p.x - PROFILE_MM * sc.x); ys.push(p.y < 0.5 ? p.y : p.y + p.h - h); }
+      else if (p.k === "nv") { xs.push(p.x < 0.5 ? p.x + p.w : p.x - w); ys.push(p.y + CASING_MM * sc.y); }
+      else if (p.k === "nh") { xs.push(p.x); ys.push(p.y + p.h); }
+    });
+    if (xs.length) {
+      const mean = (a) => a.reduce((s, v) => s + v, 0) / a.length;
+      return { x: mean(xs), y: mean(ys), w: w, h: h };
+    }
+    const box = partsLeafBox({ parts: parts });
+    if (box) return box;
+    return { x: (1 - w) / 2, y: (1 - h) / 2, w: w, h: h };
+  }
+
+  // Новая деталь появляется там, где она обычно и стоит: стойка у края
+  // полотна (вторая — у противоположного), царга сверху (вторая — снизу),
+  // наличник вплотную снаружи. Чаще всего её уже никуда не надо двигать.
+  function newPart(kind, parts, box) {
+    const sc = partsScale(parts, box);
+    const mm = PART_MM[kind] || { w: 300, h: 300 };
+    const w = Math.max(0.01, Math.min(1, mm.w * sc.x));
+    const h = Math.max(0.01, Math.min(1, mm.h * sc.y));
+    const leaf = partsLeafPlace(parts, sc);
+    const has = (k) => parts.some((p) => p.k === k);
+    let x = leaf.x + (leaf.w - w) / 2;
+    let y = leaf.y + (leaf.h - h) / 2;
+    if (kind === "s") { x = has("s") ? leaf.x + leaf.w - w : leaf.x; y = leaf.y; }
+    else if (kind === "p") { x = leaf.x + PROFILE_MM * sc.x; y = has("p") ? leaf.y + leaf.h - h : leaf.y; }
+    else if (kind === "f" || kind === "g" || kind === "rh") { x = leaf.x + PROFILE_MM * sc.x; }
+    else if (kind === "nv") { x = has("nv") ? leaf.x + leaf.w : leaf.x - w; y = leaf.y - CASING_MM * sc.y; }
+    else if (kind === "nh") { x = leaf.x; y = leaf.y - h; }
+    const fit = (v, size) => Math.max(0, Math.min(1 - size, v));
+    return { x: fit(x, w), y: fit(y, h), w: w, h: h, k: kind };
   }
 
   function loadImageAsync(src) {
@@ -3341,7 +3414,7 @@ const DB = {
 
     if (hint) {
       hint.textContent = !parts.length
-        ? "Нажмите вид детали — на фото появится прямоугольник. Он сразу активен: тяните за середину — место, за угол — размер."
+        ? "Нажмите вид детали — прямоугольник появится сразу в своём размере (стойка и царга 110 мм, наличник 70 мм). Его остаётся поставить на место: тяните за середину."
         : (partsSel === null
           ? "Нажмите на деталь — она станет активной, и только тогда её можно двигать. Кнопка вида добавляет новую."
           : `Активна: ${PART_KINDS[parts[partsSel].k].name.toLowerCase()}. Тяните за середину — место, за углы — размер; кнопка вида меняет вид. Нажатие мимо снимает.`);
@@ -3519,7 +3592,12 @@ const DB = {
     const act = btn.dataset.act;
     if (kind) {
       if (partsSel !== null && doc.parts[partsSel]) doc.parts[partsSel].k = kind;
-      else { doc.parts.push(newPart(kind, doc.parts)); partsSel = doc.parts.length - 1; }
+      else {
+        const els = partsStageEls();
+        const box = els ? els.stage.getBoundingClientRect() : null;
+        doc.parts.push(newPart(kind, doc.parts, box));
+        partsSel = doc.parts.length - 1;
+      }
       savePartsDoc(doc, ctx.model.id);
     } else if (act === "copy" && partsSel !== null && doc.parts[partsSel]) {
       const p = doc.parts[partsSel];
@@ -3588,7 +3666,10 @@ const DB = {
     // В 2D показываем это так: полотно приподнято на gap, коробка доходит до
     // пола, под полотном — узкая тёмная щель. Если из-за зазора верх выходит
     // за отступ — слегка ужимаем высоту полотна (пропорции сохраняем).
-    let gap = Math.max(3, h * 0.014);
+    // Полотно висит над полом: низ полотна выше низа коробки ровно на
+    // 1 см при высоте полотна 2 м, то есть на 1/200 её высоты (правило
+    // заказчика). Коробка при этом достаёт до пола.
+    let gap = Math.max(1, h / 200);
     if (h + gap > availH) { h = availH - gap; w = h * aspect; }
     const x = layout.doorCenterX - w / 2;
     const y = layout.floorY - gap - h; // низ полотна — на gap выше пола
