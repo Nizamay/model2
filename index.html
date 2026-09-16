@@ -3535,7 +3535,14 @@ const DB = {
         if (!near || dist < near.dist) near = { name: name, dist: dist };
       });
       if (near && near.dist < 22) {
-        partsDrag = { mode: "resize", i: partsSel, corner: near.name, modelId: ctx.model.id, moved: false };
+        partsDrag = {
+          mode: "resize", i: partsSel, corner: near.name, modelId: ctx.model.id, moved: false,
+          // Исходный прямоугольник: размер рамки полотна считаем от
+          // неподвижного угла и пальца, а не от того, что получилось на
+          // прошлом движении, — иначе ширина и высота подтягивают друг
+          // друга и рамку водит туда-сюда.
+          start: { x: p.x, y: p.y, w: p.w, h: p.h }
+        };
         els.stage.setPointerCapture(e.pointerId);
         e.preventDefault();
         return;
@@ -3606,15 +3613,21 @@ const DB = {
         // Рамка полотна держит пропорции 700x2000 сама: тянется она только
         // по размеру, форма остаётся дверной. Доли по ширине и по высоте
         // считаются от разных сторон кадра, поэтому в пересчёт входят и
-        // пропорции самого снимка.
+        // пропорции самого снимка. Размер — от неподвижного угла до пальца
+        // (см. partsDrag.start); упёрлись в край кадра — рамка просто
+        // перестаёт расти, а не выползает противоположной стороной.
+        const st = partsDrag.start || { x: p.x, y: p.y, w: p.w, h: p.h };
         const k = Math.min(60, (LEAF_MM.h / LEAF_MM.w) * (box.width / box.height));
-        const w2 = Math.min(1 / k, Math.max(p.w, p.h / k));
+        const ax = west ? st.x + st.w : st.x;
+        const ay = north ? st.y + st.h : st.y;
+        const roomW = west ? ax : 1 - ax;
+        const roomH = north ? ay : 1 - ay;
+        let w2 = Math.max(Math.abs(fx - ax), Math.abs(fy - ay) / k);
+        w2 = Math.max(MIN, Math.min(w2, roomW, roomH / k));
         const h2 = w2 * k;
-        if (west) p.x = right - w2;
-        if (north) p.y = bottom - h2;
         p.w = w2; p.h = h2;
-        p.x = Math.max(0, Math.min(1 - p.w, p.x));
-        p.y = Math.max(0, Math.min(1 - p.h, p.y));
+        p.x = west ? ax - w2 : ax;
+        p.y = north ? ay - h2 : ay;
       }
     }
     partsDrag.moved = true;
