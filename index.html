@@ -3129,7 +3129,13 @@ const DB = {
   // fix — размер задан правилами, за углы тянуть нечего (деталь только
   // переносится); free — размер свой у каждой модели, углы нужны.
   const PART_MM = {
-    d: { w: LEAF_MM.w, h: LEAF_MM.h, fix: true, ratio: true },
+    // Рамка полотна тянется свободно, без держания пропорций: настоящая
+    // дверь на снимке бывает и 700x2000, и 800x2000, да и сам кадр обрезан
+    // под свои пропорции. Рамка с жёстко заданной формой на такую дверь не
+    // ложилась никогда: правишь ширину — уезжает низ, правишь низ — уезжает
+    // ширина. Ширина рамки это и есть 700 мм, высота — 2000 мм, по ним и
+    // считается масштаб.
+    d: { w: LEAF_MM.w, h: LEAF_MM.h, fix: true, free: true },
     s: { w: PROFILE_MM, h: LEAF_MM.h, fix: true },
     p: { w: INNER_MM, h: PROFILE_MM, fix: true },
     // Филёнка и стекло по умолчанию — всё поле между стойками и царгами,
@@ -3150,7 +3156,7 @@ const DB = {
   // случайно растянуть их нельзя: они только переносятся.
   function partsResizable(kind) {
     const mm = PART_MM[kind];
-    return !!(mm && (mm.free || mm.ratio));
+    return !!(mm && mm.free);
   }
 
   // Сколько долей снимка приходится на миллиметр. Масштаб снимаем с уже
@@ -3449,7 +3455,7 @@ const DB = {
     if (hint) {
       const activeKind = partsSel === null ? null : parts[partsSel].k;
       hint.textContent = !parts.length
-        ? "Начните с «Полотна»: обведите им само полотно двери, углами — по его краям. Дальше стойки, царги и наличники встанут по месту сами, их останется только подвинуть."
+        ? "Начните с «Полотна»: обведите им само полотно двери, углами — точно по его краям. Ширина рамки — это 700 мм, высота — 2000 мм; по ней встанут все остальные детали."
         : (partsSel === null
           ? "Нажмите на деталь — она станет активной, и только тогда её можно двигать. Кнопка вида добавляет новую."
           : (partsResizable(activeKind)
@@ -3535,14 +3541,7 @@ const DB = {
         if (!near || dist < near.dist) near = { name: name, dist: dist };
       });
       if (near && near.dist < 22) {
-        partsDrag = {
-          mode: "resize", i: partsSel, corner: near.name, modelId: ctx.model.id, moved: false,
-          // Исходный прямоугольник: размер рамки полотна считаем от
-          // неподвижного угла и пальца, а не от того, что получилось на
-          // прошлом движении, — иначе ширина и высота подтягивают друг
-          // друга и рамку водит туда-сюда.
-          start: { x: p.x, y: p.y, w: p.w, h: p.h }
-        };
+        partsDrag = { mode: "resize", i: partsSel, corner: near.name, modelId: ctx.model.id, moved: false };
         els.stage.setPointerCapture(e.pointerId);
         e.preventDefault();
         return;
@@ -3608,26 +3607,6 @@ const DB = {
       } else {
         const nb = Math.max(p.y + MIN, Math.min(1, partsSnap(fy, ys, tolY)));
         p.h = nb - p.y;
-      }
-      if (PART_MM[p.k] && PART_MM[p.k].ratio) {
-        // Рамка полотна держит пропорции 700x2000 сама: тянется она только
-        // по размеру, форма остаётся дверной. Доли по ширине и по высоте
-        // считаются от разных сторон кадра, поэтому в пересчёт входят и
-        // пропорции самого снимка. Размер — от неподвижного угла до пальца
-        // (см. partsDrag.start); упёрлись в край кадра — рамка просто
-        // перестаёт расти, а не выползает противоположной стороной.
-        const st = partsDrag.start || { x: p.x, y: p.y, w: p.w, h: p.h };
-        const k = Math.min(60, (LEAF_MM.h / LEAF_MM.w) * (box.width / box.height));
-        const ax = west ? st.x + st.w : st.x;
-        const ay = north ? st.y + st.h : st.y;
-        const roomW = west ? ax : 1 - ax;
-        const roomH = north ? ay : 1 - ay;
-        let w2 = Math.max(Math.abs(fx - ax), Math.abs(fy - ay) / k);
-        w2 = Math.max(MIN, Math.min(w2, roomW, roomH / k));
-        const h2 = w2 * k;
-        p.w = w2; p.h = h2;
-        p.x = west ? ax - w2 : ax;
-        p.y = north ? ay - h2 : ay;
       }
     }
     partsDrag.moved = true;
