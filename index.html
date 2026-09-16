@@ -3123,6 +3123,8 @@ const DB = {
   // она своя у каждой модели, поэтому там размер только начальный.
   const LEAF_MM = { w: 700, h: 2000 };
   const PROFILE_MM = 110, CASING_MM = 70;
+  // Высота стены на сцене — от пола до верха картинки (правило заказчика).
+  const WALL_MM = 2600;
   const INNER_MM = LEAF_MM.w - PROFILE_MM * 2;
   // fix — размер задан правилами, за углы тянуть нечего (деталь только
   // переносится); free — размер свой у каждой модели, углы нужны.
@@ -3130,9 +3132,12 @@ const DB = {
     d: { w: LEAF_MM.w, h: LEAF_MM.h, fix: true, ratio: true },
     s: { w: PROFILE_MM, h: LEAF_MM.h, fix: true },
     p: { w: INNER_MM, h: PROFILE_MM, fix: true },
-    f: { w: INNER_MM, h: 400, free: true },
-    g: { w: INNER_MM, h: 400, free: true },
-    rv: { w: CASING_MM, h: 1000, free: true },
+    // Филёнка и стекло по умолчанию — всё поле между стойками и царгами,
+    // раскладка — планка во всё это поле: так сразу видно, куда их сажать,
+    // а дальше поле делится по рисунку модели.
+    f: { w: INNER_MM, h: LEAF_MM.h - PROFILE_MM * 2, free: true },
+    g: { w: INNER_MM, h: LEAF_MM.h - PROFILE_MM * 2, free: true },
+    rv: { w: CASING_MM, h: LEAF_MM.h - PROFILE_MM * 2, free: true },
     rh: { w: INNER_MM, h: CASING_MM, free: true },
     nv: { w: CASING_MM, h: LEAF_MM.h + CASING_MM, fix: true },
     nh: { w: LEAF_MM.w, h: CASING_MM, fix: true }
@@ -3208,7 +3213,9 @@ const DB = {
     if (kind === "d") { x = leaf.x; y = leaf.y; }
     else if (kind === "s") { x = has("s") ? leaf.x + leaf.w - w : leaf.x; y = leaf.y; }
     else if (kind === "p") { x = leaf.x + PROFILE_MM * sc.x; y = has("p") ? leaf.y + leaf.h - h : leaf.y; }
-    else if (kind === "f" || kind === "g" || kind === "rh") { x = leaf.x + PROFILE_MM * sc.x; }
+    else if (kind === "f" || kind === "g") { x = leaf.x + PROFILE_MM * sc.x; y = leaf.y + PROFILE_MM * sc.y; }
+    else if (kind === "rh") { x = leaf.x + PROFILE_MM * sc.x; }
+    else if (kind === "rv") { y = leaf.y + PROFILE_MM * sc.y; }
     else if (kind === "nv") { x = has("nv") ? leaf.x + leaf.w : leaf.x - w; y = leaf.y - CASING_MM * sc.y; }
     else if (kind === "nh") { x = leaf.x; y = leaf.y - h; }
     const fit = (v, size) => Math.max(0, Math.min(1 - size, v));
@@ -3469,7 +3476,12 @@ const DB = {
         `<button type="button" class="parts-kind k-${k}" data-kind="${k}">${PART_KINDS[k].name}</button>`).join("");
     }
     if (tools) {
-      tools.innerHTML = (partsSel === null ? "" :
+      // «Каркас» — весь обвес полотна разом: две стойки, две царги и три
+      // доски наличника. Всё по правилам и по рамке полотна, поэтому
+      // ставить их по одной и подгонять не нужно.
+      const hasRef = parts.some((p) => p.k === "d");
+      tools.innerHTML = (hasRef ? `<button type="button" data-act="frame">+ Каркас</button>` : "")
+        + (partsSel === null ? "" :
         `<button type="button" data-act="copy">Копия</button>`
         + `<button type="button" data-act="del">✕ Удалить</button>`
         + `<button type="button" data-act="deselect">Снять выбор</button>`)
@@ -3658,6 +3670,12 @@ const DB = {
         partsSel = doc.parts.length - 1;
       }
       savePartsDoc(doc, ctx.model.id);
+    } else if (act === "frame") {
+      const els = partsStageEls();
+      const box = els ? els.stage.getBoundingClientRect() : null;
+      ["s", "s", "p", "p", "nv", "nv", "nh"].forEach((k) => { doc.parts.push(newPart(k, doc.parts, box)); });
+      partsSel = null;
+      savePartsDoc(doc, ctx.model.id);
     } else if (act === "copy" && partsSel !== null && doc.parts[partsSel]) {
       const p = doc.parts[partsSel];
       doc.parts.push({ x: Math.min(0.98 - p.w, p.x + 0.05), y: Math.min(0.98 - p.h, p.y + 0.05), w: p.w, h: p.h, k: p.k });
@@ -3708,11 +3726,23 @@ const DB = {
     const height = Math.max(Number(state.height) || 0, 1);
     const aspect = width / height;
 
-    const availW = layout.doorMaxW;
+    // Размер двери на сцене — в масштабе комнаты, а не «во весь кадр»:
+    // стена от пола до верха картинки это 2600 мм, и дверь занимает от неё
+    // столько, сколько занимает в жизни (полотно 2000 мм плюс верхний
+    // наличник 70 мм — 2070 из 2600). Иначе узкая дверь и широкая, низкая и
+    // высокая выглядели на картинке одинаково. Если дверь в кадр всё же не
+    // входит (высокая или двустворчатая) — ужимаем целиком, пропорции
+    // сохраняются.
+    const availW = sceneMode ? Math.min(layout.vbW * 0.6, layout.doorCenterX * 2 - 8) : layout.doorMaxW;
     const availH = layout.floorY - layout.padTop;
-
     let w, h;
-    if (availW / aspect <= availH) {
+    if (sceneMode) {
+      const perMm = layout.floorY / WALL_MM;
+      w = width * perMm;
+      h = height * perMm;
+      const fit = Math.min(1, availW / w, availH / (h + h / 200 + CASING_MM * perMm));
+      if (fit < 1) { w *= fit; h *= fit; }
+    } else if (availW / aspect <= availH) {
       w = availW;
       h = w / aspect;
     } else {
@@ -3778,7 +3808,10 @@ const DB = {
     // Рамка полотна на снимке (см. partsLeafBox) — по ней снимок ставится
     // ровно на место двери: всё, что вокруг полотна (коробка, наличник,
     // фон), оказывается снаружи само собой.
-    const leafBox = gridImage ? partsLeafBox(partsDoc) : null;
+    // Снимок ставится на место двери по рамке полотна и до перекраски:
+    // разметка знает, где на фотографии дверь, независимо от того, есть ли
+    // уже во что её красить.
+    const leafBox = partsDoc ? partsLeafBox(partsDoc) : null;
     // Кадр целиком в координатах сцены — нужен и коробке из снимка.
     const photoFrame = leafBox ? {
       w: w / leafBox.w, h: h / leafBox.h,
@@ -3936,7 +3969,9 @@ const DB = {
     // Наличник со снимка: рисуется вместо своего, если он на фото обведён.
     const outerBox = photoFrame && partsHaveCasing(partsDoc) ? partsOuterBox(partsDoc, leafBox) : null;
     const photoCasing = outerBox ? {
-      href: gridImage,
+      // Коробка со снимка нужна и до перекраски: она ставит фотографию на
+      // место двери, даже когда красить ещё нечего.
+      href: gridImage || modelPhoto.image,
       x: photoFrame.x, y: photoFrame.y, w: photoFrame.w, h: photoFrame.h,
       // Видимая часть кадра — только коробка с полотном, без фона съёмки.
       clip: {
@@ -3947,7 +3982,7 @@ const DB = {
       }
     } : null;
     c.sceneGroup.innerHTML = sceneMode
-      ? buildScene(layout, { x: x, y: y, w: w, h: h }, baseHex, casingFill, state.wallColor, state.wallTexture, c.pfx, doorFilter, gap, photoCasing)
+      ? buildScene(layout, { x: x, y: y, w: w, h: h }, baseHex, casingFill, state.wallColor, state.wallTexture, c.pfx, doorFilter, gap, photoCasing, Math.max(3, CASING_MM * unitsPerMm))
       : "";
 
     if (sceneMode) {
@@ -4164,7 +4199,7 @@ const DB = {
     return noise("paint", 0.15); // smooth (гладкая окраска) — почти без фактуры
   }
 
-  function buildScene(layout, door, baseHex, casingFill, wallColor, wallTexture, pfx, doorFilter, gap, photoCasing) {
+  function buildScene(layout, door, baseHex, casingFill, wallColor, wallTexture, pfx, doorFilter, gap, photoCasing, casingW) {
     gap = gap || 0;
     const W = layout.vbW;
     const H = layout.vbH;
@@ -4255,8 +4290,9 @@ const DB = {
     }
 
     // --- Наличник (дверная коробка) с объёмным профилем. Рисуется до
-    //     полотна, поэтому виден только выступающий кант.
-    const casing = 12;
+    //     полотна, поэтому виден только выступающий кант. Ширина — настоящие
+    //     70 мм в масштабе сцены (см. CASING_MM).
+    const casing = casingW || 12;
     const ox = door.x - casing, oy = door.y - casing;
     const ow = door.w + casing * 2, oh = door.h + casing;
     // Боковые доски коробки достают до пола (полотно приподнято на gap, а
