@@ -2901,10 +2901,16 @@ const DB = {
     const idv = pfx + "grainV";
     const idh = pfx + "grainH";
     if (!film.href) return { defs: "", v: film.hex, h: film.hex };
-    const tile = `<image href="${film.href}" x="0" y="0" width="${film.tileW}" height="${film.tileH}" preserveAspectRatio="none"/>`;
+    // Плитка кладётся зеркально (см. partsFilmTiles): образец, его отражение
+    // вбок, вниз и по обеим сторонам. На стыках прожилки продолжают сами
+    // себя, шва не видно — поэтому шаг паттерна вдвое больше образца.
+    const W2 = film.tileW * 2, H2 = film.tileH * 2;
+    const one = (tr) => `<image href="${film.href}" x="0" y="0" width="${film.tileW}" height="${film.tileH}" preserveAspectRatio="none"${tr ? ` transform="${tr}"` : ""}/>`;
+    const tile = one("") + one(`translate(${W2},0) scale(-1,1)`)
+      + one(`translate(0,${H2}) scale(1,-1)`) + one(`translate(${W2},${H2}) scale(-1,-1)`);
     const defs =
-      `<pattern id="${idv}" patternUnits="userSpaceOnUse" x="${film.ax}" y="${film.ay}" width="${film.tileW}" height="${film.tileH}">${tile}</pattern>` +
-      `<pattern id="${idh}" patternUnits="userSpaceOnUse" x="${film.ax}" y="${film.ay}" width="${film.tileW}" height="${film.tileH}" patternTransform="rotate(90 ${film.ax} ${film.ay})">${tile}</pattern>`;
+      `<pattern id="${idv}" patternUnits="userSpaceOnUse" x="${film.ax}" y="${film.ay}" width="${W2}" height="${H2}">${tile}</pattern>` +
+      `<pattern id="${idh}" patternUnits="userSpaceOnUse" x="${film.ax}" y="${film.ay}" width="${W2}" height="${H2}" patternTransform="rotate(90 ${film.ax} ${film.ay})">${tile}</pattern>`;
     return { defs: `<defs>${defs}</defs>`, v: `url(#${idv})`, h: `url(#${idh})` };
   }
 
@@ -3244,13 +3250,28 @@ const DB = {
     const { widthMm, heightMm } = DB.colorSwatchSampleSize;
     const tw = Math.max(8, Math.round(widthMm * perMm));
     const th = Math.max(8, Math.round(heightMm * perMm));
+    // Плитка кладётся не подряд, а ЗЕРКАЛЬНО: следующая переворачивается,
+    // и на стыке прожилки продолжают сами себя — шва не видно (правило
+    // заказчика: АС + СА + АС + СА, а не АС + АС). Поэтому плитка для
+    // укладки вчетверо больше образца: сам образец, его отражение вбок,
+    // отражение вниз и отражение по обеим сторонам.
     const bake = (w, h, rotate) => {
+      const one = document.createElement("canvas");
+      one.width = w; one.height = h;
+      const ox = one.getContext("2d");
+      if (rotate) { ox.translate(w, 0); ox.rotate(Math.PI / 2); ox.drawImage(filmImg, 0, 0, h, w); }
+      else ox.drawImage(filmImg, 0, 0, w, h);
       const cv = document.createElement("canvas");
-      cv.width = w; cv.height = h;
+      cv.width = w * 2; cv.height = h * 2;
       const cx = cv.getContext("2d");
-      if (rotate) { cx.translate(w, 0); cx.rotate(Math.PI / 2); cx.drawImage(filmImg, 0, 0, h, w); }
-      else cx.drawImage(filmImg, 0, 0, w, h);
-      return { w: w, h: h, data: cx.getImageData(0, 0, w, h).data };
+      [[1, 1], [-1, 1], [1, -1], [-1, -1]].forEach(([sx, sy]) => {
+        cx.save();
+        cx.translate(sx < 0 ? w * 2 : 0, sy < 0 ? h * 2 : 0);
+        cx.scale(sx, sy);
+        cx.drawImage(one, 0, 0);
+        cx.restore();
+      });
+      return { w: w * 2, h: h * 2, data: cx.getImageData(0, 0, w * 2, h * 2).data };
     };
     return { v: bake(tw, th, false), h: bake(th, tw, true) };
   }
@@ -3789,9 +3810,13 @@ const DB = {
     const tileH = sampleH * unitsPerMm;
     // Плитка с зеркальными столбцами: резкие вертикальные швы превращаются в
     // плавные отражения (по вертикали образец уже бесшовный).
+    // Плитка кладётся зеркально в обе стороны (см. grainFills): на стыках
+    // прожилки продолжают сами себя, шва не видно.
     const mirroredTiles = (tw, th) =>
       `<use href="#${c.textureImageId}"/>` +
-      `<use href="#${c.textureImageId}" transform="translate(${tw * 2},0) scale(-1,1)"/>`;
+      `<use href="#${c.textureImageId}" transform="translate(${tw * 2},0) scale(-1,1)"/>` +
+      `<use href="#${c.textureImageId}" transform="translate(0,${th * 2}) scale(1,-1)"/>` +
+      `<use href="#${c.textureImageId}" transform="translate(${tw * 2},${th * 2}) scale(-1,-1)"/>`;
     // doorFill используется и для наличника, чтобы коробка была той же
     // расцветки/текстуры, что и дверь.
     let doorFill;
@@ -3876,7 +3901,7 @@ const DB = {
       c.texturePattern.setAttribute("x", x);
       c.texturePattern.setAttribute("y", y);
       c.texturePattern.setAttribute("width", tileW * 2);
-      c.texturePattern.setAttribute("height", tileH);
+      c.texturePattern.setAttribute("height", tileH * 2);
       c.texturePattern.innerHTML = mirroredTiles(tileW, tileH);
       c.leafRect.setAttribute("fill", doorFill);
       c.varyRect.setAttribute("display", "");
