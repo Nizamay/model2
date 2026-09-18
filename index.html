@@ -3,6 +3,11 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- Страница всегда проверяет, не вышла ли новая версия. Без этого браузер
+     на телефоне держал её в памяти до десяти минут, и свежие правки
+     приходилось выуживать перезагрузкой с хвостом в адресе (…?2). Ответ
+     сервера при этом не качается заново, если ничего не изменилось. -->
+<meta http-equiv="Cache-Control" content="no-cache, must-revalidate">
 <title>DoorCalc Pro — Расчет межкомнатных дверей</title>
 <style>
 :root {
