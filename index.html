@@ -3263,7 +3263,7 @@ const DB = {
   // считать масштаб одним числом на весь кадр, плитка на картинке выходит не
   // 150x200 мм, а вытянутой: на полотне 2000 мм помещалось 7 плёнок вместо
   // десяти, и рисунок дерева выглядел растянутым — не тем, что загружали.
-  function partsFilmTiles(filmImg, pxPerMmX, pxPerMmY) {
+  function partsFilmTiles(filmImg, pxPerMmX, pxPerMmY, adj) {
     const { widthMm, heightMm } = DB.colorSwatchSampleSize;
     const tw = Math.max(8, Math.round(widthMm * pxPerMmX));
     const th = Math.max(8, Math.round(heightMm * pxPerMmY));
@@ -3288,13 +3288,72 @@ const DB = {
         cx.drawImage(one, 0, 0);
         cx.restore();
       });
-      return { w: w * 2, h: h * 2, data: cx.getImageData(0, 0, w * 2, h * 2).data };
+      const img = cx.getImageData(0, 0, w * 2, h * 2);
+      // Плёнка отдаётся уже настроенной ползунками: дальше её пиксели просто
+      // множатся на светотень со снимка, и деталь садится ровно в тот цвет,
+      // который виден на образце в «Цвета».
+      if (!adjIsNeutral(adj)) {
+        const q = img.data;
+        for (let i = 0; i < q.length; i += 4) {
+          const t = adjustFilmRgb([q[i], q[i + 1], q[i + 2]], adj);
+          q[i] = t[0]; q[i + 1] = t[1]; q[i + 2] = t[2];
+        }
+      }
+      return { w: w * 2, h: h * 2, data: img.data };
     };
     // Повёрнутый образец занимает 200 мм поперёк и 150 мм вдоль — считаем их
     // по своим осям, а не переставляем tw и th местами.
     const rw = Math.max(8, Math.round(heightMm * pxPerMmX));
     const rh = Math.max(8, Math.round(widthMm * pxPerMmY));
     return { v: bake(tw, th, false), h: bake(rw, rh, true) };
+  }
+
+  // Поправка цвета плёнки из «Цвета» (ползунки «Оттенок / Насыщенность /
+  // Яркость / Контраст» и множители каналов R/G/B), посчитанная по пикселям.
+  // Порядок и формулы — те же, что применяет к картинке CSS filter (см.
+  // filterCss и ensureRgbFilterDef): сначала каналы, потом оттенок,
+  // насыщенность, яркость, контраст; счёт в sRGB, после каждого шага
+  // значения обрезаются по краям, как это делает браузер.
+  //
+  // Нужна, чтобы плёнка ложилась на деталь уже настроенной. Раньше поправка
+  // накладывалась фильтром на всю дверь целиком, ПОСЛЕ перекраски. Яркость
+  // от такого не меняется (умножение переставимо), а вот контраст — ещё как:
+  // он тянет к середине не плёнку, а уже готовую картинку вместе с тенями от
+  // фрезеровки, и рельеф на детали сминается. Заодно под фильтр попадало и
+  // то, что плёнкой не красится: стекло, ручка, петли, необведённые места.
+  const ADJ_NEUTRAL = { h: 0, s: 100, b: 100, c: 100, cr: 100, cg: 100, cb: 100 };
+  function adjIsNeutral(v) {
+    return !v || (!v.h && v.s === 100 && v.b === 100 && v.c === 100 &&
+      (v.cr == null || v.cr === 100) && (v.cg == null || v.cg === 100) && (v.cb == null || v.cb === 100));
+  }
+  function adjustFilmRgb(rgb, v) {
+    const cl = (x) => x < 0 ? 0 : (x > 255 ? 255 : x);
+    let r = cl(rgb[0] * ((v.cr == null ? 100 : v.cr) / 100));
+    let g = cl(rgb[1] * ((v.cg == null ? 100 : v.cg) / 100));
+    let b = cl(rgb[2] * ((v.cb == null ? 100 : v.cb) / 100));
+    const a = (v.h || 0) * Math.PI / 180;
+    if (a) {
+      const co = Math.cos(a), si = Math.sin(a);
+      const r2 = (0.213 + co * 0.787 - si * 0.213) * r + (0.715 - co * 0.715 - si * 0.715) * g + (0.072 - co * 0.072 + si * 0.928) * b;
+      const g2 = (0.213 - co * 0.213 + si * 0.143) * r + (0.715 + co * 0.285 + si * 0.140) * g + (0.072 - co * 0.072 - si * 0.283) * b;
+      const b2 = (0.213 - co * 0.213 - si * 0.787) * r + (0.715 - co * 0.715 + si * 0.715) * g + (0.072 + co * 0.928 + si * 0.072) * b;
+      r = cl(r2); g = cl(g2); b = cl(b2);
+    }
+    const s = (v.s == null ? 100 : v.s) / 100;
+    if (s !== 1) {
+      const r2 = (0.213 + 0.787 * s) * r + (0.715 - 0.715 * s) * g + (0.072 - 0.072 * s) * b;
+      const g2 = (0.213 - 0.213 * s) * r + (0.715 + 0.285 * s) * g + (0.072 - 0.072 * s) * b;
+      const b2 = (0.213 - 0.213 * s) * r + (0.715 - 0.715 * s) * g + (0.072 + 0.928 * s) * b;
+      r = cl(r2); g = cl(g2); b = cl(b2);
+    }
+    const br = (v.b == null ? 100 : v.b) / 100;
+    if (br !== 1) { r = cl(r * br); g = cl(g * br); b = cl(b * br); }
+    const co2 = (v.c == null ? 100 : v.c) / 100;
+    if (co2 !== 1) {
+      const off = 127.5 * (1 - co2);
+      r = cl(r * co2 + off); g = cl(g * co2 + off); b = cl(b * co2 + off);
+    }
+    return [r, g, b];
   }
 
   // Тот же разбор цвета, что и в hexToRgb выше, но массивом [r,g,b] —
@@ -3345,7 +3404,7 @@ const DB = {
 
   // Перекраска полотна по обведённым деталям. Снимок берётся целиком: что
   // деталью не обведено, то и остаётся со снимка нетронутым.
-  function paintPartsLeaf(photo, filmImg, filmHex, doc, glass, doorWidthMm, doorHeightMm) {
+  function paintPartsLeaf(photo, filmImg, filmHex, doc, glass, doorWidthMm, doorHeightMm, adj) {
     const W = photo.naturalWidth, H = photo.naturalHeight;
     // Рабочий размер ограничен: на экране телефона дверь всё равно мельче, а
     // перебор каждого пикселя на полном снимке заметно тормозил бы.
@@ -3366,14 +3425,25 @@ const DB = {
     const box = partsLeafBox(doc) || { x: 0, y: 0, w: 1, h: 1 };
     const pxPerMmX = (box.w * cw) / Math.max(300, doorWidthMm);
     const pxPerMmY = (box.h * ch) / Math.max(1000, doorHeightMm || 2000);
-    const tiles = filmImg ? partsFilmTiles(filmImg, pxPerMmX, pxPerMmY) : null;
+    const adjust = adj || ADJ_NEUTRAL;
+    const tiles = filmImg ? partsFilmTiles(filmImg, pxPerMmX, pxPerMmY, adjust) : null;
     // Рельеф берём со слегка размытой копии снимка. Крупное — фаска,
     // фрезеровка, тень от царги — остаётся, а собственные прожилки
     // фотографии уходят: иначе они ложатся поверх прожилок плёнки и спорят
     // с ними по направлению, и на детали видно волокно не в ту сторону.
     // Размытие узкое, в несколько миллиметров двери, — фрезеровку не съедает.
     const relief = blurLuminance(d, cw, ch, Math.max(1, Math.round(cw / 400)));
-    const flat = partsRgb(filmHex);
+    // Та же яркость, но резкая, без размытия, — снятая со снимка ДО того, как
+    // по нему пошла перекраска. Нужна стеклу: у него рельеф свой, гравировка
+    // и блики, размывать их нельзя. Раньше стекло читало яркость прямо из
+    // перекрашиваемой картинки, а филёнка под ним к тому времени уже была
+    // закрашена плёнкой, — и стекло темнело или светлело вслед за цветом
+    // плёнки, хотя к плёнке никакого отношения не имеет.
+    const sharp = blurLuminance(d, cw, ch, 0);
+    // Ровный цвет (эмаль, плёнка без образца) настраивается тем же правилом.
+    // Стекло — нет: у него свой цвет из позиции «Стекло», к плёнке он
+    // отношения не имеет.
+    const flat = adjustFilmRgb(partsRgb(filmHex), adjust);
     const glassRgb = partsRgb(glass.fill);
     // Свет. Затемнение и подсветку до четверти считаем умножением: так цвет
     // плёнки остаётся собой, и деталь садится ровно в тот цвет, что выбран в
@@ -3434,7 +3504,7 @@ const DB = {
           const i = (y * cw + x) * 4;
           // У стекла рельеф берём резкий, без размытия: гравировка и блики
           // — это его собственный рисунок, терять их нельзя.
-          const lum = glassPart ? (0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]) : relief[y * cw + x];
+          const lum = glassPart ? sharp[y * cw + x] : relief[y * cw + x];
           const rel = clampRel(clampRel(lum / ref) * norm);
           let fr, fg, fb;
           if (glassPart) { fr = glassRgb[0]; fg = glassRgb[1]; fb = glassRgb[2]; }
@@ -3472,15 +3542,19 @@ const DB = {
     const glass = glassPaint(state.glassId, glassName);
     const widthMm = Math.max(300, Number(state.width) || 800);
     const heightMm = Math.max(1000, Number(state.height) || 2000);
+    // Поправка цвета входит в ключ: подвинули ползунок — нужна новая картинка,
+    // старая из кэша осталась бы в прежнем цвете.
+    const adj = adjOf(state.color);
     const key = [model.id, doc.rev || 1, state.color, state.glassId,
-      Math.round(widthMm / 25), Math.round(heightMm / 25)].join("|");
+      Math.round(widthMm / 25), Math.round(heightMm / 25),
+      adj.h, adj.s, adj.b, adj.c, adj.cr, adj.cg, adj.cb].join("|");
     const hit = partsImageCache.get(key);
     if (hit !== undefined) return hit === "pending" || !hit ? null : hit;
     partsImageCache.set(key, "pending");
     Promise.all([loadImageAsync(photo.image), filmHref ? loadImageAsync(filmHref) : Promise.resolve(null)])
       .then(([ph, film]) => {
         let url = "";
-        try { url = paintPartsLeaf(ph, film, filmHex, doc, glass, widthMm, heightMm); } catch (err) { url = ""; }
+        try { url = paintPartsLeaf(ph, film, filmHex, doc, glass, widthMm, heightMm, adj); } catch (err) { url = ""; }
         partsImageCache.set(key, url);
         if (partsImageCache.size > PARTS_CACHE_MAX) partsImageCache.delete(partsImageCache.keys().next().value);
         if (el.viewScene && !el.viewScene.hidden) drawDoor(sceneCtx, true);
@@ -3988,11 +4062,18 @@ const DB = {
     // задаётся в «Изменение цен» и хранится в DB.colorAdjust.
     // На неперекрашенном фото цвет свой, снятый на месте, — тон плёнки к
     // нему не применяем (иначе фотография уедет по цвету от того, что
-    // снято). Перекрашенная по сетке дверь — уже в выбранной плёнке, ей
-    // тон-коррекция нужна такая же, как коробке.
+    // снято).
+    //
+    // У перекрашенной двери поправка уже ВНУТРИ картинки: она наложена на
+    // саму плёнку, до того как та легла на детали (см. paintPartsLeaf).
+    // Накладывать её ещё раз поверх всего полотна нельзя — получится
+    // дважды. Да и незачем: фильтр поверх задевал и то, что плёнкой не
+    // красится, — стекло, ручку, петли, необведённые места, — и сминал
+    // контрастом тени от фрезеровки. Своя, нарисованная программой коробка
+    // заливается образцом как есть, поэтому ей фильтр по-прежнему нужен.
     const photoAsIs = !!modelPhoto && !gridImage;
     const doorFilter = photoAsIs ? "" : filterCss(adjOf(state.color));
-    c.leafRect.style.filter = doorFilter;
+    c.leafRect.style.filter = gridImage ? "" : doorFilter;
 
     // Заливки плёнкой по направлению прожилок — ими красятся три доски
     // наличника. Строятся из образца плёнки; когда образца нет (готовая
@@ -4382,6 +4463,12 @@ const DB = {
       const cl = photoCasing.clip;
       s += `<defs><clipPath id="${idf("photoCasing")}"><rect x="${cl.x}" y="${cl.y}" width="${cl.w}" height="${cl.h}"/></clipPath></defs>`;
       s += `<rect x="${cl.x + 3}" y="${cl.y + 3}" width="${cl.w}" height="${cl.h}" fill="rgba(20,12,4,0.20)" filter="url(#${idf("soft")})"/>`;
+      // Фильтр тон-коррекции тут не нужен и его тут нет: коробка со снимка
+      // — часть той же перекрашенной картинки, что и полотно, а поправка
+      // цвета плёнки наложена ещё в перекраске, на саму плёнку (см.
+      // paintPartsLeaf). Пока её накладывали фильтром поверх, наличник её не
+      // получал вовсе — отсюда и была жалоба «наличник темнее полотна» на
+      // тех плёнках, которым крутили ползунки.
       s += `<g clip-path="url(#${idf("photoCasing")})">`;
       s += `<image href="${photoCasing.href}" x="${photoCasing.x}" y="${photoCasing.y}" width="${photoCasing.w}" height="${photoCasing.h}" preserveAspectRatio="none"/>`;
       s += `</g>`;
