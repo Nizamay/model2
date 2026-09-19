@@ -3263,32 +3263,142 @@ const DB = {
   // считать масштаб одним числом на весь кадр, плитка на картинке выходит не
   // 150x200 мм, а вытянутой: на полотне 2000 мм помещалось 7 плёнок вместо
   // десяти, и рисунок дерева выглядел растянутым — не тем, что загружали.
+  // Плавное уменьшение картинки. Браузер, сжимая за один шаг в несколько
+  // раз, берёт редкие точки исходника: тонкие прожилки плёнки при этом не
+  // усредняются, а выпадают через одну, и на детали вместо ровного волокна
+  // идут широкие разводы — а после зеркальной укладки они складываются в
+  // «плетёнку» (жалоба заказчика: «настроенная плёнка и наложенная — совсем
+  // разные вещи»). Уменьшаем вдвое за шаг, пока не подойдём к нужному
+  // размеру: тогда каждая точка — среднее по всем, что в неё попали.
+  function shrinkImage(img, w, h) {
+    let sw = img.naturalWidth || img.width || 1;
+    let sh = img.naturalHeight || img.height || 1;
+    let src = img;
+    let guard = 12;
+    while (guard-- > 0 && (sw > w * 2 || sh > h * 2)) {
+      sw = Math.max(1, Math.max(w, Math.round(sw / 2)));
+      sh = Math.max(1, Math.max(h, Math.round(sh / 2)));
+      const c = document.createElement("canvas");
+      c.width = sw; c.height = sh;
+      const x = c.getContext("2d");
+      x.imageSmoothingEnabled = true;
+      x.imageSmoothingQuality = "high";
+      x.drawImage(src, 0, 0, sw, sh);
+      src = c;
+    }
+    return src;
+  }
+
+  // Куда идёт волокно на образце плёнки. Волокно даёт резкий перепад
+  // яркости ПОПЕРЁК себя, поэтому сильный перепад по горизонтали — это
+  // вертикальные прожилки. У большинства плёнок так и есть; у «Пацифика» и
+  // его аналогов волокно лежит поперёк — это свойство материала, и
+  // разворачивать образец не надо (см. docs/2d-spec.md, п. 10). Знать
+  // направление нужно для другого: каким швом класть плитку.
+  // Считаем по уменьшенной копии и запоминаем — образцов немного.
+  const filmSidewaysCache = new Map();
+  function filmGrainSideways(img) {
+    const key = img && img.src ? img.src : "";
+    const hit = filmSidewaysCache.get(key);
+    if (hit !== undefined) return hit;
+    let out = false;
+    try {
+      const sw = 120;
+      const sh = Math.max(8, Math.round(sw * (img.naturalHeight || 1) / (img.naturalWidth || 1)));
+      const c = document.createElement("canvas");
+      c.width = sw; c.height = sh;
+      const x = c.getContext("2d");
+      x.imageSmoothingEnabled = true;
+      x.imageSmoothingQuality = "high";
+      x.drawImage(shrinkImage(img, sw, sh), 0, 0, sw, sh);
+      const d = x.getImageData(0, 0, sw, sh).data;
+      const lum = (a, b) => { const i = (b * sw + a) * 4; return 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]; };
+      let gx = 0, gy = 0, n = 0;
+      for (let b = 0; b < sh - 1; b++) {
+        for (let a = 0; a < sw - 1; a++) {
+          gx += Math.abs(lum(a + 1, b) - lum(a, b));
+          gy += Math.abs(lum(a, b + 1) - lum(a, b));
+          n++;
+        }
+      }
+      out = !!n && gy > gx * 1.15;
+    } catch (err) { out = false; }
+    filmSidewaysCache.set(key, out);
+    return out;
+  }
+
   function partsFilmTiles(filmImg, pxPerMmX, pxPerMmY, adj) {
     const { widthMm, heightMm } = DB.colorSwatchSampleSize;
     const tw = Math.max(8, Math.round(widthMm * pxPerMmX));
     const th = Math.max(8, Math.round(heightMm * pxPerMmY));
-    // Плитка кладётся не подряд, а ЗЕРКАЛЬНО: следующая переворачивается,
-    // и на стыке прожилки продолжают сами себя — шва не видно (правило
-    // заказчика: АС + СА + АС + СА, а не АС + АС). Поэтому плитка для
-    // укладки вчетверо больше образца: сам образец, его отражение вбок,
-    // отражение вниз и отражение по обеим сторонам.
-    const bake = (w, h, rotate) => {
+    // Куда идёт волокно на самом образце. От этого зависит, каким швом его
+    // класть: см. ниже.
+    const sideways = filmGrainSideways(filmImg);
+    // Швы у плитки два, и они РАЗНЫЕ.
+    //
+    // Шов ПОПЕРЁК волокна (для плёнки с вертикальными прожилками — стык
+    // сверху и снизу) рвёт каждое волокно пополам, и по двери идёт полоса.
+    // Его закрываем отражением: АС + СА + АС + СА, как просил заказчик, —
+    // прожилки на стыке продолжают сами себя.
+    //
+    // Шов ВДОЛЬ волокна (стык бок о бок) отражать нельзя. Волокна там и так
+    // параллельны шву, рвать нечего, а отражение делает из рисунка бабочку:
+    // левая половина зеркалит правую, и вся дверь идёт «плетёнкой» — ровно
+    // то, на что заказчик сказал «настроенная плёнка и наложенная — совсем
+    // разные вещи». Такой шов просто сводим: у края подмешиваем зеркальную
+    // копию узкой полоской, чтобы соседние плитки сошлись тон в тон, а
+    // симметрии на глаз не было.
+    const feather = (c, alongX) => {
+      const w = c.width, h = c.height;
+      const f = Math.max(2, Math.round((alongX ? w : h) * 0.16));
+      const tmp = document.createElement("canvas");
+      tmp.width = w; tmp.height = h;
+      const tx = tmp.getContext("2d");
+      // Зеркальная копия: у самого края она даёт ровно тот тон, что на
+      // противоположном краю плитки, — с ним и надо сойтись.
+      tx.save();
+      if (alongX) { tx.translate(w, 0); tx.scale(-1, 1); } else { tx.translate(0, h); tx.scale(1, -1); }
+      tx.drawImage(c, 0, 0);
+      tx.restore();
+      const g = tx.createLinearGradient(0, 0, alongX ? f : 0, alongX ? 0 : f);
+      g.addColorStop(0, "rgba(0,0,0,1)");
+      g.addColorStop(1, "rgba(0,0,0,0)");
+      tx.globalCompositeOperation = "destination-in";
+      tx.fillStyle = g;
+      tx.fillRect(0, 0, alongX ? f : w, alongX ? h : f);
+      c.getContext("2d").drawImage(tmp, 0, 0);
+    };
+    // grainDown — волокно в готовой плитке идёт сверху вниз.
+    const bake = (w, h, rotate, grainDown) => {
       const one = document.createElement("canvas");
       one.width = w; one.height = h;
       const ox = one.getContext("2d");
-      if (rotate) { ox.translate(w, 0); ox.rotate(Math.PI / 2); ox.drawImage(filmImg, 0, 0, h, w); }
-      else ox.drawImage(filmImg, 0, 0, w, h);
+      ox.imageSmoothingEnabled = true;
+      ox.imageSmoothingQuality = "high";
+      // Образец сначала аккуратно уменьшается до размера плитки (см.
+      // shrinkImage) — иначе мелкие прожилки не усредняются, а выпадают, и
+      // вместо ровного волокна на детали идут широкие разводы, а после
+      // зеркальной укладки — «плетёнка».
+      const src = shrinkImage(filmImg, rotate ? h : w, rotate ? w : h);
+      if (rotate) { ox.translate(w, 0); ox.rotate(Math.PI / 2); ox.drawImage(src, 0, 0, h, w); }
+      else ox.drawImage(src, 0, 0, w, h);
+      // Волокно сверху вниз — значит вбок плитки идут подряд, и сводить надо
+      // боковой шов; поперёк (сверху и снизу) кладём отражение. У плёнки с
+      // поперечным волокном всё наоборот.
+      feather(one, grainDown);
+      const cw2 = grainDown ? w : w * 2;
+      const ch2 = grainDown ? h * 2 : h;
       const cv = document.createElement("canvas");
-      cv.width = w * 2; cv.height = h * 2;
+      cv.width = cw2; cv.height = ch2;
       const cx = cv.getContext("2d");
-      [[1, 1], [-1, 1], [1, -1], [-1, -1]].forEach(([sx, sy]) => {
+      (grainDown ? [[1, 1], [1, -1]] : [[1, 1], [-1, 1]]).forEach(([sx, sy]) => {
         cx.save();
-        cx.translate(sx < 0 ? w * 2 : 0, sy < 0 ? h * 2 : 0);
+        cx.translate(sx < 0 ? cw2 : 0, sy < 0 ? ch2 : 0);
         cx.scale(sx, sy);
         cx.drawImage(one, 0, 0);
         cx.restore();
       });
-      const img = cx.getImageData(0, 0, w * 2, h * 2);
+      const img = cx.getImageData(0, 0, cw2, ch2);
       // Плёнка отдаётся уже настроенной ползунками: дальше её пиксели просто
       // множатся на светотень со снимка, и деталь садится ровно в тот цвет,
       // который виден на образце в «Цвета».
@@ -3299,13 +3409,15 @@ const DB = {
           q[i] = t[0]; q[i + 1] = t[1]; q[i + 2] = t[2];
         }
       }
-      return { w: w * 2, h: h * 2, data: img.data };
+      return { w: cw2, h: ch2, data: img.data };
     };
     // Повёрнутый образец занимает 200 мм поперёк и 150 мм вдоль — считаем их
     // по своим осям, а не переставляем tw и th местами.
     const rw = Math.max(8, Math.round(heightMm * pxPerMmX));
     const rh = Math.max(8, Math.round(widthMm * pxPerMmY));
-    return { v: bake(tw, th, false), h: bake(rw, rh, true) };
+    // В плитке «как снято» волокно идёт сверху вниз, если образец так и снят;
+    // в повёрнутой — наоборот.
+    return { v: bake(tw, th, false, !sideways), h: bake(rw, rh, true, sideways) };
   }
 
   // Поправка цвета плёнки из «Цвета» (ползунки «Оттенок / Насыщенность /
@@ -3406,14 +3518,24 @@ const DB = {
   // деталью не обведено, то и остаётся со снимка нетронутым.
   function paintPartsLeaf(photo, filmImg, filmHex, doc, glass, doorWidthMm, doorHeightMm, adj) {
     const W = photo.naturalWidth, H = photo.naturalHeight;
-    // Рабочий размер ограничен: на экране телефона дверь всё равно мельче, а
-    // перебор каждого пикселя на полном снимке заметно тормозил бы.
-    const k = Math.min(1, 560 / Math.max(8, W));
+    // Рабочий размер ограничен: перебор каждого пикселя на полном снимке
+    // заметно тормозил бы. Но и мельчить нельзя. Предел был 560 точек на
+    // кадр, то есть около 450 на полотно шириной 800 мм — меньше, чем
+    // телефон показывает на экране (там дверь выходит под 800 точек), и
+    // вдвое меньше, чем частота прожилок на образце плёнки. Мелкое волокно
+    // просто не помещалось в картинку и разваливалось на широкие разводы.
+    // 1000 точек на кадр дают примерно точку на миллиметр двери — этого
+    // хватает и экрану, и плёнке.
+    const k = Math.min(1, 1000 / Math.max(8, W));
     const cw = Math.max(8, Math.round(W * k)), ch = Math.max(8, Math.round(H * k));
     const cv = document.createElement("canvas");
     cv.width = cw; cv.height = ch;
     const cx = cv.getContext("2d");
-    cx.drawImage(photo, 0, 0, cw, ch);
+    cx.imageSmoothingEnabled = true;
+    cx.imageSmoothingQuality = "high";
+    // Снимок модели уменьшаем так же плавно, как и образец плёнки: фотографии
+    // моделей бывают по 3000 точек, и одним шагом с них слетает фрезеровка.
+    cx.drawImage(shrinkImage(photo, cw, ch), 0, 0, cw, ch);
     const img = cx.getImageData(0, 0, cw, ch);
     const d = img.data;
 
