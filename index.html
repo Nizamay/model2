@@ -4382,7 +4382,14 @@ const DB = {
       const cl = photoCasing.clip;
       s += `<defs><clipPath id="${idf("photoCasing")}"><rect x="${cl.x}" y="${cl.y}" width="${cl.w}" height="${cl.h}"/></clipPath></defs>`;
       s += `<rect x="${cl.x + 3}" y="${cl.y + 3}" width="${cl.w}" height="${cl.h}" fill="rgba(20,12,4,0.20)" filter="url(#${idf("soft")})"/>`;
-      s += `<g clip-path="url(#${idf("photoCasing")})">`;
+      // Поправка цвета плёнки (оттенок, яркость, контраст, каналы — то, что
+      // настроено ползунками в «Цвета») накладывается на полотно фильтром
+      // (см. doorFilter). Наличнику со снимка её надо накладывать ТОЖЕ,
+      // иначе получается ровно то, на что жаловался заказчик: полотно
+      // посветлело от ползунка, а коробка осталась как была, и наличник
+      // выглядит другой плёнкой. У своей, нарисованной программой коробки
+      // этот фильтр стоял всегда — у фотографической не стоял.
+      s += `<g clip-path="url(#${idf("photoCasing")})" style="filter:${doorFilter || "none"}">`;
       s += `<image href="${photoCasing.href}" x="${photoCasing.x}" y="${photoCasing.y}" width="${photoCasing.w}" height="${photoCasing.h}" preserveAspectRatio="none"/>`;
       s += `</g>`;
       return s;
