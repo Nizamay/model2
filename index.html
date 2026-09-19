@@ -1342,6 +1342,21 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
             </div>
           </div>
         </details>
+        <!-- Светотень двери. Программа не выдумывает свет: фаски, фрезеровку
+             и тени она берёт со снимка модели, поэтому и направление света —
+             то, что на фотографии. Ползунок только усиливает или ослабляет
+             эту светотень, направление от него не меняется (см.
+             paintPartsLeaf и docs/2d-spec.md, п. 10). -->
+        <details class="adjust-panel wall-adjust-panel">
+          <summary>Светотень двери</summary>
+          <div class="adjust-body">
+            <p class="parts-hint">Свет на двери — со снимка модели, вместе с его направлением. Ползунок делает фаски и фрезеровку глубже или мягче. 100 % — как на фотографии.</p>
+            <div class="arow"><span>Глубина</span><input type="range" id="s_doorShade" min="0" max="200" step="5" value="100"></div>
+            <div class="adjust-actions">
+              <button type="button" id="s_doorShadeReset">Сбросить</button>
+            </div>
+          </div>
+        </details>
         <!-- Разметка деталей модели по её фотографии (см. PART_KINDS,
              updatePartsEditor). Открывается только когда у модели есть фото. -->
         <details class="adjust-panel parts-panel" id="s_partsPanel" hidden>
@@ -2140,6 +2155,8 @@ const DB = {
     sceneWallSwatches: document.getElementById("s_wallSwatches"),
     sceneWallTextures: document.getElementById("s_wallTextures"),
     wallAdjustReset: document.getElementById("s_wallAdjustReset"),
+    doorShade: document.getElementById("s_doorShade"),
+    doorShadeReset: document.getElementById("s_doorShadeReset"),
     goToSceneBtn: document.getElementById("goToSceneBtn"),
     sceneBackBtn: document.getElementById("sceneBackBtn"),
     menuBtn: document.getElementById("menuBtn"),
@@ -3548,13 +3565,17 @@ const DB = {
     const pxPerMmX = (box.w * cw) / Math.max(300, doorWidthMm);
     const pxPerMmY = (box.h * ch) / Math.max(1000, doorHeightMm || 2000);
     const adjust = adj || ADJ_NEUTRAL;
+    const shadeK = doorShadeK();
     const tiles = filmImg ? partsFilmTiles(filmImg, pxPerMmX, pxPerMmY, adjust) : null;
     // Рельеф берём со слегка размытой копии снимка. Крупное — фаска,
     // фрезеровка, тень от царги — остаётся, а собственные прожилки
     // фотографии уходят: иначе они ложатся поверх прожилок плёнки и спорят
     // с ними по направлению, и на детали видно волокно не в ту сторону.
     // Размытие узкое, в несколько миллиметров двери, — фрезеровку не съедает.
-    const relief = blurLuminance(d, cw, ch, Math.max(1, Math.round(cw / 400)));
+    // Радиус размытия — в миллиметрах двери, а не в точках кадра: рабочий
+    // размер менялся (560 → 1000), а размывать надо всё так же на пару
+    // миллиметров, иначе фрезеровка на картинке плывёт.
+    const relief = blurLuminance(d, cw, ch, Math.max(1, Math.round(cw / 560)));
     // Та же яркость, но резкая, без размытия, — снятая со снимка ДО того, как
     // по нему пошла перекраска. Нужна стеклу: у него рельеф свой, гравировка
     // и блики, размывать их нельзя. Раньше стекло читало яркость прямо из
@@ -3627,7 +3648,11 @@ const DB = {
           // У стекла рельеф берём резкий, без размытия: гравировка и блики
           // — это его собственный рисунок, терять их нельзя.
           const lum = glassPart ? sharp[y * cw + x] : relief[y * cw + x];
-          const rel = clampRel(clampRel(lum / ref) * norm);
+          // Глубина светотени: ползунок «Светотень двери» разводит или
+          // сводит рельеф к единице, то есть к ровной плёнке. Направление
+          // света при этом не меняется — оно со снимка (см. doorShadeK).
+          const raw = clampRel(clampRel(lum / ref) * norm);
+          const rel = shadeK === 1 ? raw : clampRel(1 + (raw - 1) * shadeK);
           let fr, fg, fb;
           if (glassPart) { fr = glassRgb[0]; fg = glassRgb[1]; fb = glassRgb[2]; }
           else if (tile) {
@@ -3669,7 +3694,8 @@ const DB = {
     const adj = adjOf(state.color);
     const key = [model.id, doc.rev || 1, state.color, state.glassId,
       Math.round(widthMm / 25), Math.round(heightMm / 25),
-      adj.h, adj.s, adj.b, adj.c, adj.cr, adj.cg, adj.cb].join("|");
+      adj.h, adj.s, adj.b, adj.c, adj.cr, adj.cg, adj.cb,
+      Math.round(doorShadeK() * 100)].join("|");
     const hit = partsImageCache.get(key);
     if (hit !== undefined) return hit === "pending" || !hit ? null : hit;
     partsImageCache.set(key, "pending");
@@ -7321,6 +7347,24 @@ const DB = {
         drawDoor(sceneCtx, true);
       });
     }
+    // Светотень двери: глубина фасок и фрезеровки, снятых с фотографии
+    // модели (см. doorShadeK/paintPartsLeaf). Сохраняется вместе с ценами,
+    // настраивается один раз.
+    if (el.doorShade) {
+      el.doorShade.addEventListener("input", () => {
+        DB.doorShade = Number(el.doorShade.value);
+        savePrices();
+        drawDoor(sceneCtx, true);
+      });
+    }
+    if (el.doorShadeReset) {
+      el.doorShadeReset.addEventListener("click", () => {
+        DB.doorShade = DOOR_SHADE_DEFAULT;
+        if (el.doorShade) el.doorShade.value = String(DOOR_SHADE_DEFAULT);
+        savePrices();
+        drawDoor(sceneCtx, true);
+      });
+    }
     // Разметка деталей модели (см. updatePartsEditor): двигаем и растягиваем
     // прямоугольники прямо по фотографии.
     const partsPanel = document.getElementById("s_partsPanel");
@@ -7588,6 +7632,9 @@ const DB = {
         return [name, sw];
       })),
       colorAdjust: DB.colorAdjust || {},
+      // Глубина светотени на двери — одна на всю программу, настраивается
+      // ползунком на странице «2D картинка» (см. doorShadeK).
+      doorShade: Number.isFinite(Number(DB.doorShade)) ? Number(DB.doorShade) : DOOR_SHADE_DEFAULT,
       // Свои загруженные фото моделей дверного полотна (см.
       // onModelFileUpload) — тот же принцип, что и у colorSwatches выше,
       // только на модель, а не на цвет (без своей тон-коррекции — цвет
@@ -7670,6 +7717,10 @@ const DB = {
       });
     }
     DB.colorAdjust = (s.colorAdjust && typeof s.colorAdjust === "object") ? s.colorAdjust : (DB.colorAdjust || {});
+    // Снимок мог быть сохранён до появления ползунка — тогда поля нет и
+    // остаётся значение по умолчанию, «как на фотографии».
+    DB.doorShade = Number.isFinite(Number(s.doorShade)) ? Number(s.doorShade) : DOOR_SHADE_DEFAULT;
+    if (el.doorShade) el.doorShade.value = String(DB.doorShade);
     // Снимок мог быть сохранён до появления фото моделей — тогда
     // s.modelSwatches нет, остаётся пустым (у моделей нет заводских фото,
     // которые нужно было бы сохранить, см. onModelFileUpload).
@@ -7883,6 +7934,15 @@ const DB = {
   // cr/cg/cb — «Расширенные настройки» (отдельные множители каналов
   // Красный/Зелёный/Синий, см. colorRow/ensureRgbFilterDef) — по умолчанию
   // 100% (без изменений), не заданы у старых сохранённых значений.
+  // Глубина светотени на двери, в долях от снятой на фотографии. 1 — как на
+  // снимке, 0 — ровная плёнка без фрезеровки, 2 — вдвое глубже. Настраивается
+  // ползунком «Светотень двери» на странице «2D картинка».
+  const DOOR_SHADE_DEFAULT = 100;
+  function doorShadeK() {
+    const v = Number(DB.doorShade);
+    return (Number.isFinite(v) ? Math.max(0, Math.min(200, v)) : DOOR_SHADE_DEFAULT) / 100;
+  }
+
   function adjOf(name) {
     const store = (DB.colorAdjust || (DB.colorAdjust = {}));
     const v = store[name] || {};
