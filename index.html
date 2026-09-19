@@ -1046,7 +1046,7 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
         <!-- Версия страницы: чтобы при разборе «у меня не так» сразу было
              видно, свежая ли она открыта или браузер подсунул старую из
              памяти. Дата правится вместе с выпуском. -->
-        <div class="menu-version">Версия от 18.09.2026</div>
+        <div class="menu-version">Версия от 19.09.2026</div>
         <div class="menu-storage" id="menuStorage">
           <div class="menu-storage-bar"><div class="menu-storage-fill" id="menuStorageFill"></div></div>
           <span id="menuStorageText">Память браузера: …</span>
@@ -3255,11 +3255,18 @@ const DB = {
 
   // Образец плёнки, разложенный плиткой в реальном масштабе, в двух
   // направлениях: как снят (прожилки вдоль) и повёрнутый на 90° (поперёк).
-  function partsFilmTiles(filmImg, canvasW, doorWidthMm) {
-    const perMm = canvasW / Math.max(300, doorWidthMm);
+  //
+  // Масштаб задаётся ОТДЕЛЬНО по ширине и по высоте (pxPerMmX/pxPerMmY).
+  // Причина: снимок кладётся на дверь не как есть, а растягивается так,
+  // чтобы рамка полотна села ровно на полотно (см. photoFrame в drawDoor), и
+  // растяжение по вертикали не совпадает с растяжением по горизонтали. Если
+  // считать масштаб одним числом на весь кадр, плитка на картинке выходит не
+  // 150x200 мм, а вытянутой: на полотне 2000 мм помещалось 7 плёнок вместо
+  // десяти, и рисунок дерева выглядел растянутым — не тем, что загружали.
+  function partsFilmTiles(filmImg, pxPerMmX, pxPerMmY) {
     const { widthMm, heightMm } = DB.colorSwatchSampleSize;
-    const tw = Math.max(8, Math.round(widthMm * perMm));
-    const th = Math.max(8, Math.round(heightMm * perMm));
+    const tw = Math.max(8, Math.round(widthMm * pxPerMmX));
+    const th = Math.max(8, Math.round(heightMm * pxPerMmY));
     // Плитка кладётся не подряд, а ЗЕРКАЛЬНО: следующая переворачивается,
     // и на стыке прожилки продолжают сами себя — шва не видно (правило
     // заказчика: АС + СА + АС + СА, а не АС + АС). Поэтому плитка для
@@ -3283,7 +3290,11 @@ const DB = {
       });
       return { w: w * 2, h: h * 2, data: cx.getImageData(0, 0, w * 2, h * 2).data };
     };
-    return { v: bake(tw, th, false), h: bake(th, tw, true) };
+    // Повёрнутый образец занимает 200 мм поперёк и 150 мм вдоль — считаем их
+    // по своим осям, а не переставляем tw и th местами.
+    const rw = Math.max(8, Math.round(heightMm * pxPerMmX));
+    const rh = Math.max(8, Math.round(widthMm * pxPerMmY));
+    return { v: bake(tw, th, false), h: bake(rw, rh, true) };
   }
 
   // Тот же разбор цвета, что и в hexToRgb выше, но массивом [r,g,b] —
@@ -3334,7 +3345,7 @@ const DB = {
 
   // Перекраска полотна по обведённым деталям. Снимок берётся целиком: что
   // деталью не обведено, то и остаётся со снимка нетронутым.
-  function paintPartsLeaf(photo, filmImg, filmHex, doc, glass, doorWidthMm) {
+  function paintPartsLeaf(photo, filmImg, filmHex, doc, glass, doorWidthMm, doorHeightMm) {
     const W = photo.naturalWidth, H = photo.naturalHeight;
     // Рабочий размер ограничен: на экране телефона дверь всё равно мельче, а
     // перебор каждого пикселя на полном снимке заметно тормозил бы.
@@ -3347,7 +3358,15 @@ const DB = {
     const img = cx.getImageData(0, 0, cw, ch);
     const d = img.data;
 
-    const tiles = filmImg ? partsFilmTiles(filmImg, cw, doorWidthMm) : null;
+    // Сколько пикселей снимка приходится на миллиметр двери. Считаем по
+    // рамке полотна: полотно на снимке — это ровно doorWidthMm x doorHeightMm,
+    // а коробка, наличник и фон вокруг него к размеру двери отношения не
+    // имеют. Раньше масштаб брался от ширины всего кадра, и плитка выходила
+    // настолько крупнее, насколько снимок шире самой двери.
+    const box = partsLeafBox(doc) || { x: 0, y: 0, w: 1, h: 1 };
+    const pxPerMmX = (box.w * cw) / Math.max(300, doorWidthMm);
+    const pxPerMmY = (box.h * ch) / Math.max(1000, doorHeightMm || 2000);
+    const tiles = filmImg ? partsFilmTiles(filmImg, pxPerMmX, pxPerMmY) : null;
     // Рельеф берём со слегка размытой копии снимка. Крупное — фаска,
     // фрезеровка, тень от царги — остаётся, а собственные прожилки
     // фотографии уходят: иначе они ложатся поверх прожилок плёнки и спорят
@@ -3452,14 +3471,16 @@ const DB = {
     const glassName = (modelGlasses(model).find((gl) => gl.id === state.glassId) || {}).name;
     const glass = glassPaint(state.glassId, glassName);
     const widthMm = Math.max(300, Number(state.width) || 800);
-    const key = [model.id, doc.rev || 1, state.color, state.glassId, Math.round(widthMm / 25)].join("|");
+    const heightMm = Math.max(1000, Number(state.height) || 2000);
+    const key = [model.id, doc.rev || 1, state.color, state.glassId,
+      Math.round(widthMm / 25), Math.round(heightMm / 25)].join("|");
     const hit = partsImageCache.get(key);
     if (hit !== undefined) return hit === "pending" || !hit ? null : hit;
     partsImageCache.set(key, "pending");
     Promise.all([loadImageAsync(photo.image), filmHref ? loadImageAsync(filmHref) : Promise.resolve(null)])
       .then(([ph, film]) => {
         let url = "";
-        try { url = paintPartsLeaf(ph, film, filmHex, doc, glass, widthMm); } catch (err) { url = ""; }
+        try { url = paintPartsLeaf(ph, film, filmHex, doc, glass, widthMm, heightMm); } catch (err) { url = ""; }
         partsImageCache.set(key, url);
         if (partsImageCache.size > PARTS_CACHE_MAX) partsImageCache.delete(partsImageCache.keys().next().value);
         if (el.viewScene && !el.viewScene.hidden) drawDoor(sceneCtx, true);
