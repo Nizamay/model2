@@ -91,7 +91,31 @@ h1 { font-size: 20px; margin: 0 0 4px; }
   cursor: pointer; padding: 0;
 }
 .menu-btn span { display: block; width: 18px; height: 2px; background: var(--text); border-radius: 2px; }
-.topbar h1 { padding-right: 56px; }
+/* Отступ под кнопку меню — она прибита к правому верхнему углу экрана
+   (position: fixed) и накрыла бы то, что стоит в шапке справа. */
+.topbar { align-items: flex-end; padding-right: 56px; }
+.topbar h1 { flex: 1 1 auto; min-width: 0; }
+
+/* Кнопка «2D картинка» — в шапке, справа от заголовка. Раньше она стояла
+   посреди полей расчёта обычной системной кнопкой: мелкая, попасть пальцем
+   трудно (замечание заказчика), а справа от заголовка место пустует. */
+#goToSceneBtn {
+  flex: 0 0 auto;
+  margin-bottom: 2px;
+  padding: 10px 13px;
+  border-radius: 10px;
+  border: 1px solid var(--accent);
+  background: var(--card-bg);
+  color: var(--accent);
+  font-size: 14px; font-weight: 600; line-height: 1.15;
+  white-space: nowrap;
+  cursor: pointer;
+}
+#goToSceneBtn:hover { background: var(--bg); }
+#goToSceneBtn:active { filter: brightness(0.96); }
+@media (max-width: 380px) {
+  #goToSceneBtn { padding: 9px 10px; font-size: 13px; }
+}
 
 .menu {
   position: fixed; top: 60px; right: 12px; z-index: 1000;
@@ -1031,6 +1055,13 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
   <main class="calc-card">
     <div class="topbar">
       <h1 id="viewTitle">Расчет — межкомнатные двери</h1>
+      <!-- Быстрый переход к 2D-картинке: дверь там рисуется с текущими
+           параметрами расчёта (модель, цвет, стекло, размеры), отдельно
+           ничего выбирать не нужно. Обратно — кнопкой «Возврат на страницу
+           расчёта» на самой странице. Показывается только на расчёте и
+           только у дверей: у погонажа и фурнитуры рисовать нечего
+           (см. updateGotoSceneBtn). -->
+      <button type="button" id="goToSceneBtn" class="btn-goto" hidden>🖼️ 2D картинка →</button>
       <button id="menuBtn" class="menu-btn" aria-label="Меню" aria-expanded="false">
         <span></span><span></span><span></span>
       </button>
@@ -1120,12 +1151,6 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
       <label for="color">Цвет</label>
       <select id="color"></select>
     </div>
-
-    <!-- Быстрый переход к 2D-картинке прямо от выбора цвета: дверь там
-         рисуется с текущими параметрами калькулятора (модель, цвет,
-         стекло, размеры), отдельно ничего выбирать не нужно. Обратно —
-         кнопкой «Возврат на страницу расчёта» на самой странице. -->
-    <button type="button" id="goToSceneBtn" class="btn-goto">🖼️ 2D картинка →</button>
 
     <div class="field" id="glassField">
       <label for="glass">Стекло</label>
@@ -2325,6 +2350,7 @@ const DB = {
     const isStdSize = isMatrix || state.sizeMode === "стандарт";
 
     updateQuantityStep();
+    updateGotoSceneBtn();
 
     el.modelField.hidden = isTrim || isFurniture;
     el.trimVidField.hidden = !isTrim;
@@ -7843,6 +7869,14 @@ const DB = {
     if (open) updateStorageIndicator();
   }
 
+  // Кнопка «2D картинка» в шапке видна только там, где ей есть что показать:
+  // на странице расчёта и только у дверей. У погонажа и фурнитуры двери нет.
+  function updateGotoSceneBtn() {
+    if (!el.goToSceneBtn) return;
+    const onCalc = el.viewCalc && !el.viewCalc.hidden;
+    el.goToSceneBtn.hidden = !onCalc || state.section === "погонаж" || state.section === "фурнитура";
+  }
+
   function setView(view) {
     // См. DEFAULT_DOCUMENT_TITLE — вне «Спецификации» заголовок обычный,
     // renderOrderPage сам выставит нужный при входе на страницу.
@@ -7871,6 +7905,7 @@ const DB = {
     if (view === "history") renderSpecHistoryPage();
     if (view === "tag") renderTagPage();
     if (view === "tagList") renderTagListPage();
+    updateGotoSceneBtn();
     toggleMenu(false);
   }
 
