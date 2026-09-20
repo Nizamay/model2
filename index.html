@@ -3014,6 +3014,75 @@ const DB = {
     return null;
   }
 
+  // Где на снимке сама дверь. Каталожный снимок снят на ровном фоне, поэтому
+  // дверь искать просто: берём цвет фона по рамке кадра и идём с каждой
+  // стороны внутрь до первой строки/столбца, где картинка от фона заметно
+  // отличается. Получается рамка двери вместе с её коробкой — по ней снимок и
+  // ставится на стену: дверь встаёт на пол, а фон съёмки в кадр не попадает
+  // вовсе. Фон неровный (снято в интерьере, градиент, водяной знак) — честно
+  // возвращаем null, и снимок показывается целиком, как раньше.
+  const photoDoorBoxCache = new WeakMap();
+  function photoDoorBox(photo) {
+    const cached = photoDoorBoxCache.get(photo);
+    if (cached !== undefined) return cached === "pending" ? null : cached;
+    photoDoorBoxCache.set(photo, "pending");
+    const img = new Image();
+    img.onload = () => {
+      let box = null;
+      try {
+        // Считаем на уменьшенной копии: дверь — предмет крупный, лишняя
+        // точность тут ни к чему, а кадр 480x1080 разбирать по пикселям долго.
+        const w = 180;
+        const h = Math.max(8, Math.round(w * (img.naturalHeight || 1) / (img.naturalWidth || 1)));
+        const cv = document.createElement("canvas");
+        cv.width = w; cv.height = h;
+        const cx = cv.getContext("2d");
+        cx.imageSmoothingEnabled = true;
+        cx.imageSmoothingQuality = "high";
+        cx.drawImage(img, 0, 0, w, h);
+        const d = cx.getImageData(0, 0, w, h).data;
+        const at = (x, y) => { const i = (y * w + x) * 4; return [d[i], d[i + 1], d[i + 2]]; };
+        // Цвет фона — по рамке кадра шириной в две точки.
+        const ring = [];
+        for (let x = 0; x < w; x++) { ring.push(at(x, 0)); ring.push(at(x, 1)); ring.push(at(x, h - 1)); ring.push(at(x, h - 2)); }
+        for (let y = 0; y < h; y++) { ring.push(at(0, y)); ring.push(at(1, y)); ring.push(at(w - 1, y)); ring.push(at(w - 2, y)); }
+        const mid = (k) => { const a = ring.map((p) => p[k]).sort((u, v) => u - v); return a[a.length >> 1]; };
+        const bg = [mid(0), mid(1), mid(2)];
+        const dist = (p) => Math.abs(p[0] - bg[0]) + Math.abs(p[1] - bg[1]) + Math.abs(p[2] - bg[2]);
+        // Насколько ровен сам фон: если рамка кадра уже пёстрая, искать нечего.
+        const ringD = ring.map(dist).sort((u, v) => u - v);
+        const ringHigh = ringD[Math.floor(ringD.length * 0.98)];
+        if (ringHigh > 60) throw new Error("фон неровный");
+        const lim = Math.max(24, ringHigh * 2);
+        const colHas = (x) => {
+          let n = 0;
+          for (let y = 0; y < h; y++) if (dist(at(x, y)) > lim) n++;
+          return n > h * 0.02;
+        };
+        const rowHas = (y) => {
+          let n = 0;
+          for (let x = 0; x < w; x++) if (dist(at(x, y)) > lim) n++;
+          return n > w * 0.02;
+        };
+        let x0 = 0; while (x0 < w && !colHas(x0)) x0++;
+        let x1 = w - 1; while (x1 > x0 && !colHas(x1)) x1--;
+        let y0 = 0; while (y0 < h && !rowHas(y0)) y0++;
+        let y1 = h - 1; while (y1 > y0 && !rowHas(y1)) y1--;
+        const bw = x1 - x0 + 1, bh = y1 - y0 + 1;
+        // Рамка должна быть похожа на дверь: заметно уже кадра (иначе фона
+        // просто нет) и не крошечная (иначе поймали пылинку или подпись).
+        const okW = bw > w * 0.15 && bw < w * 0.97;
+        const okH = bh > h * 0.30 && bh < h * 0.99;
+        if (okW && okH) box = { x: x0 / w, y: y0 / h, w: bw / w, h: bh / h };
+      } catch (err) { box = null; }
+      photoDoorBoxCache.set(photo, box);
+      if (el.viewScene && !el.viewScene.hidden) drawDoor(sceneCtx, true);
+    };
+    img.onerror = () => { photoDoorBoxCache.set(photo, null); };
+    img.src = photo.image;
+    return null;
+  }
+
   // --- Детали модели на фотографии --------------------------------------
   //
   // Модель двери — это образец: размеры и расположение фрезеровки, ширина
@@ -4235,6 +4304,10 @@ const DB = {
     const curModel = sceneMode ? getModel(state.modelId) : null;
     const havePhoto = sceneMode ? currentModelPhoto() : null;
     const photoAsIsModel = !!(curModel && curModel.type === "матрица" && havePhoto);
+    // Дверь на снимке ищется сама (см. photoDoorBox). Нашлась — показываем
+    // только её, обрезав фон съёмки, и ставим на пол в масштабе комнаты.
+    // Не нашлась (фон неровный) — показываем кадр целиком, как есть.
+    const photoBox = photoAsIsModel ? photoDoorBox(havePhoto) : null;
 
     // Размер двери на сцене — в масштабе комнаты, а не «во весь кадр»:
     // стена от пола до верха картинки это 2600 мм, и дверь занимает от неё
@@ -4246,9 +4319,19 @@ const DB = {
     const availW = sceneMode ? Math.min(layout.vbW * 0.6, layout.doorCenterX * 2 - 8) : layout.doorMaxW;
     const availH = layout.floorY - layout.padTop;
     let w, h;
-    if (sceneMode && photoAsIsModel) {
-      // Снимок «Матрицы» — во весь кадр, пропорции его собственные
-      // (см. cropToDoorRatio: все снимки моделей хранятся 480x1080).
+    if (sceneMode && photoBox) {
+      // Найденная рамка — это дверь вместе с коробкой и наличником, то есть
+      // заказанная высота плюс верхний наличник. В масштабе комнаты её и
+      // ставим; ширина — по пропорции самой рамки, какой она на снимке.
+      const perMm = layout.floorY / WALL_MM;
+      const boxAspect = (photoBox.w * MODEL_PHOTO_RATIO) / photoBox.h;
+      h = (height + CASING_MM) * perMm;
+      w = h * boxAspect;
+      const fit = Math.min(1, availW / w, availH / h);
+      if (fit < 1) { w *= fit; h *= fit; }
+    } else if (sceneMode && photoAsIsModel) {
+      // Дверь на снимке не нашлась — показываем кадр целиком, пропорции его
+      // собственные (см. cropToDoorRatio: снимки моделей хранятся 480x1080).
       h = availH;
       w = h * MODEL_PHOTO_RATIO;
       if (w > availW) { w = availW; h = w / MODEL_PHOTO_RATIO; }
@@ -4340,10 +4423,13 @@ const DB = {
     // разметка знает, где на фотографии дверь, независимо от того, есть ли
     // уже во что её красить.
     const leafBox = partsDoc ? partsLeafBox(partsDoc) : null;
+    // У «Матрицы» ту же работу делает найденная сама рамка двери
+    // (см. photoDoorBox): она тоже говорит, какой кусок кадра куда положить.
+    const placeBox = leafBox || photoBox;
     // Кадр целиком в координатах сцены — нужен и коробке из снимка.
-    const photoFrame = leafBox ? {
-      w: w / leafBox.w, h: h / leafBox.h,
-      x: x - (leafBox.x / leafBox.w) * w, y: y - (leafBox.y / leafBox.h) * h
+    const photoFrame = placeBox ? {
+      w: w / placeBox.w, h: h / placeBox.h,
+      x: x - (placeBox.x / placeBox.w) * w, y: y - (placeBox.y / placeBox.h) * h
     } : null;
 
     if (modelPhoto) {
@@ -4509,7 +4595,7 @@ const DB = {
     const outerBox = photoFrame && partsHaveCasing(partsDoc) ? partsOuterBox(partsDoc, leafBox) : null;
     // У «Матрицы» коробка уже на самом снимке, и снимок показан целиком —
     // значит своей рамки рисовать не надо (см. buildScene).
-    const photoCasing = photoAsIsModel ? { asIs: true } : outerBox ? {
+    const photoCasing = photoAsIsModel ? { asIs: true, flatWall: !photoBox } : outerBox ? {
       // Коробка со снимка нужна и до перекраски: она ставит фотографию на
       // место двери, даже когда красить ещё нечего.
       href: gridImage || modelPhoto.image,
@@ -4528,7 +4614,10 @@ const DB = {
     // снимка, см. modelPhotoEdgeHex) — и прямоугольник пропадает: дверь
     // стоит прямо на стене. Заодно убираем фактуру: под ровным фоном она
     // обрисовала бы тот же прямоугольник.
-    const photoWallHex = photoAsIsModel ? modelPhotoEdgeHex(modelPhoto) : null;
+    // Красить стену в цвет фона нужно только тогда, когда этот фон на картинке
+    // остался, — то есть когда дверь на снимке не нашлась и кадр показан
+    // целиком. Нашлась — фон обрезан, и стена живёт своей жизнью.
+    const photoWallHex = photoAsIsModel && !photoBox ? modelPhotoEdgeHex(modelPhoto) : null;
     const sceneWallColor = photoWallHex || state.wallColor;
     c.sceneGroup.innerHTML = sceneMode
       ? buildScene(layout, { x: x, y: y, w: w, h: h }, baseHex, casingFill, sceneWallColor, state.wallTexture, c.pfx, doorFilter, gap, photoCasing, Math.max(3, CASING_MM * unitsPerMm))
@@ -4777,17 +4866,19 @@ const DB = {
     // При значениях по умолчанию фильтр не навешиваем вовсе — лишний
     // фильтр-контекст ни к чему, когда тон не менялся.
     //
-    // Под снимком «Матрицы» стена РОВНАЯ, без градиента, светового пятна,
-    // фактуры и виньетки, и без тон-фильтра. Снимок показан вместе с фоном
-    // съёмки, стена покрашена в цвет этого фона (см. drawDoor), и любая
-    // неравномерность стены обрисовала бы по краям снимка тот самый
-    // прямоугольник, который мы и убираем: фон-то на снимке ровный.
+    // Если у «Матрицы» дверь на снимке не нашлась и кадр показан целиком, то
+    // стена РОВНАЯ, без градиента, светового пятна, фактуры и виньетки, и без
+    // тон-фильтра: она покрашена в цвет фона съёмки (см. drawDoor), а любая
+    // её неравномерность обрисовала бы по краям снимка тот самый
+    // прямоугольник, который мы и убираем — фон-то на снимке ровный.
+    // Когда дверь нашлась, фон обрезан и стена обычная.
     const asIsPhoto = !!(photoCasing && photoCasing.asIs);
+    const flatWall = !!(photoCasing && photoCasing.flatWall);
     const wa = state.wallAdjust || {};
-    const wallTouched = !asIsPhoto && ((wa.h || 0) !== 0 || [wa.s, wa.b, wa.c, wa.cr, wa.cg, wa.cb]
+    const wallTouched = !flatWall && ((wa.h || 0) !== 0 || [wa.s, wa.b, wa.c, wa.cr, wa.cg, wa.cb]
       .some((x) => x != null && Number(x) !== 100));
     s += wallTouched ? `<g style="filter:${filterCss(wa)}">` : `<g>`;
-    if (asIsPhoto) {
+    if (flatWall) {
       s += `<rect x="0" y="0" width="${W}" height="${floorY}" fill="${wallColor}"/>`;
     } else {
       s += `<rect x="0" y="0" width="${W}" height="${floorY}" fill="url(#${idf("wall")})"/>`;
