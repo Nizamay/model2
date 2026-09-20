@@ -1308,13 +1308,13 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
       <div class="scene-controls">
         <!-- Всё, кроме самой картинки, свёрнуто: программой пользуются с
              телефона, и раскрытые списки образцов занимали целый экран. -->
-        <details class="adjust-panel">
+        <details class="adjust-panel" id="s_wallColorPanel">
           <summary>Цвет стены</summary>
           <div class="adjust-body">
             <div class="wall-swatches" id="s_wallSwatches"></div>
           </div>
         </details>
-        <details class="adjust-panel">
+        <details class="adjust-panel" id="s_wallTexturePanel">
           <summary>Текстура стены</summary>
           <div class="adjust-body">
             <div class="wall-textures" id="s_wallTextures"></div>
@@ -1330,7 +1330,7 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
              место (у плёнки в «Изменение цен» он остался). Сами поля
              state.wallAdjust.cr/cg/cb сохранены — они нужны фильтру и
              остаются нейтральными. -->
-        <details class="adjust-panel wall-adjust-panel">
+        <details class="adjust-panel wall-adjust-panel" id="s_wallAdjustPanel">
           <summary>Настроить тон стены</summary>
           <div class="adjust-body">
             <div class="arow"><span>Оттенок</span><input type="range" class="adj wall-adj" data-k="h" min="-90" max="90" step="1" value="0"></div>
@@ -4522,9 +4522,24 @@ const DB = {
         h: outerBox.h * photoFrame.h
       }
     } : null;
+    // Стена под снимок «Матрицы». Снимок показан целиком, вместе с фоном
+    // съёмки, и на цветной стене этот фон читается белым прямоугольником
+    // вокруг двери. Красим стену в цвет самого фона (он берётся с полей
+    // снимка, см. modelPhotoEdgeHex) — и прямоугольник пропадает: дверь
+    // стоит прямо на стене. Заодно убираем фактуру: под ровным фоном она
+    // обрисовала бы тот же прямоугольник.
+    const photoWallHex = photoAsIsModel ? modelPhotoEdgeHex(modelPhoto) : null;
+    const sceneWallColor = photoWallHex || state.wallColor;
     c.sceneGroup.innerHTML = sceneMode
-      ? buildScene(layout, { x: x, y: y, w: w, h: h }, baseHex, casingFill, state.wallColor, state.wallTexture, c.pfx, doorFilter, gap, photoCasing, Math.max(3, CASING_MM * unitsPerMm))
+      ? buildScene(layout, { x: x, y: y, w: w, h: h }, baseHex, casingFill, sceneWallColor, state.wallTexture, c.pfx, doorFilter, gap, photoCasing, Math.max(3, CASING_MM * unitsPerMm))
       : "";
+    // Пока стена повторяет фон снимка, менять её нечем: свой цвет, фактура и
+    // тон вернули бы прямоугольник вокруг двери. Панели прячем, чтобы не
+    // тыкать в ползунки, которые ничего не делают.
+    ["s_wallColorPanel", "s_wallTexturePanel", "s_wallAdjustPanel"].forEach((pid) => {
+      const pane = document.getElementById(pid);
+      if (pane) { pane.hidden = !!photoWallHex; if (photoWallHex) pane.open = false; }
+    });
 
     if (sceneMode) {
       updateModelPhotoNote(modelPhoto, !!gridImage);
@@ -4761,14 +4776,25 @@ const DB = {
     //     несколько раз подряд и уводил цвет.
     // При значениях по умолчанию фильтр не навешиваем вовсе — лишний
     // фильтр-контекст ни к чему, когда тон не менялся.
+    //
+    // Под снимком «Матрицы» стена РОВНАЯ, без градиента, светового пятна,
+    // фактуры и виньетки, и без тон-фильтра. Снимок показан вместе с фоном
+    // съёмки, стена покрашена в цвет этого фона (см. drawDoor), и любая
+    // неравномерность стены обрисовала бы по краям снимка тот самый
+    // прямоугольник, который мы и убираем: фон-то на снимке ровный.
+    const asIsPhoto = !!(photoCasing && photoCasing.asIs);
     const wa = state.wallAdjust || {};
-    const wallTouched = (wa.h || 0) !== 0 || [wa.s, wa.b, wa.c, wa.cr, wa.cg, wa.cb]
-      .some((x) => x != null && Number(x) !== 100);
+    const wallTouched = !asIsPhoto && ((wa.h || 0) !== 0 || [wa.s, wa.b, wa.c, wa.cr, wa.cg, wa.cb]
+      .some((x) => x != null && Number(x) !== 100));
     s += wallTouched ? `<g style="filter:${filterCss(wa)}">` : `<g>`;
-    s += `<rect x="0" y="0" width="${W}" height="${floorY}" fill="url(#${idf("wall")})"/>`;
-    s += `<rect x="0" y="0" width="${W}" height="${floorY}" fill="url(#${idf("wallGlow")})"/>`;
-    s += wallTextureSVG(W, floorY, wallColor, wallTexture, idf);
-    s += `<rect x="0" y="0" width="${W}" height="${floorY}" fill="url(#${idf("vignette")})"/>`;
+    if (asIsPhoto) {
+      s += `<rect x="0" y="0" width="${W}" height="${floorY}" fill="${wallColor}"/>`;
+    } else {
+      s += `<rect x="0" y="0" width="${W}" height="${floorY}" fill="url(#${idf("wall")})"/>`;
+      s += `<rect x="0" y="0" width="${W}" height="${floorY}" fill="url(#${idf("wallGlow")})"/>`;
+      s += wallTextureSVG(W, floorY, wallColor, wallTexture, idf);
+      s += `<rect x="0" y="0" width="${W}" height="${floorY}" fill="url(#${idf("vignette")})"/>`;
+    }
     s += `</g>`;
 
     // --- Пол: паркетная доска в перспективе. Ряды сгущаются к линии пола
