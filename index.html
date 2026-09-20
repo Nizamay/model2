@@ -551,6 +551,15 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 .adjust-body .arow { display: flex; flex-direction: column; gap: 0; font-size: 13px; color: var(--muted); min-width: 0; }
 .adjust-body .arow span { font-weight: 600; }
 .adjust-body .arow input[type="range"] { width: 100%; min-width: 0; margin: 0; height: 22px; }
+/* Подписи под ползунком. Боковые отступы — примерно половина ручки, чтобы
+   крайние числа стояли там, где ручка действительно доходит до края. */
+.range-scale {
+  display: flex; justify-content: space-between;
+  padding: 0 7px; margin-top: -2px;
+  font-size: 11px; font-weight: 400; color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.range-scale span { font-weight: 400; }
 /* «Расширенные настройки (RGB)» — отдельные множители каналов
    Красный/Зелёный/Синий (см. colorRow/filterCss), свёрнуты по умолчанию —
    для большинства плёнок хватает Оттенка/Насыщенности/Яркости/Контраста
@@ -1389,7 +1398,12 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
           <summary>Светотень двери</summary>
           <div class="adjust-body">
             <p class="parts-hint">Свет на двери — со снимка модели, вместе с его направлением. Ползунок делает фаски и фрезеровку глубже или мягче. 100 % — как на фотографии.</p>
-            <div class="arow"><span>Глубина</span><input type="range" id="s_doorShade" min="0" max="200" step="5" value="100"></div>
+            <div class="arow"><span>Глубина</span><input type="range" id="s_doorShade" min="0" max="200" step="5" value="100">
+              <!-- Шкала под ползунком: без неё непонятно, где сейчас ручка и
+                   куда её тянуть, чтобы получить ровно 100 % (как на
+                   фотографии) — просьба заказчика. -->
+              <div class="range-scale" aria-hidden="true"><span>0</span><span>50</span><span>100</span><span>150</span><span>200</span></div>
+            </div>
             <div class="adjust-actions">
               <button type="button" id="s_doorShadeReset">Сбросить</button>
             </div>
