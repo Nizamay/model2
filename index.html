@@ -3158,6 +3158,10 @@ const DB = {
   const PROFILE_MM = 110, CASING_MM = 70;
   // Высота стены на сцене — от пола до верха картинки (правило заказчика).
   const WALL_MM = 2600;
+  // Пропорция снимка модели: все они кадрируются при загрузке в 480x1080
+  // (см. cropToDoorRatio). Нужна там, где снимок показывается целиком, в
+  // своих пропорциях, — у «Матрицы».
+  const MODEL_PHOTO_RATIO = 480 / 1080;
   const INNER_MM = LEAF_MM.w - PROFILE_MM * 2;
   // fix — размер задан правилами, за углы тянуть нечего (деталь только
   // переносится); free — размер свой у каждой модели, углы нужны.
@@ -3898,6 +3902,10 @@ const DB = {
   function partsEditorCtx() {
     const m = getModel(state.modelId);
     if (!m) return null;
+    // «Матрица» — готовая картинка: комплектация и цвет зафиксированы
+    // производителем, перекрашивать нечего, а снимок показывается как есть
+    // (см. drawDoor/photoAsIsModel). Обводить там нечего — панели нет.
+    if (m.type === "матрица") return null;
     const photo = modelPhotoOf(m.id);
     return photo && photo.image ? { model: m, photo: photo } : null;
   }
@@ -4218,6 +4226,16 @@ const DB = {
     const height = Math.max(Number(state.height) || 0, 1);
     const aspect = width / height;
 
+    // «Матрица» — готовая картинка модели: комплектация зафиксирована
+    // производителем, цвет стоит в самом названии, выбирать и перекрашивать
+    // нечего. Поэтому её снимок показывается КАК ЕСТЬ — целиком, в своих
+    // пропорциях, со своей коробкой, которая на нём уже снята. Ни обводки,
+    // ни нашей рамки, ни подгонки под заказанный размер: где на снимке
+    // дверь, программа не знает, и любая подгонка была бы наугад.
+    const curModel = sceneMode ? getModel(state.modelId) : null;
+    const havePhoto = sceneMode ? currentModelPhoto() : null;
+    const photoAsIsModel = !!(curModel && curModel.type === "матрица" && havePhoto);
+
     // Размер двери на сцене — в масштабе комнаты, а не «во весь кадр»:
     // стена от пола до верха картинки это 2600 мм, и дверь занимает от неё
     // столько, сколько занимает в жизни (полотно 2000 мм плюс верхний
@@ -4228,7 +4246,13 @@ const DB = {
     const availW = sceneMode ? Math.min(layout.vbW * 0.6, layout.doorCenterX * 2 - 8) : layout.doorMaxW;
     const availH = layout.floorY - layout.padTop;
     let w, h;
-    if (sceneMode) {
+    if (sceneMode && photoAsIsModel) {
+      // Снимок «Матрицы» — во весь кадр, пропорции его собственные
+      // (см. cropToDoorRatio: все снимки моделей хранятся 480x1080).
+      h = availH;
+      w = h * MODEL_PHOTO_RATIO;
+      if (w > availW) { w = availW; h = w / MODEL_PHOTO_RATIO; }
+    } else if (sceneMode) {
       const perMm = layout.floorY / WALL_MM;
       w = width * perMm;
       h = height * perMm;
@@ -4250,11 +4274,15 @@ const DB = {
     // Полотно висит над полом: низ полотна выше низа коробки ровно на
     // 1 см при высоте полотна 2 м, то есть на 1/200 её высоты (правило
     // заказчика). Коробка при этом достаёт до пола.
-    let gap = Math.max(1, h / 200);
+    // У «Матрицы» щели нет: на снимке коробка уже стоит на полу, и снимок
+    // ставится на пол целиком.
+    let gap = photoAsIsModel ? 0 : Math.max(1, h / 200);
     if (h + gap > availH) { h = availH - gap; w = h * aspect; }
     const x = layout.doorCenterX - w / 2;
     const y = layout.floorY - gap - h; // низ полотна — на gap выше пола
-    const rx = Math.min(w, h) * 0.015;
+    // Скруглённые углы и обводка — приметы нарисованного полотна. У снимка
+    // «как есть» края свои, трогать их нечем.
+    const rx = photoAsIsModel ? 0 : Math.min(w, h) * 0.015;
 
     [c.clipRect, c.leafRect, c.outlineRect, c.varyRect].forEach((rect) => {
       rect.setAttribute("x", x);
@@ -4267,6 +4295,10 @@ const DB = {
     c.shadeRect.setAttribute("y", y);
     c.shadeRect.setAttribute("width", w);
     c.shadeRect.setAttribute("height", h);
+    // Снимок «как есть» ничем не подкрашиваем: ни обводкой по краю, ни
+    // мягким светом сверху вниз — свет на фотографии уже свой.
+    c.outlineRect.setAttribute("display", photoAsIsModel ? "none" : "");
+    c.shadeRect.setAttribute("display", photoAsIsModel ? "none" : "");
 
     // Заливка полотна — текстура образца, размноженная в РЕАЛЬНОМ масштабе:
     // одна плитка = физический образец 15x20 см (150x200 мм). Для цветов без
@@ -4296,10 +4328,10 @@ const DB = {
     //      (см. paintPartsLeaf);
     //   2) само фото модели, как снято, — если детали ещё не обведены;
     //   3) прежняя схема — если фото не загружено.
-    const curModel = sceneMode ? getModel(state.modelId) : null;
-    const havePhoto = sceneMode ? currentModelPhoto() : null;
-    const partsDoc = sceneMode && curModel && havePhoto ? partsOf(curModel.id) : null;
-    const gridImage = havePhoto ? partsLeafImage(curModel, havePhoto) : null;
+    // У «Матрицы» остаётся только второй путь: обводки там нет и не должно
+    // быть (см. photoAsIsModel выше).
+    const partsDoc = sceneMode && curModel && havePhoto && !photoAsIsModel ? partsOf(curModel.id) : null;
+    const gridImage = havePhoto && !photoAsIsModel ? partsLeafImage(curModel, havePhoto) : null;
     const modelPhoto = havePhoto;
     // Рамка полотна на снимке (см. partsLeafBox) — по ней снимок ставится
     // ровно на место двери: всё, что вокруг полотна (коробка, наличник,
@@ -4475,7 +4507,9 @@ const DB = {
     // DOM), поэтому стена и наличник не перекрывают дверь.
     // Наличник со снимка: рисуется вместо своего, если он на фото обведён.
     const outerBox = photoFrame && partsHaveCasing(partsDoc) ? partsOuterBox(partsDoc, leafBox) : null;
-    const photoCasing = outerBox ? {
+    // У «Матрицы» коробка уже на самом снимке, и снимок показан целиком —
+    // значит своей рамки рисовать не надо (см. buildScene).
+    const photoCasing = photoAsIsModel ? { asIs: true } : outerBox ? {
       // Коробка со снимка нужна и до перекраски: она ставит фотографию на
       // место двери, даже когда красить ещё нечего.
       href: gridImage || modelPhoto.image,
@@ -4786,6 +4820,10 @@ const DB = {
     //     же фрезеровкой и тем же рисунком плёнки, и на фотографии она уже
     //     есть. Если её обвели деталями «Нал. ↕/↔», показываем именно её, а
     //     свою рамку не рисуем — двух коробок на двери не бывает.
+    //
+    //     У «Матрицы» снимок показан целиком и коробка на нём своя — рисовать
+    //     поверх нечего, просто выходим.
+    if (photoCasing && photoCasing.asIs) return s;
     if (photoCasing && photoCasing.href) {
       const cl = photoCasing.clip;
       s += `<defs><clipPath id="${idf("photoCasing")}"><rect x="${cl.x}" y="${cl.y}" width="${cl.w}" height="${cl.h}"/></clipPath></defs>`;
