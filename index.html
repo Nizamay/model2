@@ -96,21 +96,25 @@ h1 { font-size: 20px; margin: 0 0 4px; }
    не нужен: она стоит по нижнему краю заголовка, заметно ниже кнопки меню, и
    выравнивается по правому краю полей расчёта — так шапка и поля идут одной
    линией. */
-.topbar { align-items: flex-end; flex-wrap: wrap; }
-/* Заголовок занимает всю строку, кнопка переносится под него. Пока они
-   стояли рядом, длинное слово («межкомнатные») не помещалось в свою колонку
-   и уезжало под кнопку — заголовок оказывался закрыт (замечание заказчика). */
-.topbar h1 { flex: 1 1 100%; padding-right: 56px; overflow-wrap: break-word; }
+/* Заголовок и кнопка стоят В ОДНОЙ строке — так шапка занимает минимум
+   высоты (заказчик: «всё под рукой, максимально компактно, а то приходится
+   крутить вниз-вверх»). Заголовку разрешён перенос по слогам и, если слово
+   всё равно не влезает, разрыв слова: иначе длинное «межкомнатные» вылезало
+   из своей колонки и уезжало под кнопку, закрывая заголовок. В самом слове
+   стоит мягкий перенос (&shy; / ­) — чтобы на узком экране оно рвалось
+   по слогам и с дефисом, а не посреди букв. */
+.topbar { align-items: flex-end; }
+.topbar h1 { flex: 1 1 auto; min-width: 0; padding-right: 56px; hyphens: auto; overflow-wrap: break-word; }
+.topbar.has-goto h1 { padding-right: 0; }
 
 /* Кнопка «2D картинка» — в шапке, справа от заголовка. Раньше она стояла
    посреди полей расчёта обычной системной кнопкой: мелкая, попасть пальцем
    трудно (замечание заказчика), а справа от заголовка место пустует. */
 #goToSceneBtn {
   flex: 0 0 auto;
-  /* Своей строкой под заголовком, прижата вправо — её правый край совпадает
-     с правым краем полей расчёта. */
+  /* Прижата вправо: её правый край совпадает с правым краем полей расчёта. */
   margin-left: auto;
-  margin-top: 8px;
+  margin-bottom: 2px;
   padding: 10px 13px;
   border-radius: 10px;
   border: 1px solid var(--accent);
@@ -1062,8 +1066,8 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
        (одинаковые каналы у разных цветов используют один и тот же узел). -->
   <svg width="0" height="0" style="position:absolute;overflow:hidden" aria-hidden="true"><defs id="colorAdjustDefs"></defs></svg>
   <main class="calc-card">
-    <div class="topbar">
-      <h1 id="viewTitle">Расчет — межкомнатные двери</h1>
+    <div class="topbar" id="topbar">
+      <h1 id="viewTitle">Расчет — межком&shy;натные двери</h1>
       <!-- Быстрый переход к 2D-картинке: дверь там рисуется с текущими
            параметрами расчёта (модель, цвет, стекло, размеры), отдельно
            ничего выбирать не нужно. Обратно — кнопкой «Возврат на страницу
@@ -7885,6 +7889,10 @@ const DB = {
     const onCalc = el.viewCalc && !el.viewCalc.hidden;
     const hide = !onCalc || state.section === "погонаж" || state.section === "фурнитура";
     el.goToSceneBtn.hidden = hide;
+    // Пока кнопка стоит справа, заголовку отступ под кнопку меню не нужен:
+    // место держит сама кнопка (см. .topbar.has-goto).
+    const bar = document.getElementById("topbar");
+    if (bar) bar.classList.toggle("has-goto", !hide);
   }
 
   function setView(view) {
@@ -7904,7 +7912,7 @@ const DB = {
       view === "room3d" ? "3D комната" : view === "order" ? "Спецификация" :
       view === "history" ? "Сохранённые спецификации" :
       view === "tag" ? "Ценник" : view === "tagList" ? "Сохранённые ценники" :
-      "Расчет — межкомнатные двери";
+      "Расчет — межком\u00adнатные двери";
     el.menu.querySelectorAll(".menu-item").forEach((b) =>
       b.classList.toggle("active", b.dataset.view === view)
     );
