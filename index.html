@@ -3833,7 +3833,14 @@ const DB = {
     // Обведено только полотно — красить ещё нечего, показываем сам снимок.
     if (!doc.parts.some((p) => PART_KINDS[p.k] && !PART_KINDS[p.k].ref)) return null;
     const swatch = DB.colorSwatches[state.color];
-    const filmHref = swatch && !swatch.door ? (swatch.tileImage || swatch.image) : "";
+    // Образец плёнки берём всегда, даже если у цвета есть готовая текстура
+    // полотна (swatch.door). Та текстура — для двери БЕЗ фотографии: она
+    // растягивается на всё полотно одной картинкой. Здесь же дверь есть, и
+    // деталям нужен обычный образец 150x200 мм. Пока стояла проверка
+    // «нет door — берём образец», у «Ривьеры Грей» (единственной с такой
+    // текстурой) детали красились ровным цветом, и дверь выходила гладкой
+    // серой без всякого рисунка.
+    const filmHref = swatch ? (swatch.tileImage || swatch.image || "") : "";
     const filmHex = (swatch && swatch.hex) || EMAL_COLOR_HEX[state.color] || "#c9cbcd";
     const glassName = (modelGlasses(model).find((gl) => gl.id === state.glassId) || {}).name;
     const glass = glassPaint(state.glassId, glassName);
@@ -4377,11 +4384,15 @@ const DB = {
     c.leafRect.style.filter = gridImage ? "" : doorFilter;
 
     // Заливки плёнкой по направлению прожилок — ими красятся три доски
-    // наличника. Строятся из образца плёнки; когда образца нет (готовая
-    // текстура полотна, ровная эмаль) или дверь показана «как снята» —
-    // обе заливки ровные, цветом кромки с фотографии.
+    // наличника. Строятся из образца плёнки; когда образца нет (ровная
+    // эмаль) или дверь показана «как снята» — обе заливки ровные, цветом
+    // кромки с фотографии. Готовая текстура полотна (swatch.door) образец не
+    // отменяет: она идёт на полотно только у двери БЕЗ фотографии, и вот
+    // тогда коробке образец не нужен — иначе она была бы с прожилками, а
+    // полотно рядом с ней нет.
+    const leafUsesDoorTexture = !modelPhoto && !!(swatch && swatch.door);
     const casingFill = grainFills({
-      href: (!photoAsIs && swatch && !swatch.door) ? (swatch.tileImage || swatch.image) : "",
+      href: (!photoAsIs && swatch && !leafUsesDoorTexture) ? (swatch.tileImage || swatch.image) : "",
       tileW: tileW, tileH: tileH, hex: doorFill, ax: x, ay: y
     }, c.pfx);
     // Мягкий вертикальный свет (сверху чуть светлее, снизу чуть темнее) —
