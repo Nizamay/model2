@@ -92,9 +92,13 @@ h1 { font-size: 20px; margin: 0 0 4px; }
 }
 .menu-btn span { display: block; width: 18px; height: 2px; background: var(--text); border-radius: 2px; }
 /* Отступ под кнопку меню — она прибита к правому верхнему углу экрана
-   (position: fixed) и накрыла бы то, что стоит в шапке справа. */
-.topbar { align-items: flex-end; padding-right: 56px; }
-.topbar h1 { flex: 1 1 auto; min-width: 0; }
+   (position: fixed) и накрыла бы заголовок. Кнопке «2D картинка» этот отступ
+   не нужен: она стоит по нижнему краю заголовка, заметно ниже кнопки меню, и
+   выравнивается по правому краю полей расчёта — так шапка и поля идут одной
+   линией. */
+.topbar { align-items: flex-end; }
+.topbar h1 { flex: 1 1 auto; min-width: 0; padding-right: 56px; }
+.topbar.has-goto h1 { padding-right: 0; }
 
 /* Кнопка «2D картинка» — в шапке, справа от заголовка. Раньше она стояла
    посреди полей расчёта обычной системной кнопкой: мелкая, попасть пальцем
@@ -1053,7 +1057,7 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
        (одинаковые каналы у разных цветов используют один и тот же узел). -->
   <svg width="0" height="0" style="position:absolute;overflow:hidden" aria-hidden="true"><defs id="colorAdjustDefs"></defs></svg>
   <main class="calc-card">
-    <div class="topbar">
+    <div class="topbar" id="topbar">
       <h1 id="viewTitle">Расчет — межкомнатные двери</h1>
       <!-- Быстрый переход к 2D-картинке: дверь там рисуется с текущими
            параметрами расчёта (модель, цвет, стекло, размеры), отдельно
@@ -7874,7 +7878,12 @@ const DB = {
   function updateGotoSceneBtn() {
     if (!el.goToSceneBtn) return;
     const onCalc = el.viewCalc && !el.viewCalc.hidden;
-    el.goToSceneBtn.hidden = !onCalc || state.section === "погонаж" || state.section === "фурнитура";
+    const hide = !onCalc || state.section === "погонаж" || state.section === "фурнитура";
+    el.goToSceneBtn.hidden = hide;
+    // Пока кнопка стоит справа, заголовку отступ под кнопку меню не нужен:
+    // его держит сама кнопка (см. .topbar.has-goto).
+    const bar = document.getElementById("topbar");
+    if (bar) bar.classList.toggle("has-goto", !hide);
   }
 
   function setView(view) {
