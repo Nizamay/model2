@@ -1098,8 +1098,10 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
         <button type="button" class="menu-item" data-view="prices">Изменение цен</button>
         <!-- Версия страницы: чтобы при разборе «у меня не так» сразу было
              видно, свежая ли она открыта или браузер подсунул старую из
-             памяти. Дата правится вместе с выпуском. -->
-        <div class="menu-version">Версия от 19.09.2026</div>
+             памяти. Дата подставляется сама, из ответа сервера
+             (см. pageVersionText) — вписывать её руками больше не нужно и
+             нельзя забыть. -->
+        <div class="menu-version" id="menuVersion">Версия от 26.09.2026</div>
         <div class="menu-storage" id="menuStorage">
           <div class="menu-storage-bar"><div class="menu-storage-fill" id="menuStorageFill"></div></div>
           <span id="menuStorageText">Память браузера: …</span>
@@ -7890,6 +7892,26 @@ const DB = {
     } catch (e) {}
     return total;
   }
+  // Дата версии страницы в меню. Берём её из ответа сервера
+  // (document.lastModified — когда файл выложен): строка не зависит от того,
+  // вспомнил ли кто-то поправить её руками, и показывает дату ИМЕННО той
+  // копии, которую открыл браузер. Подсунул телефон старую из памяти — будет
+  // видна старая дата, а за этим строка и нужна.
+  // Заголовка Last-Modified нет (файл открыт с диска, локальный просмотр) —
+  // браузер подставляет текущее время. Такой ответ узнаём по тому, что он
+  // совпадает с «сейчас», и тогда оставляем дату, вписанную в разметку.
+  function pageVersionText() {
+    try {
+      const t = Date.parse(document.lastModified);
+      if (!isNaN(t) && Math.abs(Date.now() - t) > 120000) {
+        const d = new Date(t);
+        const p = (n) => String(n).padStart(2, "0");
+        return "Версия от " + p(d.getDate()) + "." + p(d.getMonth() + 1) + "." + d.getFullYear();
+      }
+    } catch (err) { /* ниже остаётся дата из разметки */ }
+    return null;
+  }
+
   const STORAGE_ASSUMED_LIMIT = 5 * 1024 * 1024;
   function updateStorageIndicator() {
     if (!el.menuStorageFill || !el.menuStorageText) return;
@@ -7908,7 +7930,12 @@ const DB = {
     const open = force !== undefined ? force : el.menu.hidden;
     el.menu.hidden = !open;
     el.menuBtn.setAttribute("aria-expanded", String(open));
-    if (open) updateStorageIndicator();
+    if (open) {
+      updateStorageIndicator();
+      const ver = document.getElementById("menuVersion");
+      const text = pageVersionText();
+      if (ver && text) ver.textContent = text;
+    }
   }
 
   // Кнопка «2D картинка» в шапке видна только там, где ей есть что показать:
