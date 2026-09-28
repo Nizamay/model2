@@ -473,6 +473,15 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
    размере экрана, а тянется она пальцем — за середину место, за угол размер. */
 .parts-panel .adjust-body { gap: 8px; }
 .parts-hint { font-size: 12px; line-height: 1.35; color: var(--muted); margin: 0; }
+/* Рамка кадра модели: 850x2085 мм (см. FRAME_MM). Снимок внутри двигается
+   и масштабируется движками, а подсказка поверх показывает, где должно
+   оказаться полотно и наличник. */
+.frame-stage { position: relative; width: 100%; max-width: 320px; margin: 0 auto 10px; aspect-ratio: 850 / 2085;
+  overflow: hidden; border-radius: 6px; background: #e9edf2; user-select: none; }
+.frame-stage img { position: absolute; display: block; }
+.frame-guide { position: absolute; inset: 0; pointer-events: none; }
+.frame-guide i { position: absolute; display: block; box-sizing: border-box; border: 1.5px solid rgba(232, 74, 14, .95); }
+.frame-guide i.cas { border-width: 1px; border-style: dashed; }
 .parts-stage { position: relative; width: 100%; max-width: 320px; margin: 0 auto; user-select: none; }
 .parts-photo { display: block; width: 100%; height: auto; border-radius: 4px; pointer-events: none; }
 .parts-layer { position: absolute; inset: 0; }
@@ -534,7 +543,7 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 .adjust-body { display: flex; flex-direction: column; gap: 2px; padding: 10px 0 4px; width: 100%; min-width: 0; box-sizing: border-box; }
 .adjust-preview { width: 100%; max-width: 260px; aspect-ratio: 3/4; object-fit: cover; border-radius: 6px; border: 1px solid var(--border); align-self: center; }
 /* Превью фото модели двери — портретнее образца плёнки (3:4), ближе к
-   реальным пропорциям дверного полотна (см. cropToDoorRatio: 480×1080) —
+   реальным пропорциям двери с наличником (см. FRAME_MM: 850×2085) —
    иначе object-fit: cover обрезал бы большую часть высоты двери в узкий
    квадратный кадр, как у образца материала. */
 .model-photo-preview { max-width: 200px; aspect-ratio: 4/9; }
@@ -1408,6 +1417,32 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
             </div>
             <div class="adjust-actions">
               <button type="button" id="s_doorShadeReset">Сбросить</button>
+            </div>
+          </div>
+        </details>
+        <!-- Подгонка снимка модели под единую рамку 850x2085 мм (см. FRAME_MM).
+             Рамка одна на все модели, поэтому каждый миллиметр разметки
+             приходится на одно и то же место кадра — но только если сам снимок
+             в рамку поставлен. Этим и заняты четыре движка. -->
+        <details class="adjust-panel frame-panel" id="s_framePanel" hidden>
+          <summary>Фото в рамке</summary>
+          <div class="adjust-body">
+            <p class="parts-hint">Рамка одна на все модели: 850 × 2085 мм — полотно 700 × 2000, наличник 70, зазор 5, щель до пола 10. Подгоняйте снимок, пока дверь на нём не встанет в рамку: сплошная линия — полотно, пунктир — наличник.</p>
+            <div class="frame-stage" id="s_frameStage"></div>
+            <div class="arow"><span>Ширина</span><input type="range" class="frame-fit" data-k="zx" min="40" max="250" step="1" value="100">
+              <div class="range-scale" aria-hidden="true"><span>40</span><span>100</span><span>170</span><span>250</span></div>
+            </div>
+            <div class="arow"><span>Высота</span><input type="range" class="frame-fit" data-k="zy" min="40" max="250" step="1" value="100">
+              <div class="range-scale" aria-hidden="true"><span>40</span><span>100</span><span>170</span><span>250</span></div>
+            </div>
+            <div class="arow"><span>Сдвиг ↔</span><input type="range" class="frame-fit" data-k="dx" min="-60" max="60" step="1" value="0">
+              <div class="range-scale" aria-hidden="true"><span>−60</span><span>0</span><span>60</span></div>
+            </div>
+            <div class="arow"><span>Сдвиг ↕</span><input type="range" class="frame-fit" data-k="dy" min="-60" max="60" step="1" value="0">
+              <div class="range-scale" aria-hidden="true"><span>−60</span><span>0</span><span>60</span></div>
+            </div>
+            <div class="adjust-actions">
+              <button type="button" id="s_frameReset">Сбросить подгонку</button>
             </div>
           </div>
         </details>
@@ -3209,23 +3244,13 @@ const DB = {
     return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
   }
 
-  // Где на снимке само полотно: общая рамка всех деталей, кроме наличника.
-  // По ней снимок ставится на место двери в сцене — без этого фотографию
-  // приходилось бы совмещать с полотном на глаз.
+  // Где на снимке само полотно. Раньше это восстанавливалось по обведённым
+  // деталям и у каждой модели выходило чуть по-своему. Теперь снимок стоит в
+  // единой рамке, а в ней место полотна задано в миллиметрах (см. FRAME_LEAF)
+  // — искать больше нечего.
   function partsLeafBox(doc) {
     if (!doc) return null;
-    // Обведено «Полотно» — оно и есть ответ, гадать по деталям не нужно.
-    const ref = doc.parts.find((p) => p.k === "d");
-    if (ref) return { x: ref.x, y: ref.y, w: ref.w, h: ref.h };
-    const leaf = doc.parts.filter((p) => PART_KINDS[p.k] && !PART_KINDS[p.k].casing);
-    if (!leaf.length) return null;
-    let x0 = 1, y0 = 1, x1 = 0, y1 = 0;
-    leaf.forEach((p) => {
-      x0 = Math.min(x0, p.x); y0 = Math.min(y0, p.y);
-      x1 = Math.max(x1, p.x + p.w); y1 = Math.max(y1, p.y + p.h);
-    });
-    if (x1 - x0 < 0.05 || y1 - y0 < 0.05) return null;
-    return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+    return { x: FRAME_LEAF.x, y: FRAME_LEAF.y, w: FRAME_LEAF.w, h: FRAME_LEAF.h };
   }
 
   // Первая разметка делалась сеткой линий на всю фотографию (DB.modelGrids).
@@ -3280,23 +3305,47 @@ const DB = {
   // она своя у каждой модели, поэтому там размер только начальный.
   const LEAF_MM = { w: 700, h: 2000 };
   const PROFILE_MM = 110, CASING_MM = 70;
+  // Зазор между полотном и наличником и щель между полотном и полом —
+  // настоящие монтажные размеры (замеры заказчика).
+  const GAP_MM = 5, FLOOR_GAP_MM = 10;
   // Высота стены на сцене — от пола до верха картинки (правило заказчика).
   const WALL_MM = 2600;
-  // Пропорция снимка модели: все они кадрируются при загрузке в 480x1080
-  // (см. cropToDoorRatio). Нужна там, где снимок показывается целиком, в
-  // своих пропорциях, — у «Матрицы».
-  const MODEL_PHOTO_RATIO = 480 / 1080;
+  // ЕДИНАЯ РАМКА КАДРА МОДЕЛИ. Раньше снимок просто кадрировался по центру в
+  // 480x1080, а где внутри кадра стоит полотно — программа угадывала по
+  // обведённым деталям. Поэтому у каждой модели всё вставало по-своему: на
+  // одной верхняя царга выходила заметно толще заданных 110 мм, на другой
+  // наличник шире положенных 70 мм. Теперь наоборот: рамка задана в
+  // миллиметрах и одна на все модели, а снимок подгоняется под неё
+  // движками (см. modelFrameFit) — и тогда каждый миллиметр разметки
+  // приходится на одно и то же место кадра у любой модели.
+  //   ширина  = 700 полотно + 70x2 наличник + 5x2 зазор            = 850
+  //   высота  = 2000 полотно + 70 наличник + 5 зазор + 10 щель до пола = 2085
+  const FRAME_MM = {
+    w: LEAF_MM.w + CASING_MM * 2 + GAP_MM * 2,
+    h: LEAF_MM.h + CASING_MM + GAP_MM + FLOOR_GAP_MM
+  };
+  // Место полотна внутри рамки, в долях кадра. Слева и сверху — наличник
+  // плюс зазор; снизу остаётся щель до пола.
+  const FRAME_LEAF = {
+    x: (CASING_MM + GAP_MM) / FRAME_MM.w,
+    y: (CASING_MM + GAP_MM) / FRAME_MM.h,
+    w: LEAF_MM.w / FRAME_MM.w,
+    h: LEAF_MM.h / FRAME_MM.h
+  };
+  // Пропорция снимка модели — это и есть пропорция рамки.
+  const MODEL_PHOTO_RATIO = FRAME_MM.w / FRAME_MM.h;
+  // Размер хранимого кадра в точках: ровно 850x2085 в масштабе 0.8, чтобы
+  // пропорция была точной, а не округлённой.
+  const FRAME_PX = { w: Math.round(FRAME_MM.w * 0.8), h: Math.round(FRAME_MM.h * 0.8) };
   const INNER_MM = LEAF_MM.w - PROFILE_MM * 2;
   // fix — размер задан правилами, за углы тянуть нечего (деталь только
   // переносится); free — размер свой у каждой модели, углы нужны.
   const PART_MM = {
-    // Рамка полотна тянется свободно, без держания пропорций: настоящая
-    // дверь на снимке бывает и 700x2000, и 800x2000, да и сам кадр обрезан
-    // под свои пропорции. Рамка с жёстко заданной формой на такую дверь не
-    // ложилась никогда: правишь ширину — уезжает низ, правишь низ — уезжает
-    // ширина. Ширина рамки это и есть 700 мм, высота — 2000 мм, по ним и
-    // считается масштаб.
-    d: { w: LEAF_MM.w, h: LEAF_MM.h, fix: true, free: true },
+    // Рамка полотна больше не тянется руками: её место в кадре задано
+    // рамкой (см. FRAME_LEAF) — 700x2000 мм, отступ сверху и с боков на
+    // наличник с зазором. Подгоняется под неё сам СНИМОК (см. modelFrameFit),
+    // а не рамка под снимок.
+    d: { w: LEAF_MM.w, h: LEAF_MM.h, fix: true },
     s: { w: PROFILE_MM, h: LEAF_MM.h, fix: true },
     p: { w: INNER_MM, h: PROFILE_MM, fix: true },
     // Филёнка и стекло по умолчанию — всё поле между стойками и царгами,
@@ -3306,85 +3355,72 @@ const DB = {
     g: { w: INNER_MM, h: LEAF_MM.h - PROFILE_MM * 2, free: true },
     rv: { w: CASING_MM, h: LEAF_MM.h - PROFILE_MM * 2, free: true },
     rh: { w: INNER_MM, h: CASING_MM, free: true },
-    nv: { w: CASING_MM, h: LEAF_MM.h + CASING_MM, fix: true },
-    nh: { w: LEAF_MM.w, h: CASING_MM, fix: true }
+    // Наличник в рамке стоит от пола до верха кадра, верхний лежит поперёк
+    // во всю ширину рамки — так он и стоит на настоящей двери.
+    nv: { w: CASING_MM, h: FRAME_MM.h - CASING_MM, fix: true },
+    nh: { w: FRAME_MM.w, h: CASING_MM, fix: true }
   };
 
+  // Точное место детали в рамке, в долях кадра. Всё, что задано правилами,
+  // стоит в рамке однозначно — гадать по соседям больше не нужно. Второй
+  // экземпляр (правая стойка, нижняя царга, правый наличник) — second=true.
+  // Наличник отделён от полотна зазором 5 мм, поэтому его место считается от
+  // края кадра, а не от полотна.
+  function framePartRect(kind, second) {
+    const L = FRAME_LEAF;
+    const casW = CASING_MM / FRAME_MM.w, casH = CASING_MM / FRAME_MM.h;
+    const profW = PROFILE_MM / FRAME_MM.w, profH = PROFILE_MM / FRAME_MM.h;
+    if (kind === "d") return { x: L.x, y: L.y, w: L.w, h: L.h };
+    if (kind === "s") return { x: second ? L.x + L.w - profW : L.x, y: L.y, w: profW, h: L.h };
+    if (kind === "p") return { x: L.x + profW, y: second ? L.y + L.h - profH : L.y, w: L.w - profW * 2, h: profH };
+    if (kind === "nv") return { x: second ? 1 - casW : 0, y: casH, w: casW, h: 1 - casH };
+    if (kind === "nh") return { x: 0, y: 0, w: 1, h: casH };
+    return null;
+  }
+
   // Тянуть за углы имеет смысл только там, где размер не задан правилами:
-  // рамка полотна (её подгоняют по снимку, пропорции 700x2000 держатся
-  // сами) и филёнка, стекло, раскладка — у них размер свой у каждой модели.
-  // У стоек, царг и наличников размер известен, поэтому углов у них нет и
-  // случайно растянуть их нельзя: они только переносятся.
+  // филёнка, стекло, раскладка — у них размер свой у каждой модели. У рамки
+  // полотна, стоек, царг и наличников размер и место известны из рамки кадра,
+  // поэтому углов у них нет и случайно растянуть их нельзя.
   function partsResizable(kind) {
     const mm = PART_MM[kind];
     return !!(mm && mm.free);
   }
 
-  // Сколько долей снимка приходится на миллиметр. Масштаб снимаем с уже
-  // поставленных деталей, размер которых задан правилами (стойка, царга,
-  // наличник): по ним он известен точно, и каждая следующая деталь встаёт
-  // в тот же масштаб. Пока таких нет — считаем, что полотно занимает почти
-  // всю высоту кадра, а ширину берём из пропорций самого снимка: миллиметр
-  // по вертикали и по горизонтали один и тот же.
-  function partsScale(parts, box) {
-    const aspect = box && box.width ? box.height / box.width : LEAF_MM.h / LEAF_MM.w;
-    const xs = [], ys = [];
-    parts.forEach((p) => {
-      const mm = PART_MM[p.k];
-      if (!mm || !mm.fix) return;
-      xs.push(p.w / mm.w);
-      ys.push(p.h / mm.h);
-    });
-    const mid = (a) => { a.sort((u, v) => u - v); return a.length ? a[a.length >> 1] : 0; };
-    let y = mid(ys), x = mid(xs);
-    if (!y) y = 0.90 / LEAF_MM.h;
-    if (!x) x = y * aspect;
-    return { x: x, y: y };
+  // Сколько долей снимка приходится на миллиметр. Теперь это просто рамка
+  // кадра: она задана в миллиметрах и одна на все модели, снимок подогнан под
+  // неё движками. Раньше масштаб приходилось снимать с уже поставленных
+  // деталей, и он гулял от модели к модели — отсюда и расхождения, которые
+  // заказчик показал на «Империи» (верхняя царга выходила толще 110 мм).
+  function partsScale() {
+    return { x: 1 / FRAME_MM.w, y: 1 / FRAME_MM.h };
   }
 
-  // Где на снимке полотно. Каждая деталь, размер и место которой заданы
-  // правилами, показывает на его угол: стойка стоит у края полотна, царга —
-  // между стойками, вертикальный наличник примыкает снаружи, горизонтальный
-  // лежит сверху. По ним и восстанавливаем рамку полотна; деталей нет —
-  // ставим её посередине кадра в своём размере.
-  function partsLeafPlace(parts, sc) {
-    const w = Math.min(1, LEAF_MM.w * sc.x), h = Math.min(1, LEAF_MM.h * sc.y);
-    const xs = [], ys = [];
-    parts.forEach((p) => {
-      if (p.k === "s") { xs.push(p.x < 0.5 ? p.x : p.x + p.w - w); ys.push(p.y); }
-      else if (p.k === "p") { xs.push(p.x - PROFILE_MM * sc.x); ys.push(p.y < 0.5 ? p.y : p.y + p.h - h); }
-      else if (p.k === "nv") { xs.push(p.x < 0.5 ? p.x + p.w : p.x - w); ys.push(p.y + CASING_MM * sc.y); }
-      else if (p.k === "nh") { xs.push(p.x); ys.push(p.y + p.h); }
-    });
-    if (xs.length) {
-      const mean = (a) => a.reduce((s, v) => s + v, 0) / a.length;
-      return { x: mean(xs), y: mean(ys), w: w, h: h };
-    }
-    const box = partsLeafBox({ parts: parts });
-    if (box) return box;
-    return { x: (1 - w) / 2, y: (1 - h) / 2, w: w, h: h };
+  // Где на снимке полотно — тоже задано рамкой: наличник с зазором сверху и с
+  // боков, щель до пола снизу.
+  function partsLeafPlace() {
+    return { x: FRAME_LEAF.x, y: FRAME_LEAF.y, w: FRAME_LEAF.w, h: FRAME_LEAF.h };
   }
 
-  // Новая деталь появляется там, где она обычно и стоит: стойка у края
-  // полотна (вторая — у противоположного), царга сверху (вторая — снизу),
-  // наличник вплотную снаружи. Чаще всего её уже никуда не надо двигать.
-  function newPart(kind, parts, box) {
-    const sc = partsScale(parts, box);
+  // Новая деталь. Полотно, стойки, царги и наличники встают в рамке на своё
+  // единственно возможное место (см. framePartRect) — двигать их не нужно
+  // вообще. Второй экземпляр (правая стойка, нижняя царга) ставится напротив
+  // первого. Филёнка, стекло и раскладка — свои у каждой модели, поэтому
+  // появляются в поле между стойками и царгами и дальше ставятся руками.
+  function newPart(kind, parts) {
+    const sc = partsScale();
+    const has = (k) => parts.some((p) => p.k === k);
+    const fixed = framePartRect(kind, has(kind));
+    if (fixed) return { x: fixed.x, y: fixed.y, w: fixed.w, h: fixed.h, k: kind };
     const mm = PART_MM[kind] || { w: 300, h: 300 };
     const w = Math.max(0.01, Math.min(1, mm.w * sc.x));
     const h = Math.max(0.01, Math.min(1, mm.h * sc.y));
-    const leaf = partsLeafPlace(parts, sc);
-    const has = (k) => parts.some((p) => p.k === k);
+    const leaf = partsLeafPlace();
     let x = leaf.x + (leaf.w - w) / 2;
     let y = leaf.y + (leaf.h - h) / 2;
-    if (kind === "d") { x = leaf.x; y = leaf.y; }
-    else if (kind === "s") { x = has("s") ? leaf.x + leaf.w - w : leaf.x; y = leaf.y; }
-    else if (kind === "p") { x = leaf.x + PROFILE_MM * sc.x; y = has("p") ? leaf.y + leaf.h - h : leaf.y; }
-    else if (kind === "f" || kind === "g") { x = leaf.x + PROFILE_MM * sc.x; y = leaf.y + PROFILE_MM * sc.y; }
+    if (kind === "f" || kind === "g") { x = leaf.x + PROFILE_MM * sc.x; y = leaf.y + PROFILE_MM * sc.y; }
     else if (kind === "rh") { x = leaf.x + PROFILE_MM * sc.x; }
     else if (kind === "rv") { y = leaf.y + PROFILE_MM * sc.y; }
-    else if (kind === "nv") { x = has("nv") ? leaf.x + leaf.w : leaf.x - w; y = leaf.y - CASING_MM * sc.y; }
-    else if (kind === "nh") { x = leaf.x; y = leaf.y - h; }
     const fit = (v, size) => Math.max(0, Math.min(1 - size, v));
     return { x: fit(x, w), y: fit(y, h), w: w, h: h, k: kind };
   }
@@ -3762,7 +3798,7 @@ const DB = {
     const W = photo.naturalWidth, H = photo.naturalHeight;
     // Рабочий размер кадра задаётся НЕ размером фотографии, а тем, сколько
     // точек нужно плёнке. Раньше он был «не больше, чем в снимке», а снимки
-    // модели хранятся по 480 точек в ширину (см. cropToDoorRatio) — это
+    // модели хранятся по 680 точек в ширину (см. FRAME_PX) — это
     // около 390 точек на полотно шириной 800 мм, то есть плитка плёнки
     // выходила 73 точки на 150 мм. Образец при этом ужимался в восемь раз:
     // мелкое волокно усреднялось в кашу, и от плёнки оставалась только
@@ -4049,6 +4085,165 @@ const DB = {
     return photo && photo.image ? { model: m, photo: photo } : null;
   }
 
+  // --- Подгонка снимка модели под рамку ---------------------------------
+  //
+  // Рамка 850x2085 мм одна на все модели (см. FRAME_MM), и разметка привязана
+  // к ней намертво. Значит, совпасть с реальными миллиметрами должен сам
+  // снимок — для этого он и двигается четырьмя движками: масштаб по ширине и
+  // по высоте отдельно (снимки бывают сняты под углом и с разными
+  // пропорциями) и сдвиг по обеим осям.
+  //
+  // «Матрице» панель тоже нужна: разметки у неё нет, но в рамку её снимок
+  // ставится по тем же правилам, и тогда дверь встаёт на сцене в свой
+  // настоящий размер.
+  function frameEditorCtx() {
+    const m = getModel(state.modelId);
+    if (!m) return null;
+    const rec = modelPhotoOf(m.id);
+    return rec && (rec.source || rec.image) ? { model: m, rec: rec } : null;
+  }
+
+  function frameStageEls() {
+    const stage = document.getElementById("s_frameStage");
+    if (!stage) return null;
+    let img = stage.querySelector("img");
+    let guide = stage.querySelector(".frame-guide");
+    if (!img || !guide) {
+      stage.innerHTML = `<img alt=""><div class="frame-guide">`
+        + `<i class="leaf"></i><i class="cas nh"></i><i class="cas nv l"></i><i class="cas nv r"></i></div>`;
+      img = stage.querySelector("img");
+      guide = stage.querySelector(".frame-guide");
+      const pct = (v) => (v * 100).toFixed(3) + "%";
+      const put = (sel, r) => {
+        const n = guide.querySelector(sel);
+        if (!n || !r) return;
+        n.style.left = pct(r.x); n.style.top = pct(r.y);
+        n.style.width = pct(r.w); n.style.height = pct(r.h);
+      };
+      put("i.leaf", framePartRect("d"));
+      put("i.nh", framePartRect("nh"));
+      put("i.nv.l", framePartRect("nv"));
+      put("i.nv.r", framePartRect("nv", true));
+    }
+    return { stage: stage, img: img, guide: guide };
+  }
+
+  // То же размещение, что и в drawModelFrame, только средствами CSS: пока
+  // палец ведёт движок, пересобирать кадр в canvas слишком долго, а картинку
+  // подвинуть браузер успевает мгновенно.
+  function frameFitApply(img, fit) {
+    const iw = img.naturalWidth || img.width, ih = img.naturalHeight || img.height;
+    if (!iw || !ih) return;
+    const ar = iw / ih;
+    let dw = 1, dh = 1;
+    if (ar > MODEL_PHOTO_RATIO) dw = ar / MODEL_PHOTO_RATIO; else dh = MODEL_PHOTO_RATIO / ar;
+    dw *= fit.zx; dh *= fit.zy;
+    const pct = (v) => (v * 100).toFixed(3) + "%";
+    img.style.width = pct(dw);
+    img.style.height = pct(dh);
+    img.style.left = pct((1 - dw) / 2 + fit.dx);
+    img.style.top = pct((1 - dh) / 2 + fit.dy);
+  }
+
+  function updateFrameEditor() {
+    const panel = document.getElementById("s_framePanel");
+    if (!panel) return;
+    const ctx = frameEditorCtx();
+    panel.hidden = !ctx;
+    if (!ctx) { panel.open = false; return; }
+    if (!panel.open) return;
+    const els = frameStageEls();
+    if (!els) return;
+    const src = ctx.rec.source || ctx.rec.image;
+    const fit = frameFitOf(ctx.rec);
+    if (els.img.getAttribute("src") !== src) {
+      els.img.onload = () => frameFitApply(els.img, frameFitOf(modelPhotoOf(ctx.model.id)));
+      els.img.setAttribute("src", src);
+    } else frameFitApply(els.img, fit);
+    document.querySelectorAll(".frame-fit").forEach((inp) => {
+      inp.value = String(Math.round((fit[inp.dataset.k] || 0) * 100));
+    });
+  }
+
+  let frameSaveTimer = null;
+  function onFrameFitInput(e) {
+    const inp = e.target;
+    if (!inp.classList || !inp.classList.contains("frame-fit")) return;
+    const ctx = frameEditorCtx();
+    if (!ctx) return;
+    const fit = frameFitOf(ctx.rec);
+    const v = Number(inp.value) / 100;
+    if (isFinite(v)) fit[inp.dataset.k] = v;
+    ctx.rec.fit = fit;
+    const els = frameStageEls();
+    if (els) frameFitApply(els.img, fit);
+    // Кадр пересобирается не на каждое движение пальца, а через паузу:
+    // перерисовать 680x1668 и перекрасить дверь — работа на доли секунды,
+    // и делать её сорок раз за один проезд движка незачем.
+    clearTimeout(frameSaveTimer);
+    frameSaveTimer = setTimeout(() => applyFrameFit(ctx.model.id), 280);
+  }
+
+  function applyFrameFit(modelId) {
+    const rec = modelPhotoOf(modelId);
+    const source = rec && (rec.source || rec.image);
+    if (!source) return Promise.resolve();
+    const fit = frameFitOf(rec);
+    return renderModelPhoto(source, fit)
+      .then((image) => saveModelPhoto(modelId, { ...rec, image: image, source: source, fit: fit, custom: true }, () => {
+        drawDoor(sceneCtx, true);
+      }))
+      .catch(() => {});
+  }
+
+  function onFrameReset() {
+    const ctx = frameEditorCtx();
+    if (!ctx) return;
+    ctx.rec.fit = { ...FRAME_FIT };
+    updateFrameEditor();
+    applyFrameFit(ctx.model.id);
+  }
+
+  // Снимки, загруженные до появления рамки, лежат обрезанными по центру в
+  // пропорции 480x1080 и исходника под собой не имеют. Возвращать их назад
+  // неоткуда, поэтому такой кадр сам становится исходником и вписывается в
+  // рамку целиком; разметка при этом переезжает тем же преобразованием,
+  // чтобы филёнки и стёкла не разъехались, а каркас ставится заново — в
+  // рамке его место известно точно.
+  function migrateModelFrames() {
+    const ids = Object.keys(DB.modelSwatches || {}).filter((id) => {
+      const sw = DB.modelSwatches[id];
+      return sw && sw.image && !sw.source;
+    });
+    if (!ids.length) return Promise.resolve(false);
+    return ids.reduce((chain, id) => chain.then(() => {
+      const sw = DB.modelSwatches[id];
+      return loadImageAsync(sw.image).then((img) => {
+        const iw = img.naturalWidth, ih = img.naturalHeight;
+        if (!iw || !ih) return null;
+        const ar = iw / ih;
+        let dw = 1, dh = 1;
+        if (ar > MODEL_PHOTO_RATIO) dw = ar / MODEL_PHOTO_RATIO; else dh = MODEL_PHOTO_RATIO / ar;
+        const ox = (1 - dw) / 2, oy = (1 - dh) / 2;
+        const doc = DB.modelParts && DB.modelParts[id];
+        if (doc && Array.isArray(doc.parts)) {
+          doc.parts.forEach((p) => {
+            p.x = p.x * dw + ox; p.w = p.w * dw;
+            p.y = p.y * dh + oy; p.h = p.h * dh;
+          });
+          const kept = doc.parts.filter((p) => !framePartRect(p.k));
+          if (kept.length !== doc.parts.length) {
+            doc.parts = kept;
+            ["d", "s", "s", "p", "p", "nv", "nv", "nh"].forEach((k) => { doc.parts.push(newPart(k, doc.parts)); });
+          }
+        }
+        const fit = { ...FRAME_FIT };
+        const image = drawModelFrame(img, fit).toDataURL("image/jpeg", 0.88);
+        return saveModelPhoto(id, { ...sw, image: image, source: sw.image, fit: fit, custom: true });
+      }).catch(() => null);
+    }), Promise.resolve()).then(() => true);
+  }
+
   function savePartsDoc(doc, modelId) {
     if (!DB.modelParts) DB.modelParts = {};
     if (doc && doc.parts.length) {
@@ -4102,7 +4297,7 @@ const DB = {
     if (hint) {
       const activeKind = partsSel === null ? null : parts[partsSel].k;
       hint.textContent = !parts.length
-        ? "Начните с «Полотна»: обведите им само полотно двери, углами — точно по его краям. Ширина рамки — это 700 мм, высота — 2000 мм; по ней встанут все остальные детали."
+        ? "Начните с «+ Каркас»: полотно, стойки, царги и наличники встанут сами — их место в рамке задано в миллиметрах. Если они не совпали с дверью на снимке, двигать надо не их, а сам снимок — панелью «Фото в рамке»."
         : (partsSel === null
           ? "Нажмите на деталь — она станет активной, и только тогда её можно двигать. Кнопка вида добавляет новую."
           : (partsResizable(activeKind)
@@ -4129,11 +4324,11 @@ const DB = {
         `<button type="button" class="parts-kind k-${k}" data-kind="${k}">${PART_KINDS[k].name}</button>`).join("");
     }
     if (tools) {
-      // «Каркас» — весь обвес полотна разом: две стойки, две царги и три
-      // доски наличника. Всё по правилам и по рамке полотна, поэтому
-      // ставить их по одной и подгонять не нужно.
-      const hasRef = parts.some((p) => p.k === "d");
-      tools.innerHTML = (hasRef ? `<button type="button" data-act="frame">+ Каркас</button>` : "")
+      // «Каркас» — полотно и весь его обвес разом: две стойки, две царги и
+      // три доски наличника. Место каждой детали задано рамкой в
+      // миллиметрах, поэтому ставить их по одной и подгонять не нужно.
+      // Кнопка доступна всегда, в том числе на пустой разметке.
+      tools.innerHTML = `<button type="button" data-act="frame">+ Каркас</button>`
         + (partsSel === null ? "" :
         `<button type="button" data-act="copy">Копия</button>`
         + `<button type="button" data-act="del">✕ Удалить</button>`
@@ -4205,6 +4400,11 @@ const DB = {
           updatePartsEditor();
           return;
         }
+        // Полотно, стойки, царги и наличники в рамке стоят на своём
+        // единственном месте (см. framePartRect) — двигать их нечего, и если
+        // разрешить, вся привязка к миллиметрам развалится. Под рамку
+        // подгоняется сам снимок, движками.
+        if (framePartRect(p.k)) return;
         partsDrag = { mode: "move", i: i, dx: fx - p.x, dy: fy - p.y, modelId: ctx.model.id, moved: false };
         els.stage.setPointerCapture(e.pointerId);
         e.preventDefault();
@@ -4303,16 +4503,17 @@ const DB = {
       }
       if (partsSel !== null && doc.parts[partsSel] && !refActive && kind !== "d") doc.parts[partsSel].k = kind;
       else {
-        const els = partsStageEls();
-        const box = els ? els.stage.getBoundingClientRect() : null;
-        doc.parts.push(newPart(kind, doc.parts, box));
+        doc.parts.push(newPart(kind, doc.parts));
         partsSel = doc.parts.length - 1;
       }
       savePartsDoc(doc, ctx.model.id);
     } else if (act === "frame") {
-      const els = partsStageEls();
-      const box = els ? els.stage.getBoundingClientRect() : null;
-      ["s", "s", "p", "p", "nv", "nv", "nh"].forEach((k) => { doc.parts.push(newPart(k, doc.parts, box)); });
+      // Каркас в рамке стоит однозначно, поэтому ставим его заново целиком:
+      // прежние стойки, царги и наличники убираем, чтобы не остались
+      // задвоенными на старых местах. Филёнки, стёкла и раскладки — свои у
+      // модели, их не трогаем.
+      doc.parts = doc.parts.filter((p) => !framePartRect(p.k));
+      ["d", "s", "s", "p", "p", "nv", "nv", "nh"].forEach((k) => { doc.parts.push(newPart(k, doc.parts)); });
       partsSel = null;
       savePartsDoc(doc, ctx.model.id);
     } else if (act === "copy" && partsSel !== null && doc.parts[partsSel]) {
@@ -4374,10 +4575,14 @@ const DB = {
     const curModel = sceneMode ? getModel(state.modelId) : null;
     const havePhoto = sceneMode ? currentModelPhoto() : null;
     const photoAsIsModel = !!(curModel && curModel.type === "матрица" && havePhoto);
-    // Дверь на снимке ищется сама (см. photoDoorBox). Нашлась — показываем
-    // только её, обрезав фон съёмки, и ставим на пол в масштабе комнаты.
-    // Не нашлась (фон неровный) — показываем кадр целиком, как есть.
-    const photoBox = photoAsIsModel ? photoDoorBox(havePhoto) : null;
+    // Снимок поставлен в рамку (см. FRAME_MM) — тогда искать на нём дверь не
+    // нужно вовсе: рамка это 850x2085 мм, и на сцену она встаёт в свой
+    // настоящий размер. Рамки нет (снимок ещё не подогнан) — дверь ищется
+    // сама (см. photoDoorBox): нашлась — показываем только её, обрезав фон
+    // съёмки; не нашлась — показываем кадр целиком, как есть.
+    const curPhotoRec = sceneMode && curModel ? modelPhotoOf(curModel.id) : null;
+    const photoFramed = !!(curPhotoRec && curPhotoRec.source);
+    const photoBox = photoAsIsModel && !photoFramed ? photoDoorBox(havePhoto) : null;
 
     // Размер двери на сцене — в масштабе комнаты, а не «во весь кадр»:
     // стена от пола до верха картинки это 2600 мм, и дверь занимает от неё
@@ -4399,9 +4604,18 @@ const DB = {
       w = h * boxAspect;
       const fit = Math.min(1, availW / w, availH / h);
       if (fit < 1) { w *= fit; h *= fit; }
+    } else if (sceneMode && photoAsIsModel && photoFramed) {
+      // Снимок в рамке: 2085 мм от пола до верха наличника — ставим ровно
+      // столько от высоты стены, ни больше ни меньше. Заказанная высота
+      // полотна тут не при чём: у «Матрицы» на снимке своя готовая дверь.
+      const perMm = layout.floorY / WALL_MM;
+      h = FRAME_MM.h * perMm;
+      w = h * MODEL_PHOTO_RATIO;
+      const fit = Math.min(1, availW / w, availH / h);
+      if (fit < 1) { w *= fit; h *= fit; }
     } else if (sceneMode && photoAsIsModel) {
-      // Дверь на снимке не нашлась — показываем кадр целиком, пропорции его
-      // собственные (см. cropToDoorRatio: снимки моделей хранятся 480x1080).
+      // Снимок ещё не подогнан под рамку и дверь на нём не нашлась —
+      // показываем кадр целиком, в его собственных пропорциях.
       h = availH;
       w = h * MODEL_PHOTO_RATIO;
       if (w > availW) { w = availW; h = w / MODEL_PHOTO_RATIO; }
@@ -4665,7 +4879,7 @@ const DB = {
     const outerBox = photoFrame && partsHaveCasing(partsDoc) ? partsOuterBox(partsDoc, leafBox) : null;
     // У «Матрицы» коробка уже на самом снимке, и снимок показан целиком —
     // значит своей рамки рисовать не надо (см. buildScene).
-    const photoCasing = photoAsIsModel ? { asIs: true, flatWall: !photoBox } : outerBox ? {
+    const photoCasing = photoAsIsModel ? { asIs: true, flatWall: !photoBox && !photoFramed } : outerBox ? {
       // Коробка со снимка нужна и до перекраски: она ставит фотографию на
       // место двери, даже когда красить ещё нечего.
       href: gridImage || modelPhoto.image,
@@ -4687,7 +4901,7 @@ const DB = {
     // Красить стену в цвет фона нужно только тогда, когда этот фон на картинке
     // остался, — то есть когда дверь на снимке не нашлась и кадр показан
     // целиком. Нашлась — фон обрезан, и стена живёт своей жизнью.
-    const photoWallHex = photoAsIsModel && !photoBox ? modelPhotoEdgeHex(modelPhoto) : null;
+    const photoWallHex = photoAsIsModel && !photoBox && !photoFramed ? modelPhotoEdgeHex(modelPhoto) : null;
     const sceneWallColor = photoWallHex || state.wallColor;
     c.sceneGroup.innerHTML = sceneMode
       ? buildScene(layout, { x: x, y: y, w: w, h: h }, baseHex, casingFill, sceneWallColor, state.wallTexture, c.pfx, doorFilter, gap, photoCasing, Math.max(3, CASING_MM * unitsPerMm))
@@ -4702,6 +4916,7 @@ const DB = {
 
     if (sceneMode) {
       updateModelPhotoNote(modelPhoto, !!gridImage);
+      updateFrameEditor();
       updatePartsEditor();
     }
   }
@@ -7769,6 +7984,15 @@ const DB = {
         drawDoor(sceneCtx, true);
       });
     }
+    // Подгонка снимка под рамку (см. updateFrameEditor): четыре движка —
+    // масштаб по каждой оси и сдвиг по каждой оси.
+    const framePanel = document.getElementById("s_framePanel");
+    if (framePanel) framePanel.addEventListener("toggle", () => updateFrameEditor());
+    document.querySelectorAll(".frame-fit").forEach((inp) => {
+      inp.addEventListener("input", onFrameFitInput);
+    });
+    const frameReset = document.getElementById("s_frameReset");
+    if (frameReset) frameReset.addEventListener("click", onFrameReset);
     // Разметка деталей модели (см. updatePartsEditor): двигаем и растягиваем
     // прямоугольники прямо по фотографии.
     const partsPanel = document.getElementById("s_partsPanel");
@@ -8085,7 +8309,9 @@ const DB = {
       // «свои» (заводских фото у моделей нет), поэтому та же логика
       // «лёгкая пометка, если фото уже подтверждено в IndexedDB».
       modelSwatches: Object.fromEntries(Object.entries(DB.modelSwatches || {}).map(([id, sw]) => {
-        if (sw && sw.custom && modelPhotosConfirmedInIdb.has(id)) return [id, { custom: true }];
+        // Положение движков подгонки — это четыре числа, они лёгкие и
+        // остаются здесь даже когда сам снимок уже лежит в IndexedDB.
+        if (sw && sw.custom && modelPhotosConfirmedInIdb.has(id)) return [id, { custom: true, fit: sw.fit }];
         return [id, sw];
       })),
       // Разметка деталей моделей — лёгкая (несколько чисел на деталь),
@@ -8280,7 +8506,7 @@ const DB = {
         const sw = DB.modelSwatches[id];
         if (sw && sw.custom && sw.image && !known.has(id)) {
           migrations.push(
-            idbPut(PHOTO_STORE_MODEL, id, { image: sw.image })
+            idbPut(PHOTO_STORE_MODEL, id, { image: sw.image, source: sw.source, fit: sw.fit })
               .then(() => { modelPhotosConfirmedInIdb.add(id); })
               .catch(() => {})
           );
@@ -8289,7 +8515,7 @@ const DB = {
       return Promise.all(migrations);
     }).catch(() => {});
 
-    Promise.all([colorTask, modelTask]).then(() => {
+    Promise.all([colorTask, modelTask]).then(() => migrateModelFrames()).then(() => {
       savePrices(); // сузить localStorage — часть фото теперь подтверждена в IndexedDB
       render();
       if (!el.viewPrices.hidden) renderPriceEditor();
@@ -8736,48 +8962,121 @@ const DB = {
   // (конкретная модель), без факторной заготовки — у моделей нет
   // «заводского» фото, только пользовательская загрузка.
 
-  // Кадрирует под портретное соотношение, близкое к реальным пропорциям
-  // дверного полотна (~800×2000мм), а не 3:4, как у образцов плёнки (см.
-  // cropToSwatchRatio) — там квадратный кадр оправдан (тайлируемый
-  // материал), здесь нужно превью, похожее на целую дверь.
-  function cropToDoorRatio(file) {
-    const targetW = 480, targetH = 1080;
-    const targetRatio = targetW / targetH;
+  // Снимок модели кладётся в ЕДИНУЮ РАМКУ 850x2085 мм (см. FRAME_MM): в ней
+  // место полотна, наличника и зазоров задано в миллиметрах и одинаково у всех
+  // моделей. Сам снимок при этом не обрезается по центру вслепую, как раньше,
+  // а подгоняется под рамку четырьмя движками (масштаб и сдвиг по каждой оси,
+  // см. modelFrameFit и панель «Фото в рамке»). Поэтому рядом с готовым кадром
+  // хранится ИСХОДНИК: подвинуть снимок в рамке нужно уметь и потом, а из
+  // обрезанного кадра вернуть отрезанное невозможно.
+  const FRAME_FIT = { zx: 1, zy: 1, dx: 0, dy: 0 };
+  // Исходник ужимаем: он нужен только чтобы заново нарисовать кадр 680x1668.
+  const FRAME_SOURCE_MAX = 1400;
+  function frameFitOf(rec) {
+    const f = rec && rec.fit;
+    if (!f) return { ...FRAME_FIT };
+    const num = (v, d) => (typeof v === "number" && isFinite(v) ? v : d);
+    return { zx: num(f.zx, 1), zy: num(f.zy, 1), dx: num(f.dx, 0), dy: num(f.dy, 0) };
+  }
+
+  // Рисует снимок в рамке: «вписать по большей стороне» (снимок закрывает всю
+  // рамку целиком) умножается на движки масштаба, потом сдвигается движками
+  // сдвига. Пустые поля, если снимок уменьшили, заливаются цветом его края —
+  // чёрные поля на сцене читались бы как часть двери.
+  function drawModelFrame(img, fit) {
+    const W = FRAME_PX.w, H = FRAME_PX.h;
+    const canvas = document.createElement("canvas");
+    canvas.width = W; canvas.height = H;
+    const ctx = canvas.getContext("2d");
+    const iw = img.naturalWidth || img.width, ih = img.naturalHeight || img.height;
+    if (!iw || !ih) return canvas;
+    ctx.fillStyle = imageEdgeHex(img) || "#ffffff";
+    ctx.fillRect(0, 0, W, H);
+    const cover = Math.max(W / iw, H / ih);
+    const w = iw * cover * fit.zx, h = ih * cover * fit.zy;
+    const x = (W - w) / 2 + fit.dx * W, y = (H - h) / 2 + fit.dy * H;
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
+    // Уменьшение больше чем вдвое делаем половинками (см. shrinkImage) —
+    // иначе тонкие штапики и фрезеровка выпадают через одну.
+    ctx.drawImage(w < iw / 2 || h < ih / 2 ? shrinkImage(img, Math.max(1, Math.round(w)), Math.max(1, Math.round(h))) : img,
+      x, y, w, h);
+    return canvas;
+  }
+
+  // Средний цвет по краю снимка — им заливается пустое поле рамки.
+  function imageEdgeHex(img) {
+    try {
+      const c = document.createElement("canvas");
+      c.width = 24; c.height = 24;
+      const cx = c.getContext("2d");
+      cx.drawImage(img, 0, 0, 24, 24);
+      const d = cx.getImageData(0, 0, 24, 24).data;
+      let r = 0, g = 0, b = 0, n = 0;
+      for (let y = 0; y < 24; y++) for (let x = 0; x < 24; x++) {
+        if (x > 1 && x < 22 && y > 1 && y < 22) continue;
+        const i = (y * 24 + x) * 4;
+        r += d[i]; g += d[i + 1]; b += d[i + 2]; n++;
+      }
+      return "#" + [r / n, g / n, b / n].map((v) => Math.round(v).toString(16).padStart(2, "0")).join("");
+    } catch (err) { return null; }
+  }
+
+  // Исходник для рамки: чёрные поля скриншота срезаем (см. trimFlatBars),
+  // остальное сохраняем как есть — кадрировать будет сам заказчик движками.
+  function modelSourceFromFile(file) {
     return new Promise((resolve, reject) => {
       const url = URL.createObjectURL(file);
       const img = new Image();
       img.onload = () => {
-        // Чёрные поля скриншота срезаем и здесь: иначе они попадут в кадр
-        // модели и дверь встанет не на своё место (см. trimFlatBars).
         const src = trimFlatBars(img);
-        const srcRatio = src.w / src.h;
-        let sx, sy, sw, sh;
-        if (srcRatio > targetRatio) {
-          sh = src.h;
-          sw = sh * targetRatio;
-          sx = src.x + (src.w - sw) / 2;
-          sy = src.y;
-        } else {
-          sw = src.w;
-          sh = sw / targetRatio;
-          sx = src.x;
-          sy = src.y + (src.h - sh) / 2;
-        }
+        const k = Math.min(1, FRAME_SOURCE_MAX / Math.max(src.w, src.h));
+        const w = Math.max(1, Math.round(src.w * k)), h = Math.max(1, Math.round(src.h * k));
+        // Сначала вырезаем нужный кусок в натуральном размере, и только потом
+        // уменьшаем — половинками (см. shrinkImage), иначе тонкие штапики и
+        // фрезеровка выпадают через одну.
+        const cut = document.createElement("canvas");
+        cut.width = src.w; cut.height = src.h;
+        cut.getContext("2d").drawImage(img, src.x, src.y, src.w, src.h, 0, 0, src.w, src.h);
         const canvas = document.createElement("canvas");
-        canvas.width = targetW;
-        canvas.height = targetH;
-        const ctx = canvas.getContext("2d");
-        ctx.drawImage(img, sx, sy, sw, sh, 0, 0, targetW, targetH);
+        canvas.width = w; canvas.height = h;
+        const cx = canvas.getContext("2d");
+        cx.imageSmoothingEnabled = true;
+        cx.imageSmoothingQuality = "high";
+        cx.drawImage(k < 0.5 ? shrinkImage(cut, w, h) : cut, 0, 0, w, h);
         URL.revokeObjectURL(url);
-        resolve(canvas.toDataURL("image/jpeg", 0.85));
+        resolve(canvas.toDataURL("image/jpeg", 0.88));
       };
       img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("image load failed")); };
       img.src = url;
     });
   }
 
+  // Готовый кадр модели из исходника и положения движков.
+  function renderModelPhoto(sourceUrl, fit) {
+    return loadImageAsync(sourceUrl).then((img) => drawModelFrame(img, fit).toDataURL("image/jpeg", 0.88));
+  }
+
   function modelPhotoOf(modelId) {
     return (DB.modelSwatches && DB.modelSwatches[modelId]) || null;
+  }
+
+  // Записывает снимок модели: и готовый кадр, и исходник с положением
+  // движков. Одно место на всех — и на загрузку файла, и на каждое движение
+  // ползунка подгонки.
+  function saveModelPhoto(modelId, rec, after) {
+    (DB.modelSwatches || (DB.modelSwatches = {}))[modelId] = rec;
+    modelPhotosConfirmedInIdb.delete(modelId);
+    return idbPut(PHOTO_STORE_MODEL, modelId, { image: rec.image, source: rec.source, fit: rec.fit })
+      .then(() => { modelPhotosConfirmedInIdb.add(modelId); })
+      .catch(() => {})
+      .then(() => {
+        let saved = true;
+        try { localStorage.setItem(PRICE_STORE_KEY, JSON.stringify(collectPrices())); }
+        catch (err) { saved = false; }
+        if (after) after(saved);
+        return saved;
+      });
   }
 
   // Загрузка своего фото модели (см. modelPhotoRow — кнопка «Загрузить
@@ -8791,26 +9090,20 @@ const DB = {
     if (!file || !modelId) { input.value = ""; return; }
     const label = input.closest("label");
     if (label) label.firstChild.textContent = "⏳ Обрабатываю…";
-    cropToDoorRatio(file).then((dataUrl) => {
-      (DB.modelSwatches || (DB.modelSwatches = {}))[modelId] = { image: dataUrl, custom: true };
-      modelPhotosConfirmedInIdb.delete(modelId);
-      idbPut(PHOTO_STORE_MODEL, modelId, { image: dataUrl })
-        .then(() => { modelPhotosConfirmedInIdb.add(modelId); })
-        .catch(() => {})
-        .then(() => {
-          let saved = true;
-          try { localStorage.setItem(PRICE_STORE_KEY, JSON.stringify(collectPrices())); }
-          catch (err) { saved = false; }
-          renderPriceEditor();
-          if (!saved) {
-            alert("Фото загружено, но не поместилось в памяти браузера (localStorage переполнен). Освободите место — например, удалите старые сохранённые спецификации или ценники — и загрузите фото ещё раз.");
-          }
-        });
-    }).catch(() => {
-      input.value = "";
-      if (label) label.firstChild.textContent = "📷 Загрузить файл";
-      alert("Не удалось обработать это фото. Попробуйте другой файл.");
-    });
+    const fit = { ...FRAME_FIT };
+    modelSourceFromFile(file)
+      .then((source) => renderModelPhoto(source, fit).then((image) => ({ source: source, image: image })))
+      .then(({ source, image }) => saveModelPhoto(modelId, { image: image, source: source, fit: fit, custom: true }, (saved) => {
+        renderPriceEditor();
+        if (!saved) {
+          alert("Фото загружено, но не поместилось в памяти браузера (localStorage переполнен). Освободите место — например, удалите старые сохранённые спецификации или ценники — и загрузите фото ещё раз.");
+        }
+      }))
+      .catch(() => {
+        input.value = "";
+        if (label) label.firstChild.textContent = "📷 Загрузить файл";
+        alert("Не удалось обработать это фото. Попробуйте другой файл.");
+      });
   }
 
   // «Удалить файл» — у моделей нет заводского фото (в отличие от 27
