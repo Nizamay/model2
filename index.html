@@ -474,7 +474,7 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 .parts-panel .adjust-body { gap: 8px; }
 .parts-hint { font-size: 12px; line-height: 1.35; color: var(--muted); margin: 0; }
 /* Рамка кадра модели: 850x2085 мм (см. FRAME_MM). Снимок внутри двигается
-   и масштабируется движками, а подсказка поверх показывает, где должно
+   и подгоняется рамкой блока, а подсказка поверх показывает, где должно
    оказаться полотно и наличник. */
 /* Высота рамки и фотографии в разметке считается ОТ ЭКРАНА, а не от ширины
    колонки. Кадр модели вытянутый (850x2085), и при ширине 320 точек он
@@ -484,17 +484,21 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
    полностью»). Теперь высота ограничена долей экрана, а ширина считается
    из неё по пропорции рамки. */
 :root { --stage-h: min(58vh, 560px); --stage-w: calc(var(--stage-h) * 850 / 2085); }
-.frame-stage { position: relative; height: var(--stage-h); width: min(100%, var(--stage-w)); margin: 0 auto 4px;
-  overflow: hidden; border-radius: 6px; background: #e9edf2; user-select: none;
-  /* снимок тянется пальцем прямо по картинке — жест не должен уходить в
-     прокрутку страницы */
-  touch-action: none; cursor: grab; }
-.frame-stage:active { cursor: grabbing; }
-.frame-stage img { position: absolute; display: block; pointer-events: none; }
+.frame-stage { position: relative; margin: 0 auto 4px; user-select: none; -webkit-user-select: none; }
+.frame-stage img.frame-src { position: absolute; inset: 0; display: block; width: 100%; height: 100%;
+  border-radius: 4px; pointer-events: none; }
+.frame-clip { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+.frame-clip i { position: absolute; display: block; box-sizing: border-box; }
+.frame-clip .fb { border: 2px solid rgba(232, 74, 14, .95); }
+.frame-clip .fl { border: 1px dashed rgba(232, 74, 14, .95); }
+/* Ручки по углам: касание ловит квадрат 48x48, а видна только кружок внутри —
+   иначе в угол пальцем не попасть. touch-action только у ручек: страница под
+   снимком продолжает прокручиваться. */
+.fh { position: absolute; width: 48px; height: 48px; margin: -24px 0 0 -24px; touch-action: none; cursor: grab; z-index: 2; }
+.fh::after { content: ""; position: absolute; left: 50%; top: 50%; width: 20px; height: 20px; margin: -10px 0 0 -10px;
+  box-sizing: border-box; border-radius: 50%; background: #fff; border: 3px solid rgba(232, 74, 14, .95);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, .35); }
 .frame-note { margin: 0 0 8px; text-align: center; font-size: 13px; color: var(--muted); min-height: 16px; }
-.frame-guide { position: absolute; inset: 0; pointer-events: none; }
-.frame-guide i { position: absolute; display: block; box-sizing: border-box; border: 1.5px solid rgba(232, 74, 14, .95); }
-.frame-guide i.cas { border-width: 1px; border-style: dashed; }
 .parts-stage { position: relative; width: min(100%, var(--stage-w)); margin: 0 auto; user-select: none; }
 .parts-photo { display: block; width: 100%; height: auto; border-radius: 4px; pointer-events: none; }
 .parts-layer { position: absolute; inset: 0; }
@@ -1433,28 +1437,15 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
             </div>
           </div>
         </details>
-        <!-- Подгонка снимка модели под единую рамку 850x2085 мм (см. FRAME_MM).
-             Рамка одна на все модели, поэтому каждый миллиметр разметки
-             приходится на одно и то же место кадра — но только если сам снимок
-             в рамку поставлен. Этим и заняты четыре движка. -->
+        <!-- Подгонка снимка модели под единую рамку 850x2085 мм (см. FRAME_MM):
+             весь блок — полотно, наличники, зазоры и щель до пола. Снимок стоит
+             на месте, рамку блока тянут за углы (см. updateFrameEditor). -->
         <details class="adjust-panel frame-panel" id="s_framePanel" hidden>
           <summary>Фото в рамке</summary>
           <div class="adjust-body">
-            <p class="parts-hint">Рамка одна на все модели: 850 × 2085 мм — полотно 700 × 2000, наличник 70, зазор 5, щель до пола 10. <b>Тяните снимок пальцем прямо по картинке</b>, двумя пальцами — приближайте. Движками ниже доводите точно. Совместить надо так: сплошная линия — полотно, пунктир — наличник.</p>
+            <p class="parts-hint">Оранжевая рамка — весь блок 850 × 2085 мм: полотно 700 × 2000, наличники по 70, зазоры по 5 и щель до пола 10. Потяните за один угол так, чтобы он встал в угол блока на снимке (левый верхний — внешний угол верхнего наличника, правый нижний — пол), отпустите — сохранится. Затем противоположный угол по диагонали. Пунктир внутри — полотно: его края должны лечь на края полотна на снимке.</p>
             <div class="frame-stage" id="s_frameStage"></div>
             <p class="frame-note" id="s_frameNote"></p>
-            <div class="arow"><span>Ширина</span><input type="range" class="frame-fit" data-k="zx" min="60" max="160" step="1" value="100">
-              <div class="range-scale" aria-hidden="true"><span>60</span><span>100</span><span>130</span><span>160</span></div>
-            </div>
-            <div class="arow"><span>Высота</span><input type="range" class="frame-fit" data-k="zy" min="60" max="160" step="1" value="100">
-              <div class="range-scale" aria-hidden="true"><span>60</span><span>100</span><span>130</span><span>160</span></div>
-            </div>
-            <div class="arow"><span>Сдвиг ↔</span><input type="range" class="frame-fit" data-k="dx" min="-35" max="35" step="1" value="0">
-              <div class="range-scale" aria-hidden="true"><span>−35</span><span>0</span><span>35</span></div>
-            </div>
-            <div class="arow"><span>Сдвиг ↕</span><input type="range" class="frame-fit" data-k="dy" min="-35" max="35" step="1" value="0">
-              <div class="range-scale" aria-hidden="true"><span>−35</span><span>0</span><span>35</span></div>
-            </div>
             <div class="adjust-actions">
               <button type="button" id="s_frameReset">Сбросить подгонку</button>
             </div>
@@ -3330,7 +3321,7 @@ const DB = {
   // одной верхняя царга выходила заметно толще заданных 110 мм, на другой
   // наличник шире положенных 70 мм. Теперь наоборот: рамка задана в
   // миллиметрах и одна на все модели, а снимок подгоняется под неё
-  // движками (см. modelFrameFit) — и тогда каждый миллиметр разметки
+  // углами рамки блока (см. frameFitFromBox) — и тогда каждый миллиметр разметки
   // приходится на одно и то же место кадра у любой модели.
   //   ширина  = 700 полотно + 70x2 наличник + 5x2 зазор            = 850
   //   высота  = 2000 полотно + 70 наличник + 5 зазор + 10 щель до пола = 2085
@@ -3403,7 +3394,7 @@ const DB = {
 
   // Сколько долей снимка приходится на миллиметр. Теперь это просто рамка
   // кадра: она задана в миллиметрах и одна на все модели, снимок подогнан под
-  // неё движками. Раньше масштаб приходилось снимать с уже поставленных
+  // неё. Раньше масштаб приходилось снимать с уже поставленных
   // деталей, и он гулял от модели к модели — отсюда и расхождения, которые
   // заказчик показал на «Империи» (верхняя царга выходила толще 110 мм).
   function partsScale() {
@@ -4101,11 +4092,19 @@ const DB = {
 
   // --- Подгонка снимка модели под рамку ---------------------------------
   //
-  // Рамка 850x2085 мм одна на все модели (см. FRAME_MM), и разметка привязана
-  // к ней намертво. Значит, совпасть с реальными миллиметрами должен сам
-  // снимок — для этого он и двигается четырьмя движками: масштаб по ширине и
-  // по высоте отдельно (снимки бывают сняты под углом и с разными
-  // пропорциями) и сдвиг по обеим осям.
+  // Рамка 850x2085 мм — это ВЕСЬ БЛОК: полотно, наличники, зазоры и щель до
+  // пола (см. FRAME_MM), и разметка привязана к ней намертво. Снимок при этом
+  // стоит на месте, а на нём лежит рамка блока, и её тянут за углы так, чтобы
+  // она обвела дверь на снимке: левый верхний угол — на внешний угол верхнего
+  // наличника, правый нижний — на пол под правым наличником. Потянул за один
+  // угол, отпустил — сохранилось; потянул за противоположный по диагонали,
+  // отпустил — сохранилось. По двум противоположным углам программа сама
+  // считает масштаб (по ширине и по высоте отдельно — снимки бывают сняты под
+  // углом) и положение снимка в кадре, см. frameFitFromBox.
+  //
+  // Раньше здесь были четыре ползунка и перетаскивание самого снимка, и
+  // заказчик сказал, что это «не очень удобно»: подгонять надо не фото под
+  // рамку, а рамку под дверь на фото — как было с обводкой «Полотна».
   //
   // «Матрице» панель тоже нужна: разметки у неё нет, но в рамку её снимок
   // ставится по тем же правилам, и тогда дверь встаёт на сцене в свой
@@ -4117,46 +4116,97 @@ const DB = {
     return rec && (rec.source || rec.image) ? { model: m, rec: rec } : null;
   }
 
+  // Как снимок лёг бы в рамку без подгонки: «вписать по большей стороне», то
+  // есть снимок закрывает рамку целиком. Возвращает размер снимка в долях
+  // кадра. Та же формула в drawModelFrame.
+  function frameBase(iw, ih) {
+    const ar = iw / ih;
+    return ar > MODEL_PHOTO_RATIO
+      ? { dw: ar / MODEL_PHOTO_RATIO, dh: 1 }
+      : { dw: 1, dh: MODEL_PHOTO_RATIO / ar };
+  }
+
+  // Где рамка блока лежит на исходном снимке при данном положении, в долях
+  // снимка.
+  function frameBoxOnSource(fit, iw, ih) {
+    const b = frameBase(iw, ih);
+    const dw = b.dw * fit.zx, dh = b.dh * fit.zy;
+    const left = (1 - dw) / 2 + fit.dx, top = (1 - dh) / 2 + fit.dy;
+    return { x: -left / dw, y: -top / dh, w: 1 / dw, h: 1 / dh };
+  }
+
+  // Обратное: блок, обведённый на снимке, в положение снимка в кадре. Блок
+  // обязан лечь на весь кадр, отсюда и формулы: ширина снимка в кадре — это
+  // 1 / ширина блока, а левый край снимка сдвинут на долю блока слева.
+  function frameFitFromBox(box, iw, ih) {
+    const b = frameBase(iw, ih);
+    const dw = 1 / box.w, dh = 1 / box.h;
+    return {
+      zx: dw / b.dw, zy: dh / b.dh,
+      dx: -box.x * dw - (1 - dw) / 2,
+      dy: -box.y * dh - (1 - dh) / 2
+    };
+  }
+
+  // Блок не выходит за край снимка и не тоньше FRAME_BOX_MIN: иначе масштаб
+  // уходит в бесконечность.
+  function frameClampBox(b) {
+    const x0 = Math.max(0, b.x), y0 = Math.max(0, b.y);
+    const x1 = Math.min(1, b.x + b.w), y1 = Math.min(1, b.y + b.h);
+    const w = Math.max(FRAME_BOX_MIN, x1 - x0), h = Math.max(FRAME_BOX_MIN, y1 - y0);
+    return { x: Math.min(x0, 1 - w), y: Math.min(y0, 1 - h), w: w, h: h };
+  }
+
   function frameStageEls() {
     const stage = document.getElementById("s_frameStage");
     if (!stage) return null;
-    let img = stage.querySelector("img");
-    let guide = stage.querySelector(".frame-guide");
-    if (!img || !guide) {
-      stage.innerHTML = `<img alt=""><div class="frame-guide">`
-        + `<i class="leaf"></i><i class="cas nh"></i><i class="cas nv l"></i><i class="cas nv r"></i></div>`;
-      img = stage.querySelector("img");
-      guide = stage.querySelector(".frame-guide");
-      const pct = (v) => (v * 100).toFixed(3) + "%";
-      const put = (sel, r) => {
-        const n = guide.querySelector(sel);
-        if (!n || !r) return;
-        n.style.left = pct(r.x); n.style.top = pct(r.y);
-        n.style.width = pct(r.w); n.style.height = pct(r.h);
-      };
-      put("i.leaf", framePartRect("d"));
-      put("i.nh", framePartRect("nh"));
-      put("i.nv.l", framePartRect("nv"));
-      put("i.nv.r", framePartRect("nv", true));
+    let img = stage.querySelector("img.frame-src");
+    if (!img) {
+      stage.innerHTML = `<img class="frame-src" alt=""><div class="frame-clip"><i class="fb"></i><i class="fl"></i></div>`
+        + ["nw", "ne", "sw", "se"].map((c) => `<i class="fh fh-${c}" data-c="${c}"></i>`).join("");
+      img = stage.querySelector("img.frame-src");
     }
-    return { stage: stage, img: img, guide: guide };
+    return {
+      stage: stage, img: img,
+      box: stage.querySelector(".fb"), leaf: stage.querySelector(".fl"),
+      handles: Array.from(stage.querySelectorAll(".fh"))
+    };
   }
 
-  // То же размещение, что и в drawModelFrame, только средствами CSS: пока
-  // палец ведёт движок, пересобирать кадр в canvas слишком долго, а картинку
-  // подвинуть браузер успевает мгновенно.
-  function frameFitApply(img, fit) {
-    const iw = img.naturalWidth || img.width, ih = img.naturalHeight || img.height;
-    if (!iw || !ih) return;
-    const ar = iw / ih;
-    let dw = 1, dh = 1;
-    if (ar > MODEL_PHOTO_RATIO) dw = ar / MODEL_PHOTO_RATIO; else dh = MODEL_PHOTO_RATIO / ar;
-    dw *= fit.zx; dh *= fit.zy;
+  // Рамка блока, полотно внутри неё (пунктир: его края должны лечь на края
+  // полотна на снимке) и четыре ручки по углам.
+  function frameDrawBox(els, box) {
     const pct = (v) => (v * 100).toFixed(3) + "%";
-    img.style.width = pct(dw);
-    img.style.height = pct(dh);
-    img.style.left = pct((1 - dw) / 2 + fit.dx);
-    img.style.top = pct((1 - dh) / 2 + fit.dy);
+    const set = (n, r) => {
+      n.style.left = pct(r.x); n.style.top = pct(r.y);
+      n.style.width = pct(r.w); n.style.height = pct(r.h);
+    };
+    set(els.box, box);
+    set(els.leaf, {
+      x: box.x + FRAME_LEAF.x * box.w, y: box.y + FRAME_LEAF.y * box.h,
+      w: FRAME_LEAF.w * box.w, h: FRAME_LEAF.h * box.h
+    });
+    const at = {
+      nw: [box.x, box.y], ne: [box.x + box.w, box.y],
+      sw: [box.x, box.y + box.h], se: [box.x + box.w, box.y + box.h]
+    };
+    els.handles.forEach((h) => {
+      const p = at[h.dataset.c];
+      h.style.left = pct(p[0]); h.style.top = pct(p[1]);
+    });
+  }
+
+  // Размер панели: снимок целиком, но не выше доли экрана — иначе на телефоне
+  // он не помещается и подгонять приходится вслепую (см. § 10 спецификации).
+  function frameLayout(els, rec) {
+    const iw = els.img.naturalWidth, ih = els.img.naturalHeight;
+    if (!iw || !ih) return;
+    const maxW = (els.stage.parentElement && els.stage.parentElement.clientWidth) || 300;
+    const maxH = Math.min(window.innerHeight * 0.58, 560);
+    const k = Math.min(maxW / iw, maxH / ih);
+    els.stage.style.width = Math.round(iw * k) + "px";
+    els.stage.style.height = Math.round(ih * k) + "px";
+    frameDrawBox(els, frameClampBox(frameBoxOnSource(frameFitOf(rec), iw, ih)));
   }
 
   function updateFrameEditor() {
@@ -4166,67 +4216,34 @@ const DB = {
     panel.hidden = !ctx;
     if (!ctx) { panel.open = false; return; }
     if (!panel.open) return;
-    // Пока палец ведёт снимок, панель не перестраиваем: перекраска двери
-    // считается в фоне и по готовности перерисовывает сцену — если в этот
-    // момент переставить ползунки и картинку, жест собьётся.
-    if (framePan) return;
+    // Пока палец ведёт угол, панель не перестраиваем: перекраска двери
+    // считается в фоне и по готовности перерисовывает сцену, а если в этот
+    // момент переставить ручки, жест собьётся.
+    if (frameDrag) return;
     const els = frameStageEls();
     if (!els) return;
     const src = ctx.rec.source || ctx.rec.image;
-    const fit = frameFitOf(ctx.rec);
+    const modelId = ctx.model.id;
     if (els.img.getAttribute("src") !== src) {
-      els.img.onload = () => frameFitApply(els.img, frameFitOf(modelPhotoOf(ctx.model.id)));
+      els.img.onload = () => { const r = modelPhotoOf(modelId); if (r) frameLayout(els, r); };
       els.img.setAttribute("src", src);
-    } else frameFitApply(els.img, fit);
-    document.querySelectorAll(".frame-fit").forEach((inp) => {
-      inp.value = String(Math.round((fit[inp.dataset.k] || 0) * 100));
-    });
+    } else frameLayout(els, ctx.rec);
   }
 
-  // Положение движков — это четыре числа, и записываются они СРАЗУ, на каждое
-  // изменение. Пересборка кадра 680x1668 и перекраска двери — работа тяжёлая,
-  // она делается только когда палец отпущен. Раньше и то и другое висело на
-  // одном таймере: заказчик жаловался, что «движки тормозят» и «нет
-  // сохранения» — уходя со страницы до конца пересборки, он терял подгонку.
-  let frameFitFlush = null;
+  // Положение снимка — четыре числа, и пишутся они СРАЗУ, без таймера:
+  // «отпустил — сохранился». Тяжёлое (пересборка кадра 680x1668 и перекраска
+  // двери) идёт следом, см. applyFrameFit. Если уйти со страницы до его конца,
+  // подгонка всё равно уже лежит в localStorage (см. загрузку из IndexedDB).
   function saveFrameFit(modelId, fit) {
     const rec = modelPhotoOf(modelId);
     if (!rec) return;
     rec.fit = fit;
-    // Сборка снимка цен и запись в localStorage — тоже не бесплатно, поэтому
-    // на ходу она откладывается; кадр и окончательная запись всё равно идут
-    // по отпусканию пальца.
-    clearTimeout(frameFitFlush);
-    frameFitFlush = setTimeout(() => {
-      try { localStorage.setItem(PRICE_STORE_KEY, JSON.stringify(collectPrices())); } catch (err) { }
-    }, 200);
+    try { localStorage.setItem(PRICE_STORE_KEY, JSON.stringify(collectPrices())); } catch (err) { }
   }
 
   function frameNote(text) {
     const n = document.getElementById("s_frameNote");
     if (n) n.textContent = text || "";
-  }
-
-  function onFrameFitInput(e) {
-    const inp = e.target;
-    if (!inp.classList || !inp.classList.contains("frame-fit")) return;
-    const ctx = frameEditorCtx();
-    if (!ctx) return;
-    const fit = frameFitOf(ctx.rec);
-    const v = Number(inp.value) / 100;
-    if (isFinite(v)) fit[inp.dataset.k] = v;
-    saveFrameFit(ctx.model.id, fit);
-    const els = frameStageEls();
-    if (els) frameFitApply(els.img, fit);
-    frameNote("");
-  }
-
-  // Палец отпущен (change у ползунка) — вот теперь пересобираем кадр.
-  function onFrameFitChange(e) {
-    const inp = e.target;
-    if (!inp.classList || !inp.classList.contains("frame-fit")) return;
-    const ctx = frameEditorCtx();
-    if (ctx) applyFrameFit(ctx.model.id);
   }
 
   function applyFrameFit(modelId) {
@@ -4251,86 +4268,60 @@ const DB = {
     applyFrameFit(ctx.model.id);
   }
 
-  // --- Снимок тянется прямо пальцем ------------------------------------
+  // --- Угол тянется пальцем ---------------------------------------------
   //
-  // Просьба заказчика: «сделай движок на самой двери, чтобы можно было тянуть
-  // само фото». Один палец двигает снимок, два — приближают и отдаляют.
-  // Движки остаются для точной доводки. Пока идёт жест, меняются только стили
-  // картинки; кадр пересобирается один раз, когда палец отпущен.
-  let framePan = null;
-  const framePointers = new Map();
+  // Тянут один угол, противоположный стоит на месте. Пока палец ведёт, меняется
+  // только рамка на картинке; когда палец отпущен — считается подгонка и
+  // сохраняется.
+  let frameDrag = null;
 
-  function framePinchDist() {
-    const pts = [...framePointers.values()];
-    if (pts.length < 2) return 0;
-    const dx = pts[0].x - pts[1].x, dy = pts[0].y - pts[1].y;
-    return Math.sqrt(dx * dx + dy * dy);
-  }
-
-  function onFramePointerDown(e) {
+  function onFrameHandleDown(e) {
+    const h = e.target.closest ? e.target.closest(".fh") : null;
+    if (!h) return;
     const ctx = frameEditorCtx();
     const els = frameStageEls();
     if (!ctx || !els) return;
-    const box = els.stage.getBoundingClientRect();
-    if (!box.width || !box.height) return;
-    framePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-    els.stage.setPointerCapture(e.pointerId);
-    framePan = {
-      modelId: ctx.model.id,
-      fit: frameFitOf(ctx.rec),
-      x: e.clientX, y: e.clientY,
-      w: box.width, h: box.height,
-      dist: framePinchDist(),
-      moved: false
+    const iw = els.img.naturalWidth, ih = els.img.naturalHeight;
+    const rect = els.stage.getBoundingClientRect();
+    if (!iw || !ih || !rect.width || !rect.height) return;
+    const box = frameClampBox(frameBoxOnSource(frameFitOf(ctx.rec), iw, ih));
+    const c = h.dataset.c;
+    // Стоит на месте угол напротив: тянем западный — держится восточный.
+    frameDrag = {
+      modelId: ctx.model.id, c: c, iw: iw, ih: ih, rect: rect, els: els,
+      pointerId: e.pointerId, now: box, moved: false,
+      fx: c.indexOf("w") >= 0 ? box.x + box.w : box.x,
+      fy: c.indexOf("n") >= 0 ? box.y + box.h : box.y
     };
+    try { h.setPointerCapture(e.pointerId); } catch (err) { }
+    frameNote("");
     e.preventDefault();
   }
 
-  function onFramePointerMove(e) {
-    if (!framePan) return;
-    if (framePointers.has(e.pointerId)) framePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-    const els = frameStageEls();
-    if (!els) return;
-    const fit = { ...framePan.fit };
-    if (framePointers.size >= 2 && framePan.dist > 4) {
-      // Два пальца — масштаб. Тянем обе оси сразу: по отдельности удобнее
-      // движками, а пальцами нужен обычный «зум».
-      const k = framePinchDist() / framePan.dist;
-      fit.zx = frameClampZoom(framePan.fit.zx * k);
-      fit.zy = frameClampZoom(framePan.fit.zy * k);
-    } else {
-      fit.dx = frameClampShift(framePan.fit.dx + (e.clientX - framePan.x) / framePan.w);
-      fit.dy = frameClampShift(framePan.fit.dy + (e.clientY - framePan.y) / framePan.h);
-    }
-    framePan.moved = true;
-    framePan.now = fit;
-    frameFitApply(els.img, fit);
+  function onFrameHandleMove(e) {
+    const d = frameDrag;
+    if (!d || e.pointerId !== d.pointerId) return;
+    const clamp01 = (v) => Math.max(0, Math.min(1, v));
+    const px = clamp01((e.clientX - d.rect.left) / d.rect.width);
+    const py = clamp01((e.clientY - d.rect.top) / d.rect.height);
+    let x0, x1, y0, y1;
+    if (d.c.indexOf("w") >= 0) { x1 = d.fx; x0 = Math.max(0, Math.min(px, x1 - FRAME_BOX_MIN)); }
+    else { x0 = d.fx; x1 = Math.min(1, Math.max(px, x0 + FRAME_BOX_MIN)); }
+    if (d.c.indexOf("n") >= 0) { y1 = d.fy; y0 = Math.max(0, Math.min(py, y1 - FRAME_BOX_MIN)); }
+    else { y0 = d.fy; y1 = Math.min(1, Math.max(py, y0 + FRAME_BOX_MIN)); }
+    d.now = { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+    d.moved = true;
+    frameDrawBox(d.els, d.now);
     e.preventDefault();
   }
 
-  function onFramePointerUp(e) {
-    framePointers.delete(e.pointerId);
-    if (!framePan) return;
-    if (framePointers.size) {
-      // Второй палец ещё на экране — жест продолжается с новой точки отсчёта.
-      const els = frameStageEls();
-      const box = els ? els.stage.getBoundingClientRect() : null;
-      const pt = [...framePointers.values()][0];
-      framePan = {
-        modelId: framePan.modelId,
-        fit: framePan.now || framePan.fit,
-        x: pt.x, y: pt.y,
-        w: box ? box.width : framePan.w, h: box ? box.height : framePan.h,
-        dist: 0, moved: framePan.moved
-      };
-      return;
-    }
-    const pan = framePan;
-    framePan = null;
-    if (!pan.moved) return;
-    saveFrameFit(pan.modelId, pan.now || pan.fit);
-    updateFrameEditor();
-    applyFrameFit(pan.modelId);
+  function onFrameHandleUp(e) {
+    const d = frameDrag;
+    if (!d || e.pointerId !== d.pointerId) return;
+    frameDrag = null;
+    if (!d.moved) return;
+    saveFrameFit(d.modelId, frameFitFromBox(d.now, d.iw, d.ih));
+    applyFrameFit(d.modelId);
   }
 
   // Снимки, загруженные до появления рамки, лежат обрезанными по центру в
@@ -4437,7 +4428,7 @@ const DB = {
     if (hint) {
       const activeKind = partsSel === null ? null : parts[partsSel].k;
       hint.textContent = !parts.length
-        ? "Начните с «+ Каркас»: полотно, стойки, царги и наличники встанут сами — их место в рамке задано в миллиметрах. Если они не совпали с дверью на снимке, двигать надо не их, а сам снимок — панелью «Фото в рамке»."
+        ? "Начните с «+ Каркас»: полотно, стойки, царги и наличники встанут сами — их место в рамке задано в миллиметрах. Если они не совпали с дверью на снимке, двигать надо не их, а рамку блока на снимке — в панели «Фото в рамке» (тянуть за углы)."
         : (partsSel === null
           ? "Нажмите на деталь — она станет активной, и только тогда её можно двигать. Кнопка вида добавляет новую."
           : (partsResizable(activeKind)
@@ -4543,7 +4534,7 @@ const DB = {
         // Полотно, стойки, царги и наличники в рамке стоят на своём
         // единственном месте (см. framePartRect) — двигать их нечего, и если
         // разрешить, вся привязка к миллиметрам развалится. Под рамку
-        // подгоняется сам снимок, движками.
+        // подгоняется рамка блока под дверь на снимке (см. «Фото в рамке»).
         if (framePartRect(p.k)) return;
         partsDrag = { mode: "move", i: i, dx: fx - p.x, dy: fy - p.y, modelId: ctx.model.id, moved: false };
         els.stage.setPointerCapture(e.pointerId);
@@ -8124,26 +8115,22 @@ const DB = {
         drawDoor(sceneCtx, true);
       });
     }
-    // Подгонка снимка под рамку (см. updateFrameEditor): четыре движка —
-    // масштаб по каждой оси и сдвиг по каждой оси.
+    // Подгонка блока за углы (см. updateFrameEditor): тянут ручку в углу
+    // рамки, отпустили — сохранилось.
     const framePanel = document.getElementById("s_framePanel");
     if (framePanel) framePanel.addEventListener("toggle", () => updateFrameEditor());
-    document.querySelectorAll(".frame-fit").forEach((inp) => {
-      // input — только подвинуть картинку в панели (мгновенно) и записать
-      // числа; change (палец отпущен) — пересобрать кадр и перекрасить дверь.
-      inp.addEventListener("input", onFrameFitInput);
-      inp.addEventListener("change", onFrameFitChange);
-    });
     const frameStage = document.getElementById("s_frameStage");
     if (frameStage) {
-      frameStage.addEventListener("pointerdown", onFramePointerDown);
-      frameStage.addEventListener("pointermove", onFramePointerMove);
-      frameStage.addEventListener("pointerup", onFramePointerUp);
-      frameStage.addEventListener("pointercancel", onFramePointerUp);
-      const hold = (e) => { if (framePan) e.preventDefault(); };
-      frameStage.addEventListener("touchstart", hold, { passive: false });
-      frameStage.addEventListener("touchmove", hold, { passive: false });
+      frameStage.addEventListener("pointerdown", onFrameHandleDown);
+      frameStage.addEventListener("pointermove", onFrameHandleMove);
+      frameStage.addEventListener("pointerup", onFrameHandleUp);
+      frameStage.addEventListener("pointercancel", onFrameHandleUp);
     }
+    // Размер панели зависит от экрана (см. frameLayout).
+    window.addEventListener("resize", () => {
+      const p = document.getElementById("s_framePanel");
+      if (p && p.open) updateFrameEditor();
+    });
     const frameReset = document.getElementById("s_frameReset");
     if (frameReset) frameReset.addEventListener("click", onFrameReset);
     // Разметка деталей модели (см. updatePartsEditor): двигаем и растягиваем
@@ -9130,17 +9117,18 @@ const DB = {
   // Снимок модели кладётся в ЕДИНУЮ РАМКУ 850x2085 мм (см. FRAME_MM): в ней
   // место полотна, наличника и зазоров задано в миллиметрах и одинаково у всех
   // моделей. Сам снимок при этом не обрезается по центру вслепую, как раньше,
-  // а подгоняется под рамку четырьмя движками (масштаб и сдвиг по каждой оси,
-  // см. modelFrameFit и панель «Фото в рамке»). Поэтому рядом с готовым кадром
+  // а подгоняется под рамку: заказчик обводит блок на снимке, тянув два угла
+  // (масштаб и сдвиг по каждой оси считаются сами, см. frameFitFromBox). Поэтому рядом с готовым кадром
   // хранится ИСХОДНИК: подвинуть снимок в рамке нужно уметь и потом, а из
   // обрезанного кадра вернуть отрезанное невозможно.
   const FRAME_FIT = { zx: 1, zy: 1, dx: 0, dy: 0 };
-  // Пределы движков. Сначала были 40-250 % и ±60 %, и заказчик сказал, что
-  // движки «гиперчувствительные»: на узком экране весь ход умещается в палец,
-  // и один процент ширины — это 8.5 мм по рамке. Снимок и так вписан в рамку
-  // целиком, поэтому такой размах не нужен; грубую наводку делает
-  // перетаскивание пальцем, а движкам оставлена доводка.
-  const FRAME_ZOOM_MIN = 0.6, FRAME_ZOOM_MAX = 1.6, FRAME_SHIFT_MAX = 0.35;
+  // Пределы положения снимка. Их задаёт уже не палец на ползунке, а рамка
+  // блока, обведённая на снимке: маленькая рамка — большой масштаб. Блок не
+  // тоньше 6 % снимка (FRAME_BOX_MIN), значит масштаб не больше ~17-кратного;
+  // пределы взяты с запасом и нужны только чтобы испорченная запись в памяти
+  // не сломала картинку.
+  const FRAME_BOX_MIN = 0.06;
+  const FRAME_ZOOM_MIN = 0.2, FRAME_ZOOM_MAX = 20, FRAME_SHIFT_MAX = 20;
   const frameClampZoom = (v) => Math.max(FRAME_ZOOM_MIN, Math.min(FRAME_ZOOM_MAX, v));
   const frameClampShift = (v) => Math.max(-FRAME_SHIFT_MAX, Math.min(FRAME_SHIFT_MAX, v));
   // Исходник ужимаем: он нужен только чтобы заново нарисовать кадр 680x1668.
@@ -9156,8 +9144,8 @@ const DB = {
   }
 
   // Рисует снимок в рамке: «вписать по большей стороне» (снимок закрывает всю
-  // рамку целиком) умножается на движки масштаба, потом сдвигается движками
-  // сдвига. Пустые поля, если снимок уменьшили, заливаются цветом его края —
+  // рамку целиком) умножается на масштаб из подгонки, потом сдвигается на
+  // сдвиг из подгонки. Пустые поля, если снимок уменьшили, заливаются цветом его края —
   // чёрные поля на сцене читались бы как часть двери.
   function drawModelFrame(img, fit) {
     const W = FRAME_PX.w, H = FRAME_PX.h;
@@ -9199,7 +9187,7 @@ const DB = {
   }
 
   // Исходник для рамки: чёрные поля скриншота срезаем (см. trimFlatBars),
-  // остальное сохраняем как есть — кадрировать будет сам заказчик движками.
+  // остальное сохраняем как есть — подгонять под рамку будет сам заказчик.
   function modelSourceFromFile(file) {
     return new Promise((resolve, reject) => {
       const url = URL.createObjectURL(file);
