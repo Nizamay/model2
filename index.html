@@ -476,7 +476,15 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 /* Рамка кадра модели: 850x2085 мм (см. FRAME_MM). Снимок внутри двигается
    и масштабируется движками, а подсказка поверх показывает, где должно
    оказаться полотно и наличник. */
-.frame-stage { position: relative; width: 100%; max-width: 320px; margin: 0 auto 4px; aspect-ratio: 850 / 2085;
+/* Высота рамки и фотографии в разметке считается ОТ ЭКРАНА, а не от ширины
+   колонки. Кадр модели вытянутый (850x2085), и при ширине 320 точек он
+   выходил под 800 точек высотой — на телефоне полотно не помещалось целиком,
+   и подгонять приходилось вслепую, прокручивая туда-сюда (жалоба
+   заказчика: «очень трудно настраивать, когда не видишь полотно
+   полностью»). Теперь высота ограничена долей экрана, а ширина считается
+   из неё по пропорции рамки. */
+:root { --stage-h: min(58vh, 560px); --stage-w: calc(var(--stage-h) * 850 / 2085); }
+.frame-stage { position: relative; height: var(--stage-h); width: min(100%, var(--stage-w)); margin: 0 auto 4px;
   overflow: hidden; border-radius: 6px; background: #e9edf2; user-select: none;
   /* снимок тянется пальцем прямо по картинке — жест не должен уходить в
      прокрутку страницы */
@@ -487,7 +495,7 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 .frame-guide { position: absolute; inset: 0; pointer-events: none; }
 .frame-guide i { position: absolute; display: block; box-sizing: border-box; border: 1.5px solid rgba(232, 74, 14, .95); }
 .frame-guide i.cas { border-width: 1px; border-style: dashed; }
-.parts-stage { position: relative; width: 100%; max-width: 320px; margin: 0 auto; user-select: none; }
+.parts-stage { position: relative; width: min(100%, var(--stage-w)); margin: 0 auto; user-select: none; }
 .parts-photo { display: block; width: 100%; height: auto; border-radius: 4px; pointer-events: none; }
 .parts-layer { position: absolute; inset: 0; }
 /* touch-action только на самих деталях: страница под фотографией продолжает
