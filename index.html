@@ -476,9 +476,14 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 /* Рамка кадра модели: 850x2085 мм (см. FRAME_MM). Снимок внутри двигается
    и масштабируется движками, а подсказка поверх показывает, где должно
    оказаться полотно и наличник. */
-.frame-stage { position: relative; width: 100%; max-width: 320px; margin: 0 auto 10px; aspect-ratio: 850 / 2085;
-  overflow: hidden; border-radius: 6px; background: #e9edf2; user-select: none; }
-.frame-stage img { position: absolute; display: block; }
+.frame-stage { position: relative; width: 100%; max-width: 320px; margin: 0 auto 4px; aspect-ratio: 850 / 2085;
+  overflow: hidden; border-radius: 6px; background: #e9edf2; user-select: none;
+  /* снимок тянется пальцем прямо по картинке — жест не должен уходить в
+     прокрутку страницы */
+  touch-action: none; cursor: grab; }
+.frame-stage:active { cursor: grabbing; }
+.frame-stage img { position: absolute; display: block; pointer-events: none; }
+.frame-note { margin: 0 0 8px; text-align: center; font-size: 13px; color: var(--muted); min-height: 16px; }
 .frame-guide { position: absolute; inset: 0; pointer-events: none; }
 .frame-guide i { position: absolute; display: block; box-sizing: border-box; border: 1.5px solid rgba(232, 74, 14, .95); }
 .frame-guide i.cas { border-width: 1px; border-style: dashed; }
@@ -1427,19 +1432,20 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
         <details class="adjust-panel frame-panel" id="s_framePanel" hidden>
           <summary>Фото в рамке</summary>
           <div class="adjust-body">
-            <p class="parts-hint">Рамка одна на все модели: 850 × 2085 мм — полотно 700 × 2000, наличник 70, зазор 5, щель до пола 10. Подгоняйте снимок, пока дверь на нём не встанет в рамку: сплошная линия — полотно, пунктир — наличник.</p>
+            <p class="parts-hint">Рамка одна на все модели: 850 × 2085 мм — полотно 700 × 2000, наличник 70, зазор 5, щель до пола 10. <b>Тяните снимок пальцем прямо по картинке</b>, двумя пальцами — приближайте. Движками ниже доводите точно. Совместить надо так: сплошная линия — полотно, пунктир — наличник.</p>
             <div class="frame-stage" id="s_frameStage"></div>
-            <div class="arow"><span>Ширина</span><input type="range" class="frame-fit" data-k="zx" min="40" max="250" step="1" value="100">
-              <div class="range-scale" aria-hidden="true"><span>40</span><span>100</span><span>170</span><span>250</span></div>
+            <p class="frame-note" id="s_frameNote"></p>
+            <div class="arow"><span>Ширина</span><input type="range" class="frame-fit" data-k="zx" min="60" max="160" step="1" value="100">
+              <div class="range-scale" aria-hidden="true"><span>60</span><span>100</span><span>130</span><span>160</span></div>
             </div>
-            <div class="arow"><span>Высота</span><input type="range" class="frame-fit" data-k="zy" min="40" max="250" step="1" value="100">
-              <div class="range-scale" aria-hidden="true"><span>40</span><span>100</span><span>170</span><span>250</span></div>
+            <div class="arow"><span>Высота</span><input type="range" class="frame-fit" data-k="zy" min="60" max="160" step="1" value="100">
+              <div class="range-scale" aria-hidden="true"><span>60</span><span>100</span><span>130</span><span>160</span></div>
             </div>
-            <div class="arow"><span>Сдвиг ↔</span><input type="range" class="frame-fit" data-k="dx" min="-60" max="60" step="1" value="0">
-              <div class="range-scale" aria-hidden="true"><span>−60</span><span>0</span><span>60</span></div>
+            <div class="arow"><span>Сдвиг ↔</span><input type="range" class="frame-fit" data-k="dx" min="-35" max="35" step="1" value="0">
+              <div class="range-scale" aria-hidden="true"><span>−35</span><span>0</span><span>35</span></div>
             </div>
-            <div class="arow"><span>Сдвиг ↕</span><input type="range" class="frame-fit" data-k="dy" min="-60" max="60" step="1" value="0">
-              <div class="range-scale" aria-hidden="true"><span>−60</span><span>0</span><span>60</span></div>
+            <div class="arow"><span>Сдвиг ↕</span><input type="range" class="frame-fit" data-k="dy" min="-35" max="35" step="1" value="0">
+              <div class="range-scale" aria-hidden="true"><span>−35</span><span>0</span><span>35</span></div>
             </div>
             <div class="adjust-actions">
               <button type="button" id="s_frameReset">Сбросить подгонку</button>
@@ -4152,6 +4158,10 @@ const DB = {
     panel.hidden = !ctx;
     if (!ctx) { panel.open = false; return; }
     if (!panel.open) return;
+    // Пока палец ведёт снимок, панель не перестраиваем: перекраска двери
+    // считается в фоне и по готовности перерисовывает сцену — если в этот
+    // момент переставить ползунки и картинку, жест собьётся.
+    if (framePan) return;
     const els = frameStageEls();
     if (!els) return;
     const src = ctx.rec.source || ctx.rec.image;
@@ -4165,7 +4175,30 @@ const DB = {
     });
   }
 
-  let frameSaveTimer = null;
+  // Положение движков — это четыре числа, и записываются они СРАЗУ, на каждое
+  // изменение. Пересборка кадра 680x1668 и перекраска двери — работа тяжёлая,
+  // она делается только когда палец отпущен. Раньше и то и другое висело на
+  // одном таймере: заказчик жаловался, что «движки тормозят» и «нет
+  // сохранения» — уходя со страницы до конца пересборки, он терял подгонку.
+  let frameFitFlush = null;
+  function saveFrameFit(modelId, fit) {
+    const rec = modelPhotoOf(modelId);
+    if (!rec) return;
+    rec.fit = fit;
+    // Сборка снимка цен и запись в localStorage — тоже не бесплатно, поэтому
+    // на ходу она откладывается; кадр и окончательная запись всё равно идут
+    // по отпусканию пальца.
+    clearTimeout(frameFitFlush);
+    frameFitFlush = setTimeout(() => {
+      try { localStorage.setItem(PRICE_STORE_KEY, JSON.stringify(collectPrices())); } catch (err) { }
+    }, 200);
+  }
+
+  function frameNote(text) {
+    const n = document.getElementById("s_frameNote");
+    if (n) n.textContent = text || "";
+  }
+
   function onFrameFitInput(e) {
     const inp = e.target;
     if (!inp.classList || !inp.classList.contains("frame-fit")) return;
@@ -4174,14 +4207,18 @@ const DB = {
     const fit = frameFitOf(ctx.rec);
     const v = Number(inp.value) / 100;
     if (isFinite(v)) fit[inp.dataset.k] = v;
-    ctx.rec.fit = fit;
+    saveFrameFit(ctx.model.id, fit);
     const els = frameStageEls();
     if (els) frameFitApply(els.img, fit);
-    // Кадр пересобирается не на каждое движение пальца, а через паузу:
-    // перерисовать 680x1668 и перекрасить дверь — работа на доли секунды,
-    // и делать её сорок раз за один проезд движка незачем.
-    clearTimeout(frameSaveTimer);
-    frameSaveTimer = setTimeout(() => applyFrameFit(ctx.model.id), 280);
+    frameNote("");
+  }
+
+  // Палец отпущен (change у ползунка) — вот теперь пересобираем кадр.
+  function onFrameFitChange(e) {
+    const inp = e.target;
+    if (!inp.classList || !inp.classList.contains("frame-fit")) return;
+    const ctx = frameEditorCtx();
+    if (ctx) applyFrameFit(ctx.model.id);
   }
 
   function applyFrameFit(modelId) {
@@ -4189,19 +4226,103 @@ const DB = {
     const source = rec && (rec.source || rec.image);
     if (!source) return Promise.resolve();
     const fit = frameFitOf(rec);
+    frameNote("Собираю кадр…");
     return renderModelPhoto(source, fit)
       .then((image) => saveModelPhoto(modelId, { ...rec, image: image, source: source, fit: fit, custom: true }, () => {
+        frameNote("Подгонка сохранена.");
         drawDoor(sceneCtx, true);
       }))
-      .catch(() => {});
+      .catch(() => { frameNote(""); });
   }
 
   function onFrameReset() {
     const ctx = frameEditorCtx();
     if (!ctx) return;
-    ctx.rec.fit = { ...FRAME_FIT };
+    saveFrameFit(ctx.model.id, { ...FRAME_FIT });
     updateFrameEditor();
     applyFrameFit(ctx.model.id);
+  }
+
+  // --- Снимок тянется прямо пальцем ------------------------------------
+  //
+  // Просьба заказчика: «сделай движок на самой двери, чтобы можно было тянуть
+  // само фото». Один палец двигает снимок, два — приближают и отдаляют.
+  // Движки остаются для точной доводки. Пока идёт жест, меняются только стили
+  // картинки; кадр пересобирается один раз, когда палец отпущен.
+  let framePan = null;
+  const framePointers = new Map();
+
+  function framePinchDist() {
+    const pts = [...framePointers.values()];
+    if (pts.length < 2) return 0;
+    const dx = pts[0].x - pts[1].x, dy = pts[0].y - pts[1].y;
+    return Math.sqrt(dx * dx + dy * dy);
+  }
+
+  function onFramePointerDown(e) {
+    const ctx = frameEditorCtx();
+    const els = frameStageEls();
+    if (!ctx || !els) return;
+    const box = els.stage.getBoundingClientRect();
+    if (!box.width || !box.height) return;
+    framePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    els.stage.setPointerCapture(e.pointerId);
+    framePan = {
+      modelId: ctx.model.id,
+      fit: frameFitOf(ctx.rec),
+      x: e.clientX, y: e.clientY,
+      w: box.width, h: box.height,
+      dist: framePinchDist(),
+      moved: false
+    };
+    e.preventDefault();
+  }
+
+  function onFramePointerMove(e) {
+    if (!framePan) return;
+    if (framePointers.has(e.pointerId)) framePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    const els = frameStageEls();
+    if (!els) return;
+    const fit = { ...framePan.fit };
+    if (framePointers.size >= 2 && framePan.dist > 4) {
+      // Два пальца — масштаб. Тянем обе оси сразу: по отдельности удобнее
+      // движками, а пальцами нужен обычный «зум».
+      const k = framePinchDist() / framePan.dist;
+      fit.zx = frameClampZoom(framePan.fit.zx * k);
+      fit.zy = frameClampZoom(framePan.fit.zy * k);
+    } else {
+      fit.dx = frameClampShift(framePan.fit.dx + (e.clientX - framePan.x) / framePan.w);
+      fit.dy = frameClampShift(framePan.fit.dy + (e.clientY - framePan.y) / framePan.h);
+    }
+    framePan.moved = true;
+    framePan.now = fit;
+    frameFitApply(els.img, fit);
+    e.preventDefault();
+  }
+
+  function onFramePointerUp(e) {
+    framePointers.delete(e.pointerId);
+    if (!framePan) return;
+    if (framePointers.size) {
+      // Второй палец ещё на экране — жест продолжается с новой точки отсчёта.
+      const els = frameStageEls();
+      const box = els ? els.stage.getBoundingClientRect() : null;
+      const pt = [...framePointers.values()][0];
+      framePan = {
+        modelId: framePan.modelId,
+        fit: framePan.now || framePan.fit,
+        x: pt.x, y: pt.y,
+        w: box ? box.width : framePan.w, h: box ? box.height : framePan.h,
+        dist: 0, moved: framePan.moved
+      };
+      return;
+    }
+    const pan = framePan;
+    framePan = null;
+    if (!pan.moved) return;
+    saveFrameFit(pan.modelId, pan.now || pan.fit);
+    updateFrameEditor();
+    applyFrameFit(pan.modelId);
   }
 
   // Снимки, загруженные до появления рамки, лежат обрезанными по центру в
@@ -4215,8 +4336,19 @@ const DB = {
       const sw = DB.modelSwatches[id];
       return sw && sw.image && !sw.source;
     });
-    if (!ids.length) return Promise.resolve(false);
-    return ids.reduce((chain, id) => chain.then(() => {
+    // Кадры, которые не успели пересобраться под последнее положение движков
+    // (см. загрузку из IndexedDB), дособираем здесь же.
+    const stale = Object.keys(DB.modelSwatches || {}).filter((id) => {
+      const sw = DB.modelSwatches[id];
+      return sw && sw.frameStale && sw.source;
+    });
+    const staleTask = stale.reduce((chain, id) => chain.then(() => {
+      const sw = DB.modelSwatches[id];
+      delete sw.frameStale;
+      return applyFrameFit(id);
+    }), Promise.resolve());
+    if (!ids.length) return staleTask.then(() => false);
+    return staleTask.then(() => ids.reduce((chain, id) => chain.then(() => {
       const sw = DB.modelSwatches[id];
       return loadImageAsync(sw.image).then((img) => {
         const iw = img.naturalWidth, ih = img.naturalHeight;
@@ -4241,7 +4373,7 @@ const DB = {
         const image = drawModelFrame(img, fit).toDataURL("image/jpeg", 0.88);
         return saveModelPhoto(id, { ...sw, image: image, source: sw.image, fit: fit, custom: true });
       }).catch(() => null);
-    }), Promise.resolve()).then(() => true);
+    }), Promise.resolve())).then(() => true);
   }
 
   function savePartsDoc(doc, modelId) {
@@ -7989,8 +8121,21 @@ const DB = {
     const framePanel = document.getElementById("s_framePanel");
     if (framePanel) framePanel.addEventListener("toggle", () => updateFrameEditor());
     document.querySelectorAll(".frame-fit").forEach((inp) => {
+      // input — только подвинуть картинку в панели (мгновенно) и записать
+      // числа; change (палец отпущен) — пересобрать кадр и перекрасить дверь.
       inp.addEventListener("input", onFrameFitInput);
+      inp.addEventListener("change", onFrameFitChange);
     });
+    const frameStage = document.getElementById("s_frameStage");
+    if (frameStage) {
+      frameStage.addEventListener("pointerdown", onFramePointerDown);
+      frameStage.addEventListener("pointermove", onFramePointerMove);
+      frameStage.addEventListener("pointerup", onFramePointerUp);
+      frameStage.addEventListener("pointercancel", onFramePointerUp);
+      const hold = (e) => { if (framePan) e.preventDefault(); };
+      frameStage.addEventListener("touchstart", hold, { passive: false });
+      frameStage.addEventListener("touchmove", hold, { passive: false });
+    }
     const frameReset = document.getElementById("s_frameReset");
     if (frameReset) frameReset.addEventListener("click", onFrameReset);
     // Разметка деталей модели (см. updatePartsEditor): двигаем и растягиваем
@@ -8498,7 +8643,19 @@ const DB = {
     const modelTask = idbGetAll(PHOTO_STORE_MODEL).then(({ keys, values }) => {
       const known = new Set(keys);
       keys.forEach((id, i) => {
-        DB.modelSwatches[id] = { ...(DB.modelSwatches[id] || {}), ...values[i], custom: true };
+        const own = DB.modelSwatches[id] || {};
+        const rec = { ...own, ...values[i], custom: true };
+        // Положение движков подгонки пишется в localStorage сразу, а кадр в
+        // IndexedDB — только когда палец отпущен. Значит после обрыва на
+        // середине (ушёл со страницы, закрыл вкладку) в IndexedDB может
+        // лежать СТАРОЕ положение вместе со старым кадром. Свежее — то, что
+        // в localStorage; берём его, а кадр пересобираем (см. syncModelFrames).
+        // Без этого подгонка «не сохранялась» — жалоба заказчика.
+        if (own.fit && values[i] && values[i].fit && JSON.stringify(own.fit) !== JSON.stringify(values[i].fit)) {
+          rec.fit = own.fit;
+          rec.frameStale = true;
+        }
+        DB.modelSwatches[id] = rec;
         modelPhotosConfirmedInIdb.add(id);
       });
       const migrations = [];
@@ -8970,13 +9127,24 @@ const DB = {
   // хранится ИСХОДНИК: подвинуть снимок в рамке нужно уметь и потом, а из
   // обрезанного кадра вернуть отрезанное невозможно.
   const FRAME_FIT = { zx: 1, zy: 1, dx: 0, dy: 0 };
+  // Пределы движков. Сначала были 40-250 % и ±60 %, и заказчик сказал, что
+  // движки «гиперчувствительные»: на узком экране весь ход умещается в палец,
+  // и один процент ширины — это 8.5 мм по рамке. Снимок и так вписан в рамку
+  // целиком, поэтому такой размах не нужен; грубую наводку делает
+  // перетаскивание пальцем, а движкам оставлена доводка.
+  const FRAME_ZOOM_MIN = 0.6, FRAME_ZOOM_MAX = 1.6, FRAME_SHIFT_MAX = 0.35;
+  const frameClampZoom = (v) => Math.max(FRAME_ZOOM_MIN, Math.min(FRAME_ZOOM_MAX, v));
+  const frameClampShift = (v) => Math.max(-FRAME_SHIFT_MAX, Math.min(FRAME_SHIFT_MAX, v));
   // Исходник ужимаем: он нужен только чтобы заново нарисовать кадр 680x1668.
   const FRAME_SOURCE_MAX = 1400;
   function frameFitOf(rec) {
     const f = rec && rec.fit;
     if (!f) return { ...FRAME_FIT };
     const num = (v, d) => (typeof v === "number" && isFinite(v) ? v : d);
-    return { zx: num(f.zx, 1), zy: num(f.zy, 1), dx: num(f.dx, 0), dy: num(f.dy, 0) };
+    return {
+      zx: frameClampZoom(num(f.zx, 1)), zy: frameClampZoom(num(f.zy, 1)),
+      dx: frameClampShift(num(f.dx, 0)), dy: frameClampShift(num(f.dy, 0))
+    };
   }
 
   // Рисует снимок в рамке: «вписать по большей стороне» (снимок закрывает всю
