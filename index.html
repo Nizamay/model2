@@ -511,12 +511,16 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 /* Выбранная деталь ничем не обводится дополнительно: любая вторая линия
    рядом с чёрной мешает целиться по фотографии. Что деталь выбрана, видно
    по жёлтым углам-маркерам. */
-/* Углы выбранной детали — крупные, под палец. */
-.part .ph { position: absolute; width: 9px; height: 9px; background: #ffd54a; border: 1px solid #6b5200; border-radius: 2px; }
-.part .ph-nw { left: -5px; top: -5px; }
-.part .ph-ne { right: -5px; top: -5px; }
-.part .ph-sw { left: -5px; bottom: -5px; }
-.part .ph-se { right: -5px; bottom: -5px; }
+/* Углы выбранной детали — крупные, под палец. Были 9 точек: в такой квадратик
+   пальцем не попасть, и угол приходилось ловить по нескольку раз. Теперь 22
+   точек, а захват шире самого квадратика (см. PARTS_CORNER_REACH). Центр
+   квадратика — на самом углу детали. */
+.part .ph { position: absolute; width: 22px; height: 22px; box-sizing: border-box; background: #ffd54a; border: 2px solid #6b5200;
+  border-radius: 5px; box-shadow: 0 1px 4px rgba(0, 0, 0, .4); z-index: 3; }
+.part .ph-nw { left: -12px; top: -12px; }
+.part .ph-ne { right: -12px; top: -12px; }
+.part .ph-sw { left: -12px; bottom: -12px; }
+.part .ph-se { right: -12px; bottom: -12px; }
 /* Цвет детали = её вид. Те же цвета у кнопок вида ниже. Заливка нарочно
    очень слабая: под ней фотография, по которой и ведётся разметка, — при
    плотной заливке дверь под ней пропадала и ориентиров не оставалось.
@@ -3799,7 +3803,26 @@ const DB = {
 
   // Перекраска полотна по обведённым деталям. Снимок берётся целиком: что
   // деталью не обведено, то и остаётся со снимка нетронутым.
-  function paintPartsLeaf(photo, filmImg, filmHex, doc, glass, doorWidthMm, doorHeightMm, adj) {
+  // Перекраска — самая тяжёлая работа в программе: около шести миллионов
+  // точек. Одним куском она держала страницу занятой несколько секунд (на
+  // телефоне — заметно дольше), и всё это время касания не обрабатывались:
+  // отпустил угол детали — следующее движение пальца пропадало. Заказчик:
+  // «сильно тормозят, очень неудобно». Поэтому теперь она идёт порциями по
+  // PAINT_SLICE_MS, между которыми страница успевает ответить на касания, и
+  // бросается, если за это время разметку изменили снова (isStale): считать
+  // картинку, которую уже никто не увидит, незачем. Результат точка в точку
+  // тот же, что и раньше.
+  const PAINT_SLICE_MS = 20;
+
+  async function paintPartsLeaf(photo, filmImg, filmHex, doc, glass, doorWidthMm, doorHeightMm, adj, isStale) {
+    let sliceAt = performance.now();
+    // true — расчёт устарел, бросаем.
+    const pause = async () => {
+      if (performance.now() - sliceAt < PAINT_SLICE_MS) return false;
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      sliceAt = performance.now();
+      return !!(isStale && isStale());
+    };
     const W = photo.naturalWidth, H = photo.naturalHeight;
     // Рабочий размер кадра задаётся НЕ размером фотографии, а тем, сколько
     // точек нужно плёнке. Раньше он был «не больше, чем в снимке», а снимки
@@ -3839,8 +3862,16 @@ const DB = {
     // Снимок модели уменьшаем так же плавно, как и образец плёнки: фотографии
     // моделей бывают по 3000 точек, и одним шагом с них слетает фрезеровка.
     cx.drawImage(shrinkImage(photo, cw, ch), 0, 0, cw, ch);
-    const img = cx.getImageData(0, 0, cw, ch);
+    // Читаем кадр полосами, а не одним вызовом: один вызов на шесть миллионов
+    // точек — это 0.2 секунды (на телефоне больше) без единой паузы.
+    const img = new ImageData(cw, ch);
     const d = img.data;
+    const STRIP = 192;
+    for (let sy = 0; sy < ch; sy += STRIP) {
+      const strip = cx.getImageData(0, sy, cw, Math.min(STRIP, ch - sy));
+      d.set(strip.data, sy * cw * 4);
+      if (await pause()) return null;
+    }
 
     // Сколько пикселей снимка приходится на миллиметр двери. Считаем по
     // рамке полотна: полотно на снимке — это ровно doorWidthMm x doorHeightMm,
@@ -3853,6 +3884,7 @@ const DB = {
     const adjust = adj || ADJ_NEUTRAL;
     const shadeK = doorShadeK();
     const tiles = filmImg ? partsFilmTiles(filmImg, pxPerMmX, pxPerMmY, adjust) : null;
+    if (await pause()) return null;
     // Светотень считаем на ОТДЕЛЬНОЙ, вдвое меньшей копии снимка. Плёнке
     // крупный кадр нужен, а светотени нет: она и так размывается на пару
     // миллиметров, и лишнего в ней не появится, сколько кадр ни увеличивай.
@@ -3867,6 +3899,7 @@ const DB = {
     rcx.imageSmoothingQuality = "high";
     rcx.drawImage(shrinkImage(photo, rw, rh), 0, 0, rw, rh);
     const rdata = rcx.getImageData(0, 0, rw, rh).data;
+    if (await pause()) return null;
     // Точка большого кадра → точка маленького.
     const rsx = rw / cw, rsy = rh / ch;
     const rAt = (x, y) => ((y * rsy) | 0) * rw + ((x * rsx) | 0);
@@ -3886,6 +3919,7 @@ const DB = {
     // на месте; на 11 мм пропадают уже и контуры.
     const reliefPxPerMm = Math.max(0.05, (box.w * rw) / Math.max(300, doorWidthMm));
     const relief0 = blurLuminance(rdata, rw, rh, Math.max(1, Math.round(5 * reliefPxPerMm)));
+    if (await pause()) return null;
     // Крупный рисунок дерева со снимка убираем отдельно. Размытие в 5 мм
     // снимает мелкую прядь, но у дуба есть и широкая «пламя»-текстура в два
     // и пять сантиметров — её пятью миллиметрами не взять. На плёнке с
@@ -3899,6 +3933,7 @@ const DB = {
     // деталь не поменяла яркость.
     const flatR = Math.max(2, Math.round(40 * reliefPxPerMm));
     const wide = boxBlurField(relief0, rw, rh, flatR);
+    if (await pause()) return null;
     let wideMean = 0;
     for (let i = 0; i < wide.length; i++) wideMean += wide[i];
     wideMean = wideMean / Math.max(1, wide.length) || 1;
@@ -3914,6 +3949,7 @@ const DB = {
     // закрашена плёнкой, — и стекло темнело или светлело вслед за цветом
     // плёнки, хотя к плёнке никакого отношения не имеет.
     const sharp = blurLuminance(rdata, rw, rh, 0);
+    if (await pause()) return null;
     // Ровный цвет (эмаль, плёнка без образца) настраивается тем же правилом.
     // Стекло — нет: у него свой цвет из позиции «Стекло», к плёнке он
     // отношения не имеет.
@@ -3952,21 +3988,30 @@ const DB = {
       return r.w > 0 && r.h > 0 ? r : part;
     };
     const ordered = doc.parts.slice().sort((a, b) => (b.w * b.h) - (a.w * a.h)).map(reachLeaf);
-    ordered.forEach((part) => {
-      if (!PART_KINDS[part.k] || PART_KINDS[part.k].ref) return;
+    // Столбец большого кадра → столбец маленького: одно и то же для всех
+    // строк, считать его на каждую точку незачем (тот же результат, что и в
+    // rAt, только быстрее).
+    const colMap = new Int32Array(cw);
+    for (let x = 0; x < cw; x++) colMap[x] = (x * rsx) | 0;
+    for (const part of ordered) {
+      if (!PART_KINDS[part.k] || PART_KINDS[part.k].ref) continue;
       const x0 = Math.max(0, Math.min(cw, Math.round(part.x * cw)));
       const y0 = Math.max(0, Math.min(ch, Math.round(part.y * ch)));
       const x1 = Math.max(0, Math.min(cw, Math.round((part.x + part.w) * cw)));
       const y1 = Math.max(0, Math.min(ch, Math.round((part.y + part.h) * ch)));
-      if (x1 - x0 < 2 || y1 - y0 < 2) return;
+      if (x1 - x0 < 2 || y1 - y0 < 2) continue;
       // Опорная яркость детали — медиана: ровное поле. Фрезеровка и тени от
       // неё уходят в хвосты и медиану не утягивают.
-      const sample = [];
+      // Типизированный массив: у крупной детали в нём сотни тысяч значений, и
+      // обычный массив с сортировкой через функцию занимал до секунды на
+      // телефоне одним куском. Значения и порядок те же, результат не меняется.
+      const sample = new Float32Array(Math.ceil((x1 - x0) / 2) * Math.ceil((y1 - y0) / 2));
+      let sn = 0;
       for (let y = y0; y < y1; y += 2) {
-        for (let x = x0; x < x1; x += 2) sample.push(relief[rAt(x, y)]);
+        for (let x = x0; x < x1; x += 2) sample[sn++] = relief[rAt(x, y)];
       }
-      if (!sample.length) return;
-      sample.sort((a, b) => a - b);
+      if (!sn) continue;
+      sample.sort();
       const ref = sample[sample.length >> 1] || 1;
       // Приводим деталь к цвету плёнки: рельеф по детали в среднем должен
       // давать единицу, иначе деталь садится светлее или темнее выбранного
@@ -3989,11 +4034,14 @@ const DB = {
       const glassPart = part.k === "g";
       const tile = glassPart || !tiles ? null : (PART_KINDS[part.k].grain === "h" ? tiles.h : tiles.v);
       for (let y = y0; y < y1; y++) {
+        // Раз в несколько строк отдаём страницу касаниям.
+        if ((y & 15) === 0 && await pause()) return null;
+        const rrow = ((y * rsy) | 0) * rw;
         for (let x = x0; x < x1; x++) {
           const i = (y * cw + x) * 4;
           // У стекла рельеф берём резкий, без размытия: гравировка и блики
           // — это его собственный рисунок, терять их нельзя.
-          const ri = rAt(x, y);
+          const ri = rrow + colMap[x];
           const lum = glassPart ? sharp[ri] : relief[ri];
           // Глубина светотени: ползунок «Светотень двери» разводит или
           // сводит рельеф к единице, то есть к ровной плёнке. Направление
@@ -4012,9 +4060,21 @@ const DB = {
           d[i + 3] = 255;
         }
       }
-    });
+    }
+    if (await pause()) return null;
     cx.putImageData(img, 0, 0);
-    return cv.toDataURL("image/jpeg", 0.9);
+    // Кодирование в JPEG — тоже секунды на телефоне. toBlob делает его вне
+    // основного потока, а toDataURL — на нём; кодировщик один и тот же, и
+    // картинка получается побайтно та же.
+    const blob = await new Promise((resolve) => { try { cv.toBlob(resolve, "image/jpeg", 0.9); } catch (err) { resolve(null); } });
+    if (isStale && isStale()) return null;
+    if (!blob) return cv.toDataURL("image/jpeg", 0.9);
+    return await new Promise((resolve, reject) => {
+      const fr = new FileReader();
+      fr.onload = () => resolve(fr.result);
+      fr.onerror = () => reject(fr.error);
+      fr.readAsDataURL(blob);
+    });
   }
 
   // Готовая перекрашенная картинка для текущего расчёта. Считается один раз
@@ -4022,6 +4082,10 @@ const DB = {
   // кладётся в кэш; пока считается — возвращает null (дверь показывается
   // фотографией как есть), а по готовности сама перерисовывает сцену.
   const partsImageCache = new Map();
+  // Последняя готовая картинка на сочетание «без номера правки» и самый свежий
+  // ключ на модель — см. partsLeafImage.
+  const partsLastReady = new Map();
+  const partsLatestKey = new Map();
   // Кадр стал крупнее (1600 точек), и каждая готовая картинка весит заметно
   // больше — держим в памяти поменьше штук, чтобы не раздувать телефон.
   const PARTS_CACHE_MAX = 6;
@@ -4051,23 +4115,35 @@ const DB = {
     // В ключе есть и сам снимок — длиной строки. Иначе, если фото модели
     // заменить на другое, программа возьмёт из кэша картинку, нарисованную
     // по старому снимку, и покажет её до перезагрузки страницы.
-    const key = [model.id, doc.rev || 1, state.color, state.glassId,
+    const rest = [state.color, state.glassId,
       Math.round(widthMm / 25), Math.round(heightMm / 25),
       adj.h, adj.s, adj.b, adj.c, adj.cr, adj.cg, adj.cb,
-      Math.round(doorShadeK() * 100), String(photo.image || "").length].join("|");
+      Math.round(doorShadeK() * 100), String(photo.image || "").length];
+    const key = [model.id, doc.rev || 1].concat(rest).join("|");
+    // То же сочетание, но без номера правки разметки: пока считается картинка
+    // по новой разметке, в сцене остаётся прежняя, а не голый снимок — иначе
+    // после каждого движения угла дверь на секунды «раздевалась» бы.
+    const baseKey = [model.id].concat(rest).join("|");
     const hit = partsImageCache.get(key);
-    if (hit !== undefined) return hit === "pending" || !hit ? null : hit;
+    if (hit !== undefined) return hit === "pending" || !hit ? (partsLastReady.get(baseKey) || null) : hit;
     partsImageCache.set(key, "pending");
+    partsLatestKey.set(model.id, key);
+    const isStale = () => partsLatestKey.get(model.id) !== key;
     Promise.all([loadImageAsync(photo.image), filmHref ? loadImageAsync(filmHref) : Promise.resolve(null)])
-      .then(([ph, film]) => {
-        let url = "";
-        try { url = paintPartsLeaf(ph, film, filmHex, doc, glass, widthMm, heightMm, adj); } catch (err) { url = ""; }
+      .then(([ph, film]) => paintPartsLeaf(ph, film, filmHex, doc, glass, widthMm, heightMm, adj, isStale))
+      .then((url) => {
+        // Устарело: разметку успели изменить, этот результат никому не нужен.
+        // Запись убираем, а не помечаем «не вышло» — иначе к этому сочетанию
+        // картинка больше никогда бы не считалась.
+        if (url === null) { partsImageCache.delete(key); return; }
         partsImageCache.set(key, url);
+        partsLastReady.set(baseKey, url);
+        if (partsLastReady.size > PARTS_CACHE_MAX) partsLastReady.delete(partsLastReady.keys().next().value);
         if (partsImageCache.size > PARTS_CACHE_MAX) partsImageCache.delete(partsImageCache.keys().next().value);
         if (el.viewScene && !el.viewScene.hidden) drawDoor(sceneCtx, true);
       })
       .catch(() => { partsImageCache.set(key, ""); });
-    return null;
+    return partsLastReady.get(baseKey) || null;
   }
 
   // --- Разметка деталей на странице «2D картинка» ------------------------
@@ -4375,7 +4451,18 @@ const DB = {
     }), Promise.resolve())).then(() => true);
   }
 
-  function savePartsDoc(doc, modelId) {
+  // Перекраска двери после перетаскивания угла стартует не сразу, а через
+  // PARTS_REDRAW_DELAY_MS после того, как палец отпущен: угол обычно подгоняют
+  // подряд несколько раз, а картинка в это время вверху, вне экрана. Начнёшь тянуть снова — отложенная
+  // перекраска ждёт дальше (см. onPartsPointerDown).
+  const PARTS_REDRAW_DELAY_MS = 900;
+  let partsRedrawTimer = null;
+  function schedulePartsRedraw() {
+    clearTimeout(partsRedrawTimer);
+    partsRedrawTimer = setTimeout(() => { partsRedrawTimer = null; drawDoor(sceneCtx, true); }, PARTS_REDRAW_DELAY_MS);
+  }
+
+  function savePartsDoc(doc, modelId, deferRedraw) {
     if (!DB.modelParts) DB.modelParts = {};
     if (doc && doc.parts.length) {
       doc.rev = (doc.rev || 0) + 1;
@@ -4385,7 +4472,8 @@ const DB = {
       partsSel = null;
     }
     savePrices();
-    drawDoor(sceneCtx, true);
+    if (deferRedraw) schedulePartsRedraw();
+    else { clearTimeout(partsRedrawTimer); partsRedrawTimer = null; drawDoor(sceneCtx, true); }
   }
 
   // Фотография в разметке — отдельная картинка, которая не перерисовывается:
@@ -4513,8 +4601,13 @@ const DB = {
         const dist = Math.sqrt(dx * dx + dy * dy);
         if (!near || dist < near.dist) near = { name: name, dist: dist };
       });
-      if (near && near.dist < 22) {
-        partsDrag = { mode: "resize", i: partsSel, corner: near.name, modelId: ctx.model.id, moved: false };
+      // Радиус захвата угла — под палец, а не под мышь: квадратик маленький, и
+      // по нему надо попасть. У небольшой детали радиус меньше, иначе любое
+      // касание её середины считалось бы угловым, и двигать её было бы нечем.
+      const pw = p.w * box.width, ph = p.h * box.height;
+      const reach = Math.min(PARTS_CORNER_REACH, Math.max(22, 0.4 * Math.max(pw, ph)));
+      if (near && near.dist < reach) {
+        partsDragStart({ mode: "resize", i: partsSel, corner: near.name, modelId: ctx.model.id, moved: false }, doc, els, box);
         els.stage.setPointerCapture(e.pointerId);
         e.preventDefault();
         return;
@@ -4536,7 +4629,7 @@ const DB = {
         // разрешить, вся привязка к миллиметрам развалится. Под рамку
         // подгоняется рамка блока под дверь на снимке (см. «Фото в рамке»).
         if (framePartRect(p.k)) return;
-        partsDrag = { mode: "move", i: i, dx: fx - p.x, dy: fy - p.y, modelId: ctx.model.id, moved: false };
+        partsDragStart({ mode: "move", i: i, dx: fx - p.x, dy: fy - p.y, modelId: ctx.model.id, moved: false }, doc, els, box);
         els.stage.setPointerCapture(e.pointerId);
         e.preventDefault();
         return;
@@ -4545,19 +4638,49 @@ const DB = {
     if (partsSel !== null) { partsSel = null; updatePartsEditor(); }
   }
 
+  // Радиус захвата угла, точек. Раньше 22 при квадратике в 9 точек — теперь
+  // квадратик 22, а захват шире.
+  const PARTS_CORNER_REACH = 40;
+
+  // Всё, что не меняется, пока палец ведёт деталь, считаем один раз в начале:
+  // положение фотографии на экране, рамку прямоугольника и края соседних деталей
+  // (к ним деталь «прилипает»). Раньше это пересчитывалось на каждое движение,
+  // и getBoundingClientRect каждый раз заставлял браузер заново считать вёрстку.
+  function partsDragStart(drag, doc, els, box) {
+    drag.box = box;
+    drag.xs = partsEdges(doc.parts, drag.i, "x");
+    drag.ys = partsEdges(doc.parts, drag.i, "y");
+    drag.el = els.layer.querySelector('.part[data-i="' + drag.i + '"]');
+    drag.raf = 0;
+    drag.last = null;
+    partsDrag = drag;
+    // Тянут — значит, отложенная перекраска пока подождёт: пересчёт картинки
+    // во время движения пальца только мешал бы.
+    clearTimeout(partsRedrawTimer);
+  }
+
+  // Движение пальца приходит чаще, чем экран успевает рисоваться: запоминаем
+  // последнюю точку и двигаем прямоугольник один раз на кадр.
   function onPartsPointerMove(e) {
     if (!partsDrag) return;
-    const els = partsStageEls();
-    const doc = partsOf(partsDrag.modelId);
-    if (!els || !doc) return;
-    const p = doc.parts[partsDrag.i];
+    partsDrag.last = { x: e.clientX, y: e.clientY };
+    if (!partsDrag.raf) partsDrag.raf = requestAnimationFrame(partsDragApply);
+    e.preventDefault();
+  }
+
+  function partsDragApply() {
+    const drag = partsDrag;
+    if (!drag || !drag.last) { if (drag) drag.raf = 0; return; }
+    drag.raf = 0;
+    const doc = partsOf(drag.modelId);
+    if (!doc) return;
+    const p = doc.parts[drag.i];
     if (!p) return;
-    const box = els.stage.getBoundingClientRect();
-    const fx = (e.clientX - box.left) / box.width;
-    const fy = (e.clientY - box.top) / box.height;
+    const box = drag.box;
+    const fx = (drag.last.x - box.left) / box.width;
+    const fy = (drag.last.y - box.top) / box.height;
     const tolX = 8 / box.width, tolY = 8 / box.height;
-    const xs = partsEdges(doc.parts, partsDrag.i, "x");
-    const ys = partsEdges(doc.parts, partsDrag.i, "y");
+    const xs = drag.xs, ys = drag.ys;
     const MIN = 0.015;
     if (partsDrag.mode === "move") {
       let nx = Math.max(0, Math.min(1 - p.w, fx - partsDrag.dx));
@@ -4587,26 +4710,29 @@ const DB = {
         p.h = nb - p.y;
       }
     }
-    partsDrag.moved = true;
+    drag.moved = true;
     // Пока палец на экране — двигаем только прямоугольник: перерисовывать всю
     // перекрашенную дверь на каждый кадр слишком тяжело.
-    const box2 = els.layer.querySelector(`.part[data-i="${partsDrag.i}"]`);
+    const box2 = drag.el;
     if (box2) {
       box2.style.left = (p.x * 100).toFixed(3) + "%";
       box2.style.top = (p.y * 100).toFixed(3) + "%";
       box2.style.width = (p.w * 100).toFixed(3) + "%";
       box2.style.height = (p.h * 100).toFixed(3) + "%";
     }
-    e.preventDefault();
   }
 
   function onPartsPointerUp() {
     if (!partsDrag) return;
     const drag = partsDrag;
+    // Последнюю точку применяем сразу, не дожидаясь кадра: иначе палец успел
+    // бы отпуститься раньше, чем прямоугольник дошёл до неё.
+    if (drag.raf) { cancelAnimationFrame(drag.raf); drag.raf = 0; }
+    if (drag.last) partsDragApply();
     partsDrag = null;
     const doc = partsOf(drag.modelId);
     if (!doc) return;
-    if (drag.moved) savePartsDoc(doc, drag.modelId);
+    if (drag.moved) savePartsDoc(doc, drag.modelId, true);
     updatePartsEditor();
   }
 
