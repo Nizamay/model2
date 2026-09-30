@@ -5683,6 +5683,24 @@ const DB = {
       };
     }
 
+    // Цена модели в выбранном материале не назначена (0 в «Изменение цен» —
+    // модель в этом материале не выпускается). Раньше считалось «ноль плюс
+    // доплата за цвет», и на калькуляторе выходила одна доплата — например
+    // 1800 ₽ за дверь. Теперь так и пишем: «нет цены». Список материалов и
+    // всё остальное не трогаем. «Сохранить в спецификацию» и «Ценник» такой
+    // расчёт не берут (model: null) — позиции без цены не заводятся.
+    if (!(modelBasePrice(model, state.material) > 0)) {
+      const matName = DB.materialNames[state.material] || state.material;
+      rows.push(`Нет цены: модель не выпускается в материале «${matName}». Выберите другой материал или назначьте цену в «Изменение цен».`);
+      return {
+        model: null, noPrice: true,
+        quantity: 1, perUnit: 0, lineSubtotal: 0, discount: 0, total: 0, rows,
+        standard: true, materialLabel: "", color: "", glassName: "",
+        height: state.height, width: state.width, thickness: state.thickness,
+        section: state.section
+      };
+    }
+
     const category = findCategory(state.material, state.color);
     const surcharge = category != null ? (DB.categorySurcharge[state.material][category] || 0) : 0;
     const leafBase = modelBasePrice(model, state.material) + surcharge;
@@ -5822,7 +5840,7 @@ const DB = {
     if (el.viewScene && !el.viewScene.hidden) drawDoor(sceneCtx, true);
 
     el.breakdown.innerHTML = o.rows.map((r) => `<div class="breakdown-row">${r}</div>`).join("");
-    el.total.textContent = o.total.toLocaleString("ru-RU") + " ₽";
+    el.total.textContent = o.noPrice ? "нет цены" : o.total.toLocaleString("ru-RU") + " ₽";
   }
 
   // --- Спецификация: сохранённые полотна --------------------------------
