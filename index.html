@@ -499,6 +499,20 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
   box-sizing: border-box; border-radius: 50%; background: #fff; border: 3px solid rgba(232, 74, 14, .95);
   box-shadow: 0 1px 4px rgba(0, 0, 0, .35); }
 .frame-note { margin: 0 0 8px; text-align: center; font-size: 13px; color: var(--muted); min-height: 16px; }
+/* Панель «Чёткость снимка»: слева вся дверь (тапом выбирают место), справа два
+   увеличенных куска — как есть и с обработкой. Куски рисуются в точках кадра
+   и увеличиваются без сглаживания, чтобы было видно настоящие пиксели. */
+.quality-view { display: flex; gap: 10px; align-items: flex-start; margin-bottom: 10px; }
+.quality-thumb { position: relative; flex: 0 0 76px; touch-action: none; cursor: crosshair; user-select: none; -webkit-user-select: none; }
+.quality-thumb img { display: block; width: 100%; height: auto; border-radius: 3px; pointer-events: none; }
+.quality-thumb .qmark { position: absolute; width: 22px; height: 16px; margin: -8px 0 0 -11px; box-sizing: border-box;
+  border: 2px solid rgba(232, 74, 14, .95); border-radius: 2px; pointer-events: none; }
+.quality-pair { flex: 1 1 auto; min-width: 0; max-width: 240px; display: flex; flex-direction: column; gap: 6px; }
+.quality-pair > div { position: relative; }
+.quality-pair canvas { display: block; width: 100%; height: auto; border-radius: 4px; image-rendering: pixelated; background: #e9edf2; }
+.quality-pair span { position: absolute; left: 6px; top: 6px; padding: 1px 6px; border-radius: 9px; font-size: 11px; font-weight: 600;
+  color: #fff; background: rgba(0, 0, 0, .55); }
+.qv { font-weight: 700; color: var(--accent); margin-left: 4px; }
 .parts-stage { position: relative; width: min(100%, var(--stage-w)); margin: 0 auto; user-select: none; }
 .parts-photo { display: block; width: 100%; height: auto; border-radius: 4px; pointer-events: none; }
 .parts-layer { position: absolute; inset: 0; }
@@ -1452,6 +1466,37 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
             <p class="frame-note" id="s_frameNote"></p>
             <div class="adjust-actions">
               <button type="button" id="s_frameReset">Сбросить подгонку</button>
+            </div>
+          </div>
+        </details>
+        <!-- Движки качества снимка (см. qualityOf): чёткость, сглаживание шума,
+             тонкие линии. У каждой модели свои — снимки у моделей разные, а
+             программа должна работать без нас. -->
+        <details class="adjust-panel quality-panel" id="s_qualityPanel" hidden>
+          <summary>Чёткость снимка</summary>
+          <div class="adjust-body">
+            <p class="parts-hint">Снимки из каталога бывают маленькими и мягкими. Эти движки подтягивают чёткость <b>именно этой модели</b> — у каждой модели свои. Ниже — кусок двери «как есть» и «с обработкой» (увеличен). Место выбрано само, где больше краёв; коснитесь двери слева, чтобы смотреть другое.</p>
+            <div class="quality-view">
+              <div class="quality-thumb" id="s_qThumb"><img id="s_qThumbImg" alt=""><i class="qmark" id="s_qMark"></i></div>
+              <div class="quality-pair">
+                <div><canvas id="s_qBefore"></canvas><span>как есть</span></div>
+                <div><canvas id="s_qAfter"></canvas><span>с обработкой</span></div>
+              </div>
+            </div>
+            <div class="arow"><span>Чёткость <b class="qv" data-k="sharp">0</b></span><input type="range" class="q-slider" data-k="sharp" min="0" max="300" step="5" value="0">
+              <div class="range-scale" aria-hidden="true"><span>0</span><span>100</span><span>200</span><span>300</span></div>
+            </div>
+            <div class="arow"><span>Сглаживание шума <b class="qv" data-k="smooth">0</b></span><input type="range" class="q-slider" data-k="smooth" min="0" max="100" step="5" value="0">
+              <div class="range-scale" aria-hidden="true"><span>0</span><span>50</span><span>100</span></div>
+            </div>
+            <div class="arow"><span>Тонкие линии <b class="qv" data-k="lines">0</b></span><input type="range" class="q-slider" data-k="lines" min="0" max="100" step="5" value="0">
+              <div class="range-scale" aria-hidden="true"><span>0</span><span>50</span><span>100</span></div>
+            </div>
+            <p class="parts-hint"><b>Чёткость</b> — подчёркивает края. <b>Сглаживание шума</b> — убирает блоки и крупинки JPEG до чёткости: у маленьких снимков без него шум растёт вместе с резкостью. <b>Тонкие линии</b> — возвращает на перекрашенной двери тонкие канавки по краям филёнок; вместе с ними возвращается и тиснение «под дерево», если оно есть на снимке (на предпросмотре его не видно, смотрите на саму дверь).</p>
+            <p class="frame-note" id="s_qNote"></p>
+            <div class="adjust-actions">
+              <button type="button" id="s_qAuto">Подобрать само</button>
+              <button type="button" id="s_qReset">Сбросить</button>
             </div>
           </div>
         </details>
@@ -3343,9 +3388,12 @@ const DB = {
   };
   // Пропорция снимка модели — это и есть пропорция рамки.
   const MODEL_PHOTO_RATIO = FRAME_MM.w / FRAME_MM.h;
-  // Размер хранимого кадра в точках: ровно 850x2085 в масштабе 0.8, чтобы
-  // пропорция была точной, а не округлённой.
-  const FRAME_PX = { w: Math.round(FRAME_MM.w * 0.8), h: Math.round(FRAME_MM.h * 0.8) };
+  // Размер хранимого кадра в точках: ровно 850x2085 в масштабе 1.2 точки на
+  // миллиметр (1020x2502), чтобы пропорция была точной, а не округлённой.
+  // Раньше было 0.8 (680x1668), и хороший снимок терял около трети мелких
+  // деталей уже при загрузке (замер на втором снимке заказчика: 72 % чёткости
+  // оригинала, при 1.2 — 93-97 %).
+  const FRAME_PX = { w: Math.round(FRAME_MM.w * 1.2), h: Math.round(FRAME_MM.h * 1.2) };
   const INNER_MM = LEAF_MM.w - PROFILE_MM * 2;
   // fix — размер задан правилами, за углы тянуть нечего (деталь только
   // переносится); free — размер свой у каждой модели, углы нужны.
@@ -3764,6 +3812,26 @@ const DB = {
     return out;
   }
 
+  // Размытие по Гауссу, собранное из трёх «коробочек» (boxBlurField): время не
+  // зависит от радиуса. Радиусы коробочек подбираются под нужную сигму по
+  // известной схеме «быстрого гаусса» — так размытие плавное, без квадратных
+  // ореолов, какие давала бы одна коробочка.
+  function gaussBlurField(src, w, h, sigma) {
+    if (!(sigma > 0.3)) return src;
+    const n = 3;
+    let wl = Math.floor(Math.sqrt((12 * sigma * sigma) / n + 1));
+    if (wl % 2 === 0) wl--;
+    const wu = wl + 2;
+    const m = Math.round((12 * sigma * sigma - n * wl * wl - 4 * n * wl - 3 * n) / (-4 * wl - 4));
+    let out = src;
+    for (let i = 0; i < n; i++) {
+      const size = i < m ? wl : wu;
+      const r = (size - 1) / 2;   // radius < 1 — boxBlurField вернёт поле как есть
+      out = boxBlurField(out, w, h, r);
+    }
+    return out;
+  }
+
   // Яркость снимка, размытая «коробочкой» заданного радиуса: сначала по
   // строкам, потом по столбцам. Нужна, чтобы отделить форму детали (фаски,
   // фрезеровку, тени) от её собственной мелкой текстуры.
@@ -3773,32 +3841,9 @@ const DB = {
       src[p] = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
     }
     if (r < 1) return src;
-    const tmp = new Float32Array(w * h);
-    const out = new Float32Array(w * h);
-    for (let y = 0; y < h; y++) {
-      const row = y * w;
-      for (let x = 0; x < w; x++) {
-        let s = 0, n = 0;
-        for (let k = -r; k <= r; k++) {
-          const xx = x + k;
-          if (xx < 0 || xx >= w) continue;
-          s += src[row + xx]; n++;
-        }
-        tmp[row + x] = s / n;
-      }
-    }
-    for (let x = 0; x < w; x++) {
-      for (let y = 0; y < h; y++) {
-        let s = 0, n = 0;
-        for (let k = -r; k <= r; k++) {
-          const yy = y + k;
-          if (yy < 0 || yy >= h) continue;
-          s += tmp[yy * w + x]; n++;
-        }
-        out[y * w + x] = s / n;
-      }
-    }
-    return out;
+    // Бегущая сумма вместо перебора окна: время не зависит от радиуса. На
+    // кадре в 1000 точек (см. paintPartsLeaf) перебор был бы в разы дольше.
+    return boxBlurField(src, w, h, r);
   }
 
   // Перекраска полотна по обведённым деталям. Снимок берётся целиком: что
@@ -3814,7 +3859,7 @@ const DB = {
   // тот же, что и раньше.
   const PAINT_SLICE_MS = 20;
 
-  async function paintPartsLeaf(photo, filmImg, filmHex, doc, glass, doorWidthMm, doorHeightMm, adj, isStale) {
+  async function paintPartsLeaf(photo, filmImg, filmHex, doc, glass, doorWidthMm, doorHeightMm, adj, isStale, reliefMm) {
     let sliceAt = performance.now();
     // true — расчёт устарел, бросаем.
     const pause = async () => {
@@ -3826,7 +3871,7 @@ const DB = {
     const W = photo.naturalWidth, H = photo.naturalHeight;
     // Рабочий размер кадра задаётся НЕ размером фотографии, а тем, сколько
     // точек нужно плёнке. Раньше он был «не больше, чем в снимке», а снимки
-    // модели хранятся по 680 точек в ширину (см. FRAME_PX) — это
+    // модели хранились по 680 точек в ширину (теперь 1020, см. FRAME_PX) — это
     // около 390 точек на полотно шириной 800 мм, то есть плитка плёнки
     // выходила 73 точки на 150 мм. Образец при этом ужимался в восемь раз:
     // мелкое волокно усреднялось в кашу, и от плёнки оставалась только
@@ -3890,7 +3935,10 @@ const DB = {
     // миллиметров, и лишнего в ней не появится, сколько кадр ни увеличивай.
     // Зато размытие — самая дорогая часть перекраски, и на полном кадре она
     // растягивала её с 0.1 до 0.4 секунды.
-    const rw = Math.min(cw, 560);
+    // Копия для светотени: 1000 точек в ширину (было 560). Тонкие канавки и
+    // фаски по краям филёнок в 560 точках на весь блок — это 0.66 точки на
+    // миллиметр, и они терялись ещё до размытия.
+    const rw = Math.min(cw, 1000);
     const rh = Math.max(8, Math.round(ch * rw / cw));
     const rcv = document.createElement("canvas");
     rcv.width = rw; rcv.height = rh;
@@ -3918,7 +3966,11 @@ const DB = {
     // при прежних 1.8 мм разводы видны, при 5 мм их нет, а контуры филёнок
     // на месте; на 11 мм пропадают уже и контуры.
     const reliefPxPerMm = Math.max(0.05, (box.w * rw) / Math.max(300, doorWidthMm));
-    const relief0 = blurLuminance(rdata, rw, rh, Math.max(1, Math.round(5 * reliefPxPerMm)));
+    // Радиус размытия рельефа — движок «Тонкие линии» модели (см.
+    // qualityReliefMm): 5 мм убирают тиснение «под дерево» со снимка, но
+    // вместе с ним и тонкие канавки по краям филёнок; меньше — канавки
+    // остаются, а с ними и тиснение.
+    const relief0 = blurLuminance(rdata, rw, rh, Math.max(1, Math.round((reliefMm > 0 ? reliefMm : 5) * reliefPxPerMm)));
     if (await pause()) return null;
     // Крупный рисунок дерева со снимка убираем отдельно. Размытие в 5 мм
     // снимает мелкую прядь, но у дуба есть и широкая «пламя»-текстура в два
@@ -4115,10 +4167,13 @@ const DB = {
     // В ключе есть и сам снимок — длиной строки. Иначе, если фото модели
     // заменить на другое, программа возьмёт из кэша картинку, нарисованную
     // по старому снимку, и покажет её до перезагрузки страницы.
+    // Движки качества модели — часть ключа: подвинули — нужна новая картинка.
+    const qual = qualityOf(photo);
     const rest = [state.color, state.glassId,
       Math.round(widthMm / 25), Math.round(heightMm / 25),
       adj.h, adj.s, adj.b, adj.c, adj.cr, adj.cg, adj.cb,
-      Math.round(doorShadeK() * 100), String(photo.image || "").length];
+      Math.round(doorShadeK() * 100), String(photo.image || "").length,
+      qual.sharp, qual.smooth, qual.lines];
     const key = [model.id, doc.rev || 1].concat(rest).join("|");
     // То же сочетание, но без номера правки разметки: пока считается картинка
     // по новой разметке, в сцене остаётся прежняя, а не голый снимок — иначе
@@ -4130,7 +4185,7 @@ const DB = {
     partsLatestKey.set(model.id, key);
     const isStale = () => partsLatestKey.get(model.id) !== key;
     Promise.all([loadImageAsync(photo.image), filmHref ? loadImageAsync(filmHref) : Promise.resolve(null)])
-      .then(([ph, film]) => paintPartsLeaf(ph, film, filmHex, doc, glass, widthMm, heightMm, adj, isStale))
+      .then(([ph, film]) => paintPartsLeaf(ph, film, filmHex, doc, glass, widthMm, heightMm, adj, isStale, qualityReliefMm(qual)))
       .then((url) => {
         // Устарело: разметку успели изменить, этот результат никому не нужен.
         // Запись убираем, а не помечаем «не вышло» — иначе к этому сочетанию
@@ -4307,7 +4362,7 @@ const DB = {
   }
 
   // Положение снимка — четыре числа, и пишутся они СРАЗУ, без таймера:
-  // «отпустил — сохранился». Тяжёлое (пересборка кадра 680x1668 и перекраска
+  // «отпустил — сохранился». Тяжёлое (пересборка кадра 1020x2502 и перекраска
   // двери) идёт следом, см. applyFrameFit. Если уйти со страницы до его конца,
   // подгонка всё равно уже лежит в localStorage (см. загрузку из IndexedDB).
   function saveFrameFit(modelId, fit) {
@@ -4317,21 +4372,200 @@ const DB = {
     try { localStorage.setItem(PRICE_STORE_KEY, JSON.stringify(collectPrices())); } catch (err) { }
   }
 
-  function frameNote(text) {
-    const n = document.getElementById("s_frameNote");
-    if (n) n.textContent = text || "";
+  // --- Панель «Чёткость снимка» -----------------------------------------
+  //
+  // Три движка (см. qualityOf) и предпросмотр: два куска кадра в настоящих
+  // точках, увеличенные вдвое, — без обработки и с ней. Куски считаются тем же
+  // кодом, что и сам кадр (drawSourceInFrame + qualityProcessCanvas), только на
+  // маленьком окне, поэтому движок отзывается сразу и картинка честная.
+  const Q_PREVIEW = { w: 110, h: 78, pad: 14 };
+  let qualityFocus = { x: 0.32, y: 0.26 };     // что смотрим, в долях кадра
+  let qualityFocusSrc = null;                   // для какого снимка фокус уже подобран сам
+  let qualityDraft = null;                      // значения, пока палец на движке
+  let qualityImg = null;                        // загруженный исходник текущей модели
+  let qualityRaf = 0;
+
+  // Где смотреть по умолчанию: окно, в котором больше всего краёв. Гладкая
+  // филёнка на предпросмотре — серое пятно, по которому чёткость не оценить.
+  // Края считаем по уменьшенной копии кадра, ограничивая вклад одного края:
+  // иначе ручка с её блеском всегда выигрывала бы у самой двери.
+  function qualityPickFocus(img, fit) {
+    const TW = 102, TH = Math.round(TW * FRAME_PX.h / FRAME_PX.w);
+    const c = document.createElement("canvas");
+    c.width = TW; c.height = TH;
+    const cx = c.getContext("2d", { willReadFrequently: true });
+    cx.fillStyle = imageEdgeHex(img) || "#ffffff";
+    cx.fillRect(0, 0, TW, TH);
+    cx.save();
+    cx.scale(TW / FRAME_PX.w, TH / FRAME_PX.h);
+    drawSourceInFrame(cx, img, fit, 0, 0);
+    cx.restore();
+    const d = cx.getImageData(0, 0, TW, TH).data;
+    const L = (x, y) => { const i = (y * TW + x) * 4; return 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]; };
+    // сумма краёв по прямоугольнику — через интегральное изображение
+    const I = new Float64Array((TW + 1) * (TH + 1));
+    for (let y = 1; y < TH; y++) {
+      let row = 0;
+      for (let x = 1; x < TW; x++) {
+        row += Math.min(24, Math.abs(L(x, y) - L(x - 1, y)) + Math.abs(L(x, y) - L(x, y - 1)));
+        I[(y + 1) * (TW + 1) + (x + 1)] = I[y * (TW + 1) + (x + 1)] + row;
+      }
+    }
+    const ww = Math.max(4, Math.round(Q_PREVIEW.w * TW / FRAME_PX.w)), wh = Math.max(4, Math.round(Q_PREVIEW.h * TH / FRAME_PX.h));
+    let best = null;
+    for (let y = Math.round(TH * 0.07); y + wh < TH * 0.93; y += 2) {
+      for (let x = Math.round(TW * 0.12); x + ww < TW * 0.88; x += 2) {
+        const e = I[(y + wh) * (TW + 1) + (x + ww)] - I[y * (TW + 1) + (x + ww)] - I[(y + wh) * (TW + 1) + x] + I[y * (TW + 1) + x];
+        if (!best || e > best.e) best = { e: e, x: x, y: y };
+      }
+    }
+    return best ? { x: (best.x + ww / 2) / TW, y: (best.y + wh / 2) / TH } : { x: 0.32, y: 0.26 };
   }
 
-  function applyFrameFit(modelId) {
+  function qualityValuesNow(rec) { return qualityDraft ? { ...qualityDraft } : qualityOf(rec); }
+
+  function qualityRenderCrop(img, fit, q, processed) {
+    const W = FRAME_PX.w, H = FRAME_PX.h, P = Q_PREVIEW;
+    const x0 = Math.max(0, Math.min(W - P.w, Math.round(qualityFocus.x * W - P.w / 2)));
+    const y0 = Math.max(0, Math.min(H - P.h, Math.round(qualityFocus.y * H - P.h / 2)));
+    const cv = document.createElement("canvas");
+    cv.width = P.w + 2 * P.pad; cv.height = P.h + 2 * P.pad;
+    const cx = cv.getContext("2d", { willReadFrequently: true });
+    cx.fillStyle = imageEdgeHex(img) || "#ffffff";
+    cx.fillRect(0, 0, cv.width, cv.height);
+    drawSourceInFrame(cx, img, fit, x0 - P.pad, y0 - P.pad, qualityImg && qualityImg.shrunkFor === fitKey(fit) ? qualityImg.shrunk : null);
+    if (processed && !qualityNeutral(q)) {
+      qualityProcessCanvas(cv, q, frameUpscale(img.naturalWidth, img.naturalHeight, fit));
+    }
+    const out = document.createElement("canvas");
+    out.width = P.w; out.height = P.h;
+    out.getContext("2d").drawImage(cv, P.pad, P.pad, P.w, P.h, 0, 0, P.w, P.h);
+    return out;
+  }
+  const fitKey = (fit) => [fit.zx, fit.zy, fit.dx, fit.dy].join("|");
+
+  function qualityRenderPreview() {
+    qualityRaf = 0;
+    const ctx = frameEditorCtx();
+    if (!ctx || !qualityImg || qualityImg.src !== (ctx.rec.source || ctx.rec.image)) return;
+    const img = qualityImg.img;
+    const fit = frameFitOf(ctx.rec);
+    const q = qualityValuesNow(ctx.rec);
+    // Сильное уменьшение (исходник больше кадра вдвое) считаем один раз.
+    const iw = img.naturalWidth, ih = img.naturalHeight, b = frameBase(iw, ih);
+    const w = FRAME_PX.w * b.dw * fit.zx, h = FRAME_PX.h * b.dh * fit.zy;
+    if ((w < iw / 2 || h < ih / 2) && qualityImg.shrunkFor !== fitKey(fit)) {
+      qualityImg.shrunk = shrinkImage(img, Math.max(1, Math.round(w)), Math.max(1, Math.round(h)));
+      qualityImg.shrunkFor = fitKey(fit);
+    }
+    const draw = (id, canvas) => {
+      const el2 = document.getElementById(id);
+      if (!el2) return;
+      el2.width = canvas.width; el2.height = canvas.height;
+      el2.getContext("2d").drawImage(canvas, 0, 0);
+    };
+    draw("s_qBefore", qualityRenderCrop(img, fit, q, false));
+    draw("s_qAfter", qualityRenderCrop(img, fit, q, true));
+    const mark = document.getElementById("s_qMark");
+    if (mark) { mark.style.left = (qualityFocus.x * 100).toFixed(2) + "%"; mark.style.top = (qualityFocus.y * 100).toFixed(2) + "%"; }
+  }
+  function qualityRequestPreview() { if (!qualityRaf) qualityRaf = requestAnimationFrame(qualityRenderPreview); }
+
+  function qualityShowValues(q) {
+    document.querySelectorAll(".q-slider").forEach((inp) => { inp.value = String(Math.round(q[inp.dataset.k] || 0)); });
+    document.querySelectorAll(".qv").forEach((n) => { n.textContent = String(Math.round(q[n.dataset.k] || 0)); });
+  }
+
+  function updateQualityEditor() {
+    const panel = document.getElementById("s_qualityPanel");
+    if (!panel) return;
+    const ctx = frameEditorCtx();
+    panel.hidden = !ctx;
+    if (!ctx) { panel.open = false; return; }
+    if (!panel.open) return;
+    if (qualityDraft) return;                    // палец на движке — не перестраиваем
+    const th = document.getElementById("s_qThumbImg");
+    if (th && th.getAttribute("src") !== ctx.rec.image) th.setAttribute("src", ctx.rec.image);
+    qualityShowValues(qualityOf(ctx.rec));
+    const src = ctx.rec.source || ctx.rec.image;
+    if (qualityImg && qualityImg.src === src) { qualityRequestPreview(); return; }
+    loadImageAsync(src).then((img) => {
+      qualityImg = { src: src, img: img, shrunk: null, shrunkFor: null };
+      if (qualityFocusSrc !== src) {
+        try { qualityFocus = qualityPickFocus(img, frameFitOf(ctx.rec)); } catch (err) { }
+        qualityFocusSrc = src;
+      }
+      qualityRequestPreview();
+    }).catch(() => {});
+  }
+
+  function onQualityInput(e) {
+    const inp = e.target;
+    if (!inp.classList || !inp.classList.contains("q-slider")) return;
+    const ctx = frameEditorCtx();
+    if (!ctx) return;
+    qualityDraft = qualityDraft || qualityOf(ctx.rec);
+    qualityDraft[inp.dataset.k] = Number(inp.value) || 0;
+    const v = document.querySelector('.qv[data-k="' + inp.dataset.k + '"]');
+    if (v) v.textContent = String(Math.round(qualityDraft[inp.dataset.k]));
+    qualityRequestPreview();
+  }
+
+  // Палец отпущен — сохраняем числа сразу и собираем кадр (см. applyFrameFit).
+  function qualityCommit(q) {
+    const ctx = frameEditorCtx();
+    qualityDraft = null;
+    if (!ctx) return;
+    ctx.rec.quality = { sharp: q.sharp, smooth: q.smooth, lines: q.lines };
+    try { localStorage.setItem(PRICE_STORE_KEY, JSON.stringify(collectPrices())); } catch (err) { }
+    updateQualityEditor();
+    applyFrameFit(ctx.model.id, "Качество сохранено.");
+  }
+  function onQualityChange(e) {
+    const inp = e.target;
+    if (!inp.classList || !inp.classList.contains("q-slider")) return;
+    if (qualityDraft) qualityCommit(qualityDraft);
+  }
+  function onQualityReset() { qualityCommit({ ...QUALITY_DEFAULT }); }
+  function onQualityAuto() {
+    const ctx = frameEditorCtx();
+    if (!ctx || !qualityImg) return;
+    const up = frameUpscale(qualityImg.img.naturalWidth, qualityImg.img.naturalHeight, frameFitOf(ctx.rec));
+    qualityCommit(qualityAutoFor(up));
+  }
+  function onQualityThumb(e) {
+    const th = document.getElementById("s_qThumb");
+    if (!th) return;
+    const r = th.getBoundingClientRect();
+    if (!r.width || !r.height) return;
+    qualityFocus = {
+      x: Math.max(0.05, Math.min(0.95, (e.clientX - r.left) / r.width)),
+      y: Math.max(0.03, Math.min(0.97, (e.clientY - r.top) / r.height))
+    };
+    qualityRequestPreview();
+  }
+
+  // Подпись «Собираю кадр… / сохранено» — одна на обе панели снимка.
+  function frameNote(text) {
+    ["s_frameNote", "s_qNote"].forEach((id) => {
+      const n = document.getElementById(id);
+      if (n) n.textContent = text || "";
+    });
+  }
+
+  function applyFrameFit(modelId, doneText) {
     const rec = modelPhotoOf(modelId);
     const source = rec && (rec.source || rec.image);
     if (!source) return Promise.resolve();
     const fit = frameFitOf(rec);
+    const quality = qualityOf(rec);
     frameNote("Собираю кадр…");
-    return renderModelPhoto(source, fit)
-      .then((image) => saveModelPhoto(modelId, { ...rec, image: image, source: source, fit: fit, custom: true }, () => {
-        frameNote("Подгонка сохранена.");
-        drawDoor(sceneCtx, true);
+    return renderModelPhoto(source, fit, quality)
+      .then((image) => saveModelPhoto(modelId, { ...rec, image: image, source: source, fit: fit, quality: quality, custom: true }, () => {
+        frameNote(doneText || "Подгонка сохранена.");
+        // Перекраска двери — не сразу: движки обычно подкручивают несколько
+        // раз подряд (см. schedulePartsRedraw).
+        schedulePartsRedraw();
       }))
       .catch(() => { frameNote(""); });
   }
@@ -4445,7 +4679,7 @@ const DB = {
           }
         }
         const fit = { ...FRAME_FIT };
-        const image = drawModelFrame(img, fit).toDataURL("image/jpeg", 0.88);
+        const image = drawModelFrame(img, fit).toDataURL("image/jpeg", 0.92);
         return saveModelPhoto(id, { ...sw, image: image, source: sw.image, fit: fit, custom: true });
       }).catch(() => null);
     }), Promise.resolve())).then(() => true);
@@ -5174,6 +5408,7 @@ const DB = {
     if (sceneMode) {
       updateModelPhotoNote(modelPhoto, !!gridImage);
       updateFrameEditor();
+      updateQualityEditor();
       updatePartsEditor();
     }
   }
@@ -8277,6 +8512,22 @@ const DB = {
     });
     const frameReset = document.getElementById("s_frameReset");
     if (frameReset) frameReset.addEventListener("click", onFrameReset);
+    // Движки качества снимка (см. updateQualityEditor).
+    const qualityPanel = document.getElementById("s_qualityPanel");
+    if (qualityPanel) qualityPanel.addEventListener("toggle", () => updateQualityEditor());
+    document.querySelectorAll(".q-slider").forEach((inp) => {
+      inp.addEventListener("input", onQualityInput);
+      inp.addEventListener("change", onQualityChange);
+    });
+    const qThumb = document.getElementById("s_qThumb");
+    if (qThumb) {
+      qThumb.addEventListener("pointerdown", (e) => { qThumb.setPointerCapture(e.pointerId); onQualityThumb(e); });
+      qThumb.addEventListener("pointermove", (e) => { if (e.buttons || e.pressure) onQualityThumb(e); });
+    }
+    const qAuto = document.getElementById("s_qAuto");
+    if (qAuto) qAuto.addEventListener("click", onQualityAuto);
+    const qReset = document.getElementById("s_qReset");
+    if (qReset) qReset.addEventListener("click", onQualityReset);
     // Разметка деталей модели (см. updatePartsEditor): двигаем и растягиваем
     // прямоугольники прямо по фотографии.
     const partsPanel = document.getElementById("s_partsPanel");
@@ -8595,7 +8846,7 @@ const DB = {
       modelSwatches: Object.fromEntries(Object.entries(DB.modelSwatches || {}).map(([id, sw]) => {
         // Положение движков подгонки — это четыре числа, они лёгкие и
         // остаются здесь даже когда сам снимок уже лежит в IndexedDB.
-        if (sw && sw.custom && modelPhotosConfirmedInIdb.has(id)) return [id, { custom: true, fit: sw.fit }];
+        if (sw && sw.custom && modelPhotosConfirmedInIdb.has(id)) return [id, { custom: true, fit: sw.fit, quality: sw.quality }];
         return [id, sw];
       })),
       // Разметка деталей моделей — лёгкая (несколько чисел на деталь),
@@ -8790,8 +9041,13 @@ const DB = {
         // лежать СТАРОЕ положение вместе со старым кадром. Свежее — то, что
         // в localStorage; берём его, а кадр пересобираем (см. syncModelFrames).
         // Без этого подгонка «не сохранялась» — жалоба заказчика.
-        if (own.fit && values[i] && values[i].fit && JSON.stringify(own.fit) !== JSON.stringify(values[i].fit)) {
-          rec.fit = own.fit;
+        // То же и с движками качества: они пишутся сразу, кадр — позже.
+        const fitDiffers = own.fit && values[i] && values[i].fit && JSON.stringify(own.fit) !== JSON.stringify(values[i].fit);
+        const qualDiffers = own.quality !== undefined && values[i]
+          && JSON.stringify(own.quality || null) !== JSON.stringify(values[i].quality || null);
+        if (fitDiffers || qualDiffers) {
+          if (own.fit) rec.fit = own.fit;
+          if (own.quality !== undefined) rec.quality = own.quality;
           rec.frameStale = true;
         }
         DB.modelSwatches[id] = rec;
@@ -8802,7 +9058,7 @@ const DB = {
         const sw = DB.modelSwatches[id];
         if (sw && sw.custom && sw.image && !known.has(id)) {
           migrations.push(
-            idbPut(PHOTO_STORE_MODEL, id, { image: sw.image, source: sw.source, fit: sw.fit })
+            idbPut(PHOTO_STORE_MODEL, id, { image: sw.image, source: sw.source, fit: sw.fit, quality: sw.quality })
               .then(() => { modelPhotosConfirmedInIdb.add(id); })
               .catch(() => {})
           );
@@ -9275,8 +9531,11 @@ const DB = {
   const FRAME_ZOOM_MIN = 0.2, FRAME_ZOOM_MAX = 20, FRAME_SHIFT_MAX = 20;
   const frameClampZoom = (v) => Math.max(FRAME_ZOOM_MIN, Math.min(FRAME_ZOOM_MAX, v));
   const frameClampShift = (v) => Math.max(-FRAME_SHIFT_MAX, Math.min(FRAME_SHIFT_MAX, v));
-  // Исходник ужимаем: он нужен только чтобы заново нарисовать кадр 680x1668.
-  const FRAME_SOURCE_MAX = 1400;
+  // Исходник ужимаем: он нужен только чтобы заново нарисовать кадр 1020x2502.
+  // Раньше предел был 1400 точек по большей стороне — снимок 635x1821 после него
+  // становился 488x1400. Теперь 2800: телефонный снимок в три-четыре тысячи
+  // точек не теряет подробностей до того, как ляжет в рамку.
+  const FRAME_SOURCE_MAX = 2800;
   function frameFitOf(rec) {
     const f = rec && rec.fit;
     if (!f) return { ...FRAME_FIT };
@@ -9287,19 +9546,91 @@ const DB = {
     };
   }
 
+  // --- Движки качества снимка (у каждой модели свои) -----------------------
+  //
+  // Снимки моделей бывают разными: свой, снятый вплотную, — резкий, а
+  // каталожный — маленький, мягкий, с блоками JPEG. Программа должна
+  // работать без нас: новую модель заказчик загружает сам и сам же подтягивает
+  // качество этой модели тремя движками (панель «Чёткость снимка»). Значения
+  // хранятся у модели (rec.quality) и применяются при сборке кадра.
+  //   sharp  0..300 — «Чёткость»: нерезкая маска по яркости, в процентах;
+  //   smooth 0..100 — «Сглаживание шума»: перед резкостью убирает блоки JPEG;
+  //   lines  0..100 — «Тонкие линии»: радиус размытия рельефа при перекраске
+  //                   двери, от 5 мм до 1 мм (см. paintPartsLeaf).
+  // Радиусы размытия берутся от того, во сколько раз снимок растянут в кадре
+  // (frameUpscale): чем мельче исходник, тем «крупнее» его мягкость и тем
+  // шире надо брать маску.
+  const QUALITY_DEFAULT = { sharp: 0, smooth: 0, lines: 0 };
+  function qualityOf(rec) {
+    const q = rec && rec.quality;
+    if (!q) return { ...QUALITY_DEFAULT };
+    const num = (v, hi) => (typeof v === "number" && isFinite(v) ? Math.max(0, Math.min(hi, v)) : 0);
+    return { sharp: num(q.sharp, 300), smooth: num(q.smooth, 100), lines: num(q.lines, 100) };
+  }
+  // «Тонкие линии» на сам кадр не влияют — только на перекраску.
+  const qualityNeutral = (q) => !(q.sharp > 0) && !(q.smooth > 0);
+  const qualityReliefMm = (q) => 5 - 4 * ((q && q.lines) || 0) / 100;
+
+  // Во сколько раз исходник растянут, чтобы лечь в кадр (не меньше 1).
+  function frameUpscale(iw, ih, fit) {
+    const b = frameBase(iw, ih);
+    const sx = (FRAME_PX.w * b.dw * fit.zx) / iw, sy = (FRAME_PX.h * b.dh * fit.zy) / ih;
+    return Math.max(1, Math.sqrt(sx * sy));
+  }
+
+  // Подбор «по умолчанию» под растяжение: чем мельче исходник, тем сильнее.
+  function qualityAutoFor(up) {
+    return {
+      sharp: Math.max(0, Math.min(220, Math.round((40 + 55 * (up - 1)) / 5) * 5)),
+      smooth: Math.max(0, Math.min(45, Math.round((18 * (up - 1)) / 5) * 5)),
+      lines: 0
+    };
+  }
+
+  // Обработка кадра на месте: сглаживание шума и нерезкая маска ПО ЯРКОСТИ.
+  // Резкость по яркости не красит края и не трогает цвет: добавка (или убыль)
+  // яркости идёт во все три канала поровну.
+  function qualityProcessCanvas(canvas, q, up) {
+    const W = canvas.width, H = canvas.height;
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    const im = ctx.getImageData(0, 0, W, H);
+    const d = im.data;
+    const Y0 = blurLuminance(d, W, H, 0);
+    let Y = Y0;
+    if (q.smooth > 0) {
+      const b = gaussBlurField(Y0, W, H, Math.max(0.7, 0.45 * up));
+      const a = q.smooth / 100;
+      Y = new Float32Array(Y0.length);
+      for (let i = 0; i < Y.length; i++) Y[i] = Y0[i] + (b[i] - Y0[i]) * a;
+    }
+    let Yf = Y;
+    if (q.sharp > 0) {
+      const b = gaussBlurField(Y, W, H, Math.max(0.8, 0.5 + 0.5 * up));
+      const k = q.sharp / 100;
+      Yf = new Float32Array(Y.length);
+      for (let i = 0; i < Yf.length; i++) Yf[i] = Y[i] + (Y[i] - b[i]) * k;
+    }
+    for (let i = 0, p = 0; p < Y0.length; i += 4, p++) {
+      const dl = Yf[p] - Y0[p];
+      if (dl === 0) continue;
+      const r = d[i] + dl, g = d[i + 1] + dl, bl = d[i + 2] + dl;
+      d[i] = r < 0 ? 0 : r > 255 ? 255 : r;
+      d[i + 1] = g < 0 ? 0 : g > 255 ? 255 : g;
+      d[i + 2] = bl < 0 ? 0 : bl > 255 ? 255 : bl;
+    }
+    ctx.putImageData(im, 0, 0);
+  }
+
   // Рисует снимок в рамке: «вписать по большей стороне» (снимок закрывает всю
   // рамку целиком) умножается на масштаб из подгонки, потом сдвигается на
   // сдвиг из подгонки. Пустые поля, если снимок уменьшили, заливаются цветом его края —
   // чёрные поля на сцене читались бы как часть двери.
-  function drawModelFrame(img, fit) {
+  // Кладёт снимок в рамку на холст ctx; (ox, oy) — смещение холста относительно
+  // рамки, в точках: нужно предпросмотру, который рисует лишь кусок кадра в том
+  // же масштабе, что и целый кадр.
+  function drawSourceInFrame(ctx, img, fit, ox, oy, shrunk) {
     const W = FRAME_PX.w, H = FRAME_PX.h;
-    const canvas = document.createElement("canvas");
-    canvas.width = W; canvas.height = H;
-    const ctx = canvas.getContext("2d");
     const iw = img.naturalWidth || img.width, ih = img.naturalHeight || img.height;
-    if (!iw || !ih) return canvas;
-    ctx.fillStyle = imageEdgeHex(img) || "#ffffff";
-    ctx.fillRect(0, 0, W, H);
     const cover = Math.max(W / iw, H / ih);
     const w = iw * cover * fit.zx, h = ih * cover * fit.zy;
     const x = (W - w) / 2 + fit.dx * W, y = (H - h) / 2 + fit.dy * H;
@@ -9307,8 +9638,22 @@ const DB = {
     ctx.imageSmoothingQuality = "high";
     // Уменьшение больше чем вдвое делаем половинками (см. shrinkImage) —
     // иначе тонкие штапики и фрезеровка выпадают через одну.
-    ctx.drawImage(w < iw / 2 || h < ih / 2 ? shrinkImage(img, Math.max(1, Math.round(w)), Math.max(1, Math.round(h))) : img,
-      x, y, w, h);
+    const src = shrunk || (w < iw / 2 || h < ih / 2 ? shrinkImage(img, Math.max(1, Math.round(w)), Math.max(1, Math.round(h))) : img);
+    ctx.drawImage(src, x - ox, y - oy, w, h);
+  }
+
+  function drawModelFrame(img, fit, quality) {
+    const W = FRAME_PX.w, H = FRAME_PX.h;
+    const canvas = document.createElement("canvas");
+    canvas.width = W; canvas.height = H;
+    const ctx = canvas.getContext("2d", { willReadFrequently: !!(quality && !qualityNeutral(quality)) });
+    const iw = img.naturalWidth || img.width, ih = img.naturalHeight || img.height;
+    if (!iw || !ih) return canvas;
+    ctx.fillStyle = imageEdgeHex(img) || "#ffffff";
+    ctx.fillRect(0, 0, W, H);
+    drawSourceInFrame(ctx, img, fit, 0, 0);
+    // Движки качества модели — на уже готовый кадр.
+    if (quality && !qualityNeutral(quality)) qualityProcessCanvas(canvas, quality, frameUpscale(iw, ih, fit));
     return canvas;
   }
 
@@ -9353,7 +9698,7 @@ const DB = {
         cx.imageSmoothingQuality = "high";
         cx.drawImage(k < 0.5 ? shrinkImage(cut, w, h) : cut, 0, 0, w, h);
         URL.revokeObjectURL(url);
-        resolve(canvas.toDataURL("image/jpeg", 0.88));
+        resolve(canvas.toDataURL("image/jpeg", 0.9));
       };
       img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("image load failed")); };
       img.src = url;
@@ -9361,8 +9706,8 @@ const DB = {
   }
 
   // Готовый кадр модели из исходника и положения движков.
-  function renderModelPhoto(sourceUrl, fit) {
-    return loadImageAsync(sourceUrl).then((img) => drawModelFrame(img, fit).toDataURL("image/jpeg", 0.88));
+  function renderModelPhoto(sourceUrl, fit, quality) {
+    return loadImageAsync(sourceUrl).then((img) => drawModelFrame(img, fit, quality).toDataURL("image/jpeg", 0.92));
   }
 
   function modelPhotoOf(modelId) {
@@ -9375,7 +9720,7 @@ const DB = {
   function saveModelPhoto(modelId, rec, after) {
     (DB.modelSwatches || (DB.modelSwatches = {}))[modelId] = rec;
     modelPhotosConfirmedInIdb.delete(modelId);
-    return idbPut(PHOTO_STORE_MODEL, modelId, { image: rec.image, source: rec.source, fit: rec.fit })
+    return idbPut(PHOTO_STORE_MODEL, modelId, { image: rec.image, source: rec.source, fit: rec.fit, quality: rec.quality })
       .then(() => { modelPhotosConfirmedInIdb.add(modelId); })
       .catch(() => {})
       .then(() => {
