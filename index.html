@@ -485,8 +485,10 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
    из неё по пропорции рамки. */
 :root { --stage-h: min(58vh, 560px); --stage-w: calc(var(--stage-h) * 850 / 2085); }
 .frame-stage { position: relative; margin: 0 auto 4px; user-select: none; -webkit-user-select: none; }
+/* Вокруг снимка в панели — поле: рамку блока можно вести за край снимка. */
+.frame-stage { background: #eef1f5; border-radius: 6px; }
 .frame-stage img.frame-src { position: absolute; inset: 0; display: block; width: 100%; height: 100%;
-  border-radius: 4px; pointer-events: none; }
+  border-radius: 2px; pointer-events: none; outline: 1px dashed rgba(0, 0, 0, .28); }
 .frame-clip { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
 .frame-clip i { position: absolute; display: block; box-sizing: border-box; }
 .frame-clip .fb { border: 2px solid rgba(232, 74, 14, .95); }
@@ -573,6 +575,14 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 .wall-adjust-panel { margin-top: 0; }
 
 /* Панель тон-коррекции плёнки в «Изменение цен» */
+/* Группы панелей на странице «2D картинка»: «Стена» и «Дверь». Заголовок
+   крупнее заголовков панелей внутри, чтобы сразу было видно два уровня. */
+.scene-group { border: 1px solid var(--border); border-radius: 12px; background: var(--card-bg); }
+.scene-group > summary { cursor: pointer; padding: 14px 16px; font-size: 17px; font-weight: 700; color: var(--text, inherit);
+  list-style-position: inside; }
+.scene-group[open] > summary { border-bottom: 1px solid var(--border); }
+.scene-group-body { display: flex; flex-direction: column; gap: 10px; padding: 10px 16px 14px; }
+.scene-nophoto { margin: 0; padding: 10px 12px; border-radius: 8px; background: rgba(168, 85, 0, .09); color: var(--muted); font-size: 13px; }
 .adjust-panel { flex: 1 1 100%; min-width: 0; margin-top: 4px; }
 .adjust-panel > summary { cursor: pointer; font-size: 13px; color: var(--accent); font-weight: 600; }
 .adjust-body { display: flex; flex-direction: column; gap: 2px; padding: 10px 0 4px; width: 100%; min-width: 0; box-sizing: border-box; }
@@ -1401,6 +1411,12 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
       <div class="scene-controls">
         <!-- Всё, кроме самой картинки, свёрнуто: программой пользуются с
              телефона, и раскрытые списки образцов занимали целый экран. -->
+        <!-- Две группы, обе свёрнуты: «Стена» — комната вокруг двери, «Дверь» —
+             сама дверь и её снимок. Раньше семь панелей шли одним списком, и
+             нужную приходилось искать глазами. -->
+        <details class="scene-group" id="s_groupWall">
+          <summary>Стена</summary>
+          <div class="scene-group-body">
         <details class="adjust-panel" id="s_wallColorPanel">
           <summary>Цвет стены</summary>
           <div class="adjust-body">
@@ -1435,6 +1451,15 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
             </div>
           </div>
         </details>
+          </div>
+        </details>
+        <details class="scene-group" id="s_groupDoor">
+          <summary>Дверь</summary>
+          <div class="scene-group-body">
+        <!-- У модели без фото нет ни подгонки, ни чёткости, ни деталей: чинить
+             нечего. Чтобы не гадать, куда они делись, вместо них — эта строка
+             (см. updateSceneGroups). -->
+        <p class="parts-hint scene-nophoto" id="s_doorNoPhoto" hidden>У этой модели нет фото, поэтому подгонки, чёткости и деталей здесь нет. Загрузите фото: «Изменение цен» → модель → «Загрузить файл» — и настройки появятся.</p>
         <!-- Светотень двери. Программа не выдумывает свет: фаски, фрезеровку
              и тени она берёт со снимка модели, поэтому и направление света —
              то, что на фотографии. Ползунок только усиливает или ослабляет
@@ -1461,7 +1486,7 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
         <details class="adjust-panel frame-panel" id="s_framePanel" hidden>
           <summary>Фото в рамке</summary>
           <div class="adjust-body">
-            <p class="parts-hint">Оранжевая рамка — весь блок 850 × 2085 мм: полотно 700 × 2000, наличники по 70, зазоры по 5 и щель до пола 10. Потяните за один угол так, чтобы он встал в угол блока на снимке (левый верхний — внешний угол верхнего наличника, правый нижний — пол), отпустите — сохранится. Затем противоположный угол по диагонали. Пунктир внутри — полотно: его края должны лечь на края полотна на снимке.</p>
+            <p class="parts-hint">Оранжевая рамка — весь блок 850 × 2085 мм: полотно 700 × 2000, наличники по 70, зазоры по 5 и щель до пола 10. Потяните за один угол так, чтобы он встал в угол блока на снимке (левый верхний — внешний угол верхнего наличника, правый нижний — пол), отпустите — сохранится. Затем противоположный угол по диагонали. Пунктир внутри — полотно: его края должны лечь на края полотна на снимке. Если на снимке нет наличника или он обрезан — ведите угол за край снимка, в поле вокруг него: недостающее место зальётся цветом края.</p>
             <div class="frame-stage" id="s_frameStage"></div>
             <p class="frame-note" id="s_frameNote"></p>
             <div class="adjust-actions">
@@ -1509,6 +1534,8 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
             <div class="parts-stage" id="s_partsStage"></div>
             <div class="parts-kinds" id="s_partsKinds"></div>
             <div class="parts-tools" id="s_partsTools"></div>
+          </div>
+        </details>
           </div>
         </details>
         <button type="button" id="sceneBackBtn" class="btn-goto">← Возврат на страницу расчёта</button>
@@ -4281,11 +4308,20 @@ const DB = {
 
   // Блок не выходит за край снимка и не тоньше FRAME_BOX_MIN: иначе масштаб
   // уходит в бесконечность.
+  // Рамка блока МОЖЕТ выходить за край снимка. Каталожные фото часто показывают
+  // одно полотно, без наличника и зазоров, и тогда блок 850x2085 мм по размеру
+  // больше самого снимка: с рамкой, запертой внутри снимка, такую дверь было не
+  // подогнать — «на некоторых моделях фото в рамке не работает». Поэтому вокруг
+  // снимка в панели есть поле (FRAME_PAD, в долях снимка), и угол можно вести в
+  // него; недостающее место в кадре зальётся цветом края снимка (см.
+  // drawModelFrame).
+  const FRAME_PAD = { x: 0.14, y: 0.08 };
   function frameClampBox(b) {
-    const x0 = Math.max(0, b.x), y0 = Math.max(0, b.y);
-    const x1 = Math.min(1, b.x + b.w), y1 = Math.min(1, b.y + b.h);
+    const lo = { x: -FRAME_PAD.x, y: -FRAME_PAD.y }, hi = { x: 1 + FRAME_PAD.x, y: 1 + FRAME_PAD.y };
+    const x0 = Math.max(lo.x, b.x), y0 = Math.max(lo.y, b.y);
+    const x1 = Math.min(hi.x, b.x + b.w), y1 = Math.min(hi.y, b.y + b.h);
     const w = Math.max(FRAME_BOX_MIN, x1 - x0), h = Math.max(FRAME_BOX_MIN, y1 - y0);
-    return { x: Math.min(x0, 1 - w), y: Math.min(y0, 1 - h), w: w, h: h };
+    return { x: Math.min(x0, hi.x - w), y: Math.min(y0, hi.y - h), w: w, h: h };
   }
 
   function frameStageEls() {
@@ -4308,9 +4344,11 @@ const DB = {
   // полотна на снимке) и четыре ручки по углам.
   function frameDrawBox(els, box) {
     const pct = (v) => (v * 100).toFixed(3) + "%";
+    // Из долей снимка — в доли панели: у панели вокруг снимка есть поле.
+    const kx = 1 + 2 * FRAME_PAD.x, ky = 1 + 2 * FRAME_PAD.y;
     const set = (n, r) => {
-      n.style.left = pct(r.x); n.style.top = pct(r.y);
-      n.style.width = pct(r.w); n.style.height = pct(r.h);
+      n.style.left = pct((r.x + FRAME_PAD.x) / kx); n.style.top = pct((r.y + FRAME_PAD.y) / ky);
+      n.style.width = pct(r.w / kx); n.style.height = pct(r.h / ky);
     };
     set(els.box, box);
     set(els.leaf, {
@@ -4323,7 +4361,7 @@ const DB = {
     };
     els.handles.forEach((h) => {
       const p = at[h.dataset.c];
-      h.style.left = pct(p[0]); h.style.top = pct(p[1]);
+      h.style.left = pct((p[0] + FRAME_PAD.x) / kx); h.style.top = pct((p[1] + FRAME_PAD.y) / ky);
     });
   }
 
@@ -4334,9 +4372,15 @@ const DB = {
     if (!iw || !ih) return;
     const maxW = (els.stage.parentElement && els.stage.parentElement.clientWidth) || 300;
     const maxH = Math.min(window.innerHeight * 0.58, 560);
-    const k = Math.min(maxW / iw, maxH / ih);
-    els.stage.style.width = Math.round(iw * k) + "px";
-    els.stage.style.height = Math.round(ih * k) + "px";
+    // Панель — снимок плюс поле вокруг него (FRAME_PAD).
+    const kx = 1 + 2 * FRAME_PAD.x, ky = 1 + 2 * FRAME_PAD.y;
+    const k = Math.min(maxW / (iw * kx), maxH / (ih * ky));
+    els.stage.style.width = Math.round(iw * kx * k) + "px";
+    els.stage.style.height = Math.round(ih * ky * k) + "px";
+    const im = els.img.style;
+    im.left = (FRAME_PAD.x / kx * 100).toFixed(3) + "%"; im.top = (FRAME_PAD.y / ky * 100).toFixed(3) + "%";
+    im.width = (100 / kx).toFixed(3) + "%"; im.height = (100 / ky).toFixed(3) + "%";
+    im.right = "auto"; im.bottom = "auto";
     frameDrawBox(els, frameClampBox(frameBoxOnSource(frameFitOf(rec), iw, ih)));
   }
 
@@ -4350,6 +4394,9 @@ const DB = {
     // Пока палец ведёт угол, панель не перестраиваем: перекраска двери
     // считается в фоне и по готовности перерисовывает сцену, а если в этот
     // момент переставить ручки, жест собьётся.
+    // Жест, оборвавшийся без «пальца вверх» (или начатый на другой модели),
+    // не должен блокировать панель навсегда.
+    if (frameDrag && (frameDrag.modelId !== ctx.model.id || Date.now() - frameDrag.at > 20000)) frameDrag = null;
     if (frameDrag) return;
     const els = frameStageEls();
     if (!els) return;
@@ -4382,6 +4429,7 @@ const DB = {
   let qualityFocus = { x: 0.32, y: 0.26 };     // что смотрим, в долях кадра
   let qualityFocusSrc = null;                   // для какого снимка фокус уже подобран сам
   let qualityDraft = null;                      // значения, пока палец на движке
+  let qualityDraftModel = null;                 // чьи это значения
   let qualityImg = null;                        // загруженный исходник текущей модели
   let qualityRaf = 0;
 
@@ -4444,10 +4492,43 @@ const DB = {
   }
   const fitKey = (fit) => [fit.zx, fit.zy, fit.dx, fit.dy].join("|");
 
+  // Красный прямоугольник на двери слева двигается ВСЕГДА, что бы ни случилось
+  // с предпросмотром: раньше он обновлялся в самом конце его отрисовки, и если
+  // снимок текущей модели ещё не загрузился (или отрисовка упала), прямоугольник
+  // молча стоял на месте — заказчик: «красный прямоугольник не двигается».
+  function qualityMoveMark() {
+    const mark = document.getElementById("s_qMark");
+    if (mark) { mark.style.left = (qualityFocus.x * 100).toFixed(2) + "%"; mark.style.top = (qualityFocus.y * 100).toFixed(2) + "%"; }
+  }
+
+  // Загружает снимок ТЕКУЩЕЙ модели для предпросмотра. Вызывается и при смене
+  // модели, и при касании двери, если под рукой снимок другой модели.
+  function qualityLoad(ctx) {
+    const src = ctx.rec.source || ctx.rec.image;
+    const modelId = ctx.model.id;
+    return loadImageAsync(src).then((img) => {
+      const now = frameEditorCtx();
+      // Пока снимок грузился, модель успели сменить — этот результат лишний.
+      if (!now || now.model.id !== modelId || (now.rec.source || now.rec.image) !== src) return;
+      qualityImg = { src: src, img: img, shrunk: null, shrunkFor: null };
+      if (qualityFocusSrc !== src) {
+        try { qualityFocus = qualityPickFocus(img, frameFitOf(now.rec)); } catch (err) { }
+        qualityFocusSrc = src;
+      }
+      qualityRequestPreview();
+    }).catch(() => {});
+  }
+
   function qualityRenderPreview() {
     qualityRaf = 0;
+    qualityMoveMark();
     const ctx = frameEditorCtx();
-    if (!ctx || !qualityImg || qualityImg.src !== (ctx.rec.source || ctx.rec.image)) return;
+    if (!ctx) return;
+    if (!qualityImg || qualityImg.src !== (ctx.rec.source || ctx.rec.image)) { qualityLoad(ctx); return; }
+    try { qualityDrawPreview(ctx); } catch (err) { }
+  }
+
+  function qualityDrawPreview(ctx) {
     const img = qualityImg.img;
     const fit = frameFitOf(ctx.rec);
     const q = qualityValuesNow(ctx.rec);
@@ -4466,8 +4547,6 @@ const DB = {
     };
     draw("s_qBefore", qualityRenderCrop(img, fit, q, false));
     draw("s_qAfter", qualityRenderCrop(img, fit, q, true));
-    const mark = document.getElementById("s_qMark");
-    if (mark) { mark.style.left = (qualityFocus.x * 100).toFixed(2) + "%"; mark.style.top = (qualityFocus.y * 100).toFixed(2) + "%"; }
   }
   function qualityRequestPreview() { if (!qualityRaf) qualityRaf = requestAnimationFrame(qualityRenderPreview); }
 
@@ -4483,20 +4562,17 @@ const DB = {
     panel.hidden = !ctx;
     if (!ctx) { panel.open = false; return; }
     if (!panel.open) return;
-    if (qualityDraft) return;                    // палец на движке — не перестраиваем
+    // Палец на движке — не перестраиваем. Но «зависший» черновик другой модели
+    // (движок отпустили не там, жест оборвался) не должен блокировать панель
+    // навсегда: тогда после смены модели она стояла бы на старой.
+    if (qualityDraft && qualityDraftModel !== ctx.model.id) qualityDraft = null;
+    if (qualityDraft) return;
     const th = document.getElementById("s_qThumbImg");
     if (th && th.getAttribute("src") !== ctx.rec.image) th.setAttribute("src", ctx.rec.image);
     qualityShowValues(qualityOf(ctx.rec));
     const src = ctx.rec.source || ctx.rec.image;
     if (qualityImg && qualityImg.src === src) { qualityRequestPreview(); return; }
-    loadImageAsync(src).then((img) => {
-      qualityImg = { src: src, img: img, shrunk: null, shrunkFor: null };
-      if (qualityFocusSrc !== src) {
-        try { qualityFocus = qualityPickFocus(img, frameFitOf(ctx.rec)); } catch (err) { }
-        qualityFocusSrc = src;
-      }
-      qualityRequestPreview();
-    }).catch(() => {});
+    qualityLoad(ctx);
   }
 
   function onQualityInput(e) {
@@ -4505,6 +4581,7 @@ const DB = {
     const ctx = frameEditorCtx();
     if (!ctx) return;
     qualityDraft = qualityDraft || qualityOf(ctx.rec);
+    qualityDraftModel = ctx.model.id;
     qualityDraft[inp.dataset.k] = Number(inp.value) || 0;
     const v = document.querySelector('.qv[data-k="' + inp.dataset.k + '"]');
     if (v) v.textContent = String(Math.round(qualityDraft[inp.dataset.k]));
@@ -4521,10 +4598,28 @@ const DB = {
     updateQualityEditor();
     applyFrameFit(ctx.model.id, "Качество сохранено.");
   }
+  // Движок закончили двигать — сохраняем. Событие «change» браузер шлёт, только
+  // если значение ИЗМЕНИЛОСЬ относительно того, что было при касании: потянул
+  // 0 → 200 → 0 — и «change» нет, а черновик остаётся висеть и блокирует панель
+  // (после смены модели она стояла на старой — жалоба заказчика). Поэтому
+  // сохраняем ещё и по «пальцу вверх» и по уходу фокуса; повторный вызов ничего
+  // не делает, а черновик, совпавший с сохранённым, просто убирается.
+  function qualityFinish() {
+    if (!qualityDraft) return;
+    const ctx = frameEditorCtx();
+    if (!ctx || qualityDraftModel !== ctx.model.id) { qualityDraft = null; return; }
+    const saved = qualityOf(ctx.rec), d = qualityDraft;
+    if (d.sharp === saved.sharp && d.smooth === saved.smooth && d.lines === saved.lines) {
+      qualityDraft = null;
+      updateQualityEditor();
+      return;
+    }
+    qualityCommit(d);
+  }
   function onQualityChange(e) {
     const inp = e.target;
     if (!inp.classList || !inp.classList.contains("q-slider")) return;
-    if (qualityDraft) qualityCommit(qualityDraft);
+    qualityFinish();
   }
   function onQualityReset() { qualityCommit({ ...QUALITY_DEFAULT }); }
   function onQualityAuto() {
@@ -4599,7 +4694,7 @@ const DB = {
     // Стоит на месте угол напротив: тянем западный — держится восточный.
     frameDrag = {
       modelId: ctx.model.id, c: c, iw: iw, ih: ih, rect: rect, els: els,
-      pointerId: e.pointerId, now: box, moved: false,
+      pointerId: e.pointerId, now: box, moved: false, at: Date.now(),
       fx: c.indexOf("w") >= 0 ? box.x + box.w : box.x,
       fy: c.indexOf("n") >= 0 ? box.y + box.h : box.y
     };
@@ -4611,14 +4706,18 @@ const DB = {
   function onFrameHandleMove(e) {
     const d = frameDrag;
     if (!d || e.pointerId !== d.pointerId) return;
-    const clamp01 = (v) => Math.max(0, Math.min(1, v));
-    const px = clamp01((e.clientX - d.rect.left) / d.rect.width);
-    const py = clamp01((e.clientY - d.rect.top) / d.rect.height);
+    // Палец — в доли панели, потом в доли снимка (у панели есть поле, а угол
+    // можно вести и за край снимка).
+    const kx = 1 + 2 * FRAME_PAD.x, ky = 1 + 2 * FRAME_PAD.y;
+    const clampTo = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+    const px = clampTo((e.clientX - d.rect.left) / d.rect.width, 0, 1) * kx - FRAME_PAD.x;
+    const py = clampTo((e.clientY - d.rect.top) / d.rect.height, 0, 1) * ky - FRAME_PAD.y;
+    const lox = -FRAME_PAD.x, hix = 1 + FRAME_PAD.x, loy = -FRAME_PAD.y, hiy = 1 + FRAME_PAD.y;
     let x0, x1, y0, y1;
-    if (d.c.indexOf("w") >= 0) { x1 = d.fx; x0 = Math.max(0, Math.min(px, x1 - FRAME_BOX_MIN)); }
-    else { x0 = d.fx; x1 = Math.min(1, Math.max(px, x0 + FRAME_BOX_MIN)); }
-    if (d.c.indexOf("n") >= 0) { y1 = d.fy; y0 = Math.max(0, Math.min(py, y1 - FRAME_BOX_MIN)); }
-    else { y0 = d.fy; y1 = Math.min(1, Math.max(py, y0 + FRAME_BOX_MIN)); }
+    if (d.c.indexOf("w") >= 0) { x1 = d.fx; x0 = Math.max(lox, Math.min(px, x1 - FRAME_BOX_MIN)); }
+    else { x0 = d.fx; x1 = Math.min(hix, Math.max(px, x0 + FRAME_BOX_MIN)); }
+    if (d.c.indexOf("n") >= 0) { y1 = d.fy; y0 = Math.max(loy, Math.min(py, y1 - FRAME_BOX_MIN)); }
+    else { y0 = d.fy; y1 = Math.min(hiy, Math.max(py, y0 + FRAME_BOX_MIN)); }
     d.now = { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
     d.moved = true;
     frameDrawBox(d.els, d.now);
@@ -5407,10 +5506,57 @@ const DB = {
 
     if (sceneMode) {
       updateModelPhotoNote(modelPhoto, !!gridImage);
-      updateFrameEditor();
-      updateQualityEditor();
-      updatePartsEditor();
+      refreshSceneEditors();
     }
+  }
+
+  // Три панели снимка обновляются по очереди, каждая под своей защитой: сбой
+  // одной (необычная модель, повреждённая запись) не должен оставлять две
+  // другие стоять на данных прежней модели.
+  function refreshSceneEditors() {
+    [updateFrameEditor, updateQualityEditor, updatePartsEditor].forEach((fn) => { try { fn(); } catch (err) { } });
+    updateSceneGroups();
+  }
+
+  // Группы «Стена» и «Дверь»: стена прячется целиком, когда спрятаны все три её
+  // панели (снимок «Матрицы» задаёт фон сам); у двери вместо панелей снимка —
+  // строка, если у модели нет фото.
+  function updateSceneGroups() {
+    const wall = document.getElementById("s_groupWall");
+    if (wall) {
+      const kids = ["s_wallColorPanel", "s_wallTexturePanel", "s_wallAdjustPanel"].map((id) => document.getElementById(id));
+      wall.hidden = kids.every((n) => !n || n.hidden);
+    }
+    const hint = document.getElementById("s_doorNoPhoto");
+    if (hint) {
+      const m = getModel(state.modelId);
+      hint.hidden = !m || !!frameEditorCtx();
+    }
+  }
+
+  // Какие группы открыты — запоминаем: заказчик настраивает дверь за дверью, и
+  // каждый раз раскрывать «Дверь» заново неудобно. Только удобство: без
+  // памяти браузера обе группы просто свёрнуты.
+  const SCENE_GROUPS_KEY = "doorcalc_scene_groups_v1";
+  function initSceneGroups() {
+    let saved = {};
+    try { saved = JSON.parse(localStorage.getItem(SCENE_GROUPS_KEY) || "{}") || {}; } catch (err) { }
+    [["s_groupWall", "wall"], ["s_groupDoor", "door"]].forEach(([id, key]) => {
+      const g = document.getElementById(id);
+      if (!g) return;
+      if (saved[key]) g.open = true;
+      g.addEventListener("toggle", () => {
+        try {
+          const now = JSON.parse(localStorage.getItem(SCENE_GROUPS_KEY) || "{}") || {};
+          now[key] = g.open;
+          localStorage.setItem(SCENE_GROUPS_KEY, JSON.stringify(now));
+        } catch (err) { }
+        // Раскрытая группа впервые показывает панели с настоящими размерами —
+        // пока она была свёрнута, они считали раскладку по нулевой ширине.
+        if (g.open) refreshSceneEditors();
+      });
+    });
+    updateSceneGroups();
   }
 
   // --- Сцена интерьера (стена, пол, наличник, мебель) ------------------
@@ -8494,6 +8640,7 @@ const DB = {
         drawDoor(sceneCtx, true);
       });
     }
+    initSceneGroups();
     // Подгонка блока за углы (см. updateFrameEditor): тянут ручку в углу
     // рамки, отпустили — сохранилось.
     const framePanel = document.getElementById("s_framePanel");
@@ -8518,10 +8665,14 @@ const DB = {
     document.querySelectorAll(".q-slider").forEach((inp) => {
       inp.addEventListener("input", onQualityInput);
       inp.addEventListener("change", onQualityChange);
+      ["pointerup", "touchend", "blur"].forEach((t) => inp.addEventListener(t, qualityFinish));
     });
     const qThumb = document.getElementById("s_qThumb");
     if (qThumb) {
-      qThumb.addEventListener("pointerdown", (e) => { qThumb.setPointerCapture(e.pointerId); onQualityThumb(e); });
+      qThumb.addEventListener("pointerdown", (e) => {
+        onQualityThumb(e);
+        try { qThumb.setPointerCapture(e.pointerId); } catch (err) { }
+      });
       qThumb.addEventListener("pointermove", (e) => { if (e.buttons || e.pressure) onQualityThumb(e); });
     }
     const qAuto = document.getElementById("s_qAuto");
