@@ -9774,6 +9774,31 @@ const DB = {
   // было, см. FACTORY_COLOR_SWATCHES), а для цветов без заводского фото
   // (добавленных через «+ Добавить цвет») просто убирает запись целиком —
   // превью возвращается к обычной заливке цветом (см. colorRow).
+  // «Убрать все свои фото плёнок»: заказчик переснял все плёнки и хочет начать с
+  // чистого места. Трогает ТОЛЬКО плёнки: загруженные фото цветов
+  // (DB.colorSwatches + IndexedDB colorPhotos) и настройки тона цветов ПВХ
+  // (DB.colorAdjust) — тон подбирался под прежние фото и лёг бы поверх новых.
+  // Фото моделей дверей, их подгонка, чёткость и разметка (DB.modelSwatches,
+  // modelParts) и тон цветов эмали (у них фото нет, тон — единственная
+  // настройка) остаются как были.
+  function onColorRemoveAll() {
+    const photoNames = Object.keys(DB.colorSwatches);
+    photoNames.forEach((name) => {
+      delete DB.colorSwatches[name];
+      colorPhotosConfirmedInIdb.delete(name);
+    });
+    const adj = DB.colorAdjust || (DB.colorAdjust = {});
+    new Set([...photoNames, ...Object.keys(FILM_COLOR_HEX)]).forEach((name) => { delete adj[name]; });
+    idbGetAll(PHOTO_STORE_COLOR)
+      .then(({ keys }) => Promise.all(Array.from(new Set([...keys, ...photoNames])).map((k) => idbDelete(PHOTO_STORE_COLOR, k).catch(() => {}))))
+      .catch(() => {})
+      .then(() => {
+        savePrices();
+        renderPriceEditor();
+        render();
+      });
+  }
+
   function onColorRemovePhoto(name) {
     if (FACTORY_COLOR_SWATCHES[name]) DB.colorSwatches[name] = { ...FACTORY_COLOR_SWATCHES[name] };
     else delete DB.colorSwatches[name];
@@ -10440,7 +10465,9 @@ const DB = {
     colorRows += addBtn("material", {}, "Добавить материал");
     parts.push(`<details class="price-group" data-key="color"${isOpen("color", false) ? " open" : ""}>
       <summary>Пленка ПВХ и эмаль (цвета и категории)</summary>
-      <div class="price-body">${colorRows}</div></details>`);
+      <div class="price-body">${Object.keys(DB.colorSwatches).length || Object.keys(DB.colorAdjust || {}).some((n) => FILM_COLOR_HEX[n])
+        ? `<button type="button" class="row-add color-upload-remove" data-field="removeAllColorPhotos">✕ Убрать все свои фото плёнок и настройки тона</button>`
+        : ""}${colorRows}</div></details>`);
 
     // Опции — та же логика материала, что и у цветов (см. выше), только
     // ключ editItem другой (materialGroupOpt), чтобы состояние открыт/
@@ -10841,6 +10868,11 @@ const DB = {
   }
 
   function onPriceClick(e) {
+    const removeAllColors = e.target.closest('[data-field="removeAllColorPhotos"]');
+    if (removeAllColors) {
+      armRemoveFileButton(removeAllColors, onColorRemoveAll);
+      return;
+    }
     const removePhoto = e.target.closest('[data-field="removePhoto"]');
     if (removePhoto) {
       armRemoveFileButton(removePhoto, () => onColorRemovePhoto(removePhoto.dataset.color));
