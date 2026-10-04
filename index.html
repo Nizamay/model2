@@ -511,12 +511,12 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
    ним (жалоба заказчика), поэтому кружок сначала стал в 2,6 раза крупнее и
    пустым, а теперь ещё и стоит СНАРУЖИ угла по диагонали и касается его
    только краем: палец лежит на кружке, а сам угол и линии у него остаются на
-   виду. Кружок 88 px; центр сдвинут от угла на --s по каждой оси (радиус на
+   виду. Кружок 72 px; центр сдвинут от угла на --s по каждой оси (радиус на
    корень из двух, минус 2 px, чтобы край честно заходил на угол). Касание
    ловит весь круг (border-radius у самой ручки, иначе ловил бы квадрат).
    touch-action только у ручек: страница под снимком прокручивается. Поля
    вокруг снимка в панели (margin у .frame-stage) оставлены под кружки. */
-.fh { --d: 88px; --s: 29px; position: absolute; width: var(--d); height: var(--d); border-radius: 50%;
+.fh { --d: 72px; --s: 23px; position: absolute; width: var(--d); height: var(--d); border-radius: 50%;
   touch-action: none; cursor: grab; z-index: 2; }
 .fh-nw { margin: calc(var(--d) / -2 - var(--s)) 0 0 calc(var(--d) / -2 - var(--s)); }
 .fh-ne { margin: calc(var(--d) / -2 - var(--s)) 0 0 calc(var(--d) / -2 + var(--s)); }
@@ -4675,20 +4675,32 @@ const DB = {
     });
   }
 
+  // Номер последней пересборки кадра по моделям (см. applyFrameFit).
+  const frameRenderSeq = {};
+
   function applyFrameFit(modelId, doneText) {
     const rec = modelPhotoOf(modelId);
     const source = rec && (rec.source || rec.image);
     if (!source) return Promise.resolve();
     const fit = frameFitOf(rec);
     const quality = qualityOf(rec);
+    // Подгонку часто двигают подряд. Каждая новая пересборка отменяет прежнюю
+    // (она ещё считается порциями) и не даёт ей потом записать устаревший кадр
+    // поверх нового.
+    const seq = (frameRenderSeq[modelId] = (frameRenderSeq[modelId] || 0) + 1);
+    const isStale = () => frameRenderSeq[modelId] !== seq;
     frameNote("Собираю кадр…");
-    return renderModelPhoto(source, fit, quality)
-      .then((image) => saveModelPhoto(modelId, { ...rec, image: image, source: source, fit: fit, quality: quality, custom: true }, () => {
-        frameNote(doneText || "Подгонка сохранена.");
-        // Перекраска двери — не сразу: движки обычно подкручивают несколько
-        // раз подряд (см. schedulePartsRedraw).
-        schedulePartsRedraw();
-      }))
+    return renderModelPhoto(source, fit, quality, isStale)
+      .then((image) => {
+        if (image === null || isStale()) return null;
+        const cur = modelPhotoOf(modelId) || rec;
+        return saveModelPhoto(modelId, { ...cur, image: image, source: source, fit: fit, quality: quality, custom: true }, () => {
+          frameNote(doneText || "Подгонка сохранена.");
+          // Перекраска двери — не сразу: движки обычно подкручивают несколько
+          // раз подряд (см. schedulePartsRedraw).
+          schedulePartsRedraw();
+        });
+      })
       .catch(() => { frameNote(""); });
   }
 
@@ -9874,6 +9886,89 @@ const DB = {
     ctx.putImageData(im, 0, 0);
   }
 
+  // Радиус влияния гауссова размытия gaussBlurField: сумма радиусов трёх
+  // «коробочек» (те же формулы), т. е. на сколько строк в обе стороны оно
+  // «видит». Нужен полосам ниже: полоса берёт столько лишних строк, сколько
+  // видит размытие, и тогда на своих строках считает точно то же, что и
+  // целый кадр.
+  function gaussReach(sigma) {
+    if (!(sigma > 0.3)) return 0;
+    const n = 3;
+    let wl = Math.floor(Math.sqrt((12 * sigma * sigma) / n + 1));
+    if (wl % 2 === 0) wl--;
+    const wu = wl + 2;
+    const m = Math.round((12 * sigma * sigma - n * wl * wl - 4 * n * wl - 3 * n) / (-4 * wl - 4));
+    let sum = 0;
+    for (let i = 0; i < n; i++) {
+      const r = ((i < m ? wl : wu) - 1) / 2;
+      if (r >= 1) sum += r;
+    }
+    return Math.ceil(sum);
+  }
+
+  // То же, что qualityProcessCanvas, но порциями: целый кадр 1020x2502 одним
+  // куском держал страницу занятой 3-4 секунды (на телефоне), и пока он
+  // считался, угол рамки нельзя было тронуть — «фото в рамке зависает»
+  // (жалоба заказчика). Кадр режется на полосы по STRIP_ROWS строк; каждая
+  // берёт сверху и снизу запас строк (gaussReach), чтобы размытие у границы
+  // полосы видело то же, что видит целый кадр, и результат получался точка в
+  // точку тем же. Между полосами страница отвечает на касания. isStale() —
+  // кадр уже никому не нужен (подгонку двинули снова): тогда бросаем (false).
+  const QUALITY_STRIP_ROWS = 48;
+  async function qualityProcessCanvasSliced(canvas, q, up, isStale) {
+    const W = canvas.width, H = canvas.height;
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    const im = ctx.getImageData(0, 0, W, H);
+    const d = im.data;
+    const Y0all = new Float32Array(W * H);
+    for (let i = 0, p = 0; p < Y0all.length; i += 4, p++) {
+      Y0all[p] = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+    }
+    const sigS = q.smooth > 0 ? Math.max(0.7, 0.45 * up) : 0;
+    const sigK = q.sharp > 0 ? Math.max(0.8, 0.5 + 0.5 * up) : 0;
+    const halo = gaussReach(sigS) + gaussReach(sigK) + 2;
+    let sliceAt = performance.now();
+    for (let y0 = 0; y0 < H; y0 += QUALITY_STRIP_ROWS) {
+      const y1 = Math.min(H, y0 + QUALITY_STRIP_ROWS);
+      const top = Math.max(0, y0 - halo), bot = Math.min(H, y1 + halo);
+      const h = bot - top;
+      const Y0 = Y0all.subarray(top * W, bot * W);
+      let Y = Y0;
+      if (q.smooth > 0) {
+        const b = gaussBlurField(Y0, W, h, sigS);
+        const a = q.smooth / 100;
+        Y = new Float32Array(Y0.length);
+        for (let i = 0; i < Y.length; i++) Y[i] = Y0[i] + (b[i] - Y0[i]) * a;
+      }
+      let Yf = Y;
+      if (q.sharp > 0) {
+        const b = gaussBlurField(Y, W, h, sigK);
+        const k = q.sharp / 100;
+        Yf = new Float32Array(Y.length);
+        for (let i = 0; i < Yf.length; i++) Yf[i] = Y[i] + (Y[i] - b[i]) * k;
+      }
+      for (let row = y0; row < y1; row++) {
+        const o = (row - top) * W;
+        let i = row * W * 4;
+        for (let x = 0; x < W; x++, i += 4) {
+          const dl = Yf[o + x] - Y0[o + x];
+          if (dl === 0) continue;
+          const r = d[i] + dl, g = d[i + 1] + dl, bl = d[i + 2] + dl;
+          d[i] = r < 0 ? 0 : r > 255 ? 255 : r;
+          d[i + 1] = g < 0 ? 0 : g > 255 ? 255 : g;
+          d[i + 2] = bl < 0 ? 0 : bl > 255 ? 255 : bl;
+        }
+      }
+      if (performance.now() - sliceAt >= PAINT_SLICE_MS) {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        sliceAt = performance.now();
+        if (isStale && isStale()) return false;
+      }
+    }
+    ctx.putImageData(im, 0, 0);
+    return true;
+  }
+
   // Рисует снимок в рамке: «вписать по большей стороне» (снимок закрывает всю
   // рамку целиком) умножается на масштаб из подгонки, потом сдвигается на
   // сдвиг из подгонки. Пустые поля, если снимок уменьшили, заливаются цветом его края —
@@ -9895,7 +9990,8 @@ const DB = {
     ctx.drawImage(src, x - ox, y - oy, w, h);
   }
 
-  function drawModelFrame(img, fit, quality) {
+  // Кадр без движков качества — общая часть синхронной и порционной сборки.
+  function drawModelFrameBase(img, fit, quality) {
     const W = FRAME_PX.w, H = FRAME_PX.h;
     const canvas = document.createElement("canvas");
     canvas.width = W; canvas.height = H;
@@ -9905,9 +10001,30 @@ const DB = {
     ctx.fillStyle = imageEdgeHex(img) || "#ffffff";
     ctx.fillRect(0, 0, W, H);
     drawSourceInFrame(ctx, img, fit, 0, 0);
-    // Движки качества модели — на уже готовый кадр.
-    if (quality && !qualityNeutral(quality)) qualityProcessCanvas(canvas, quality, frameUpscale(iw, ih, fit));
     return canvas;
+  }
+
+  function drawModelFrame(img, fit, quality) {
+    const canvas = drawModelFrameBase(img, fit, quality);
+    const iw = img.naturalWidth || img.width, ih = img.naturalHeight || img.height;
+    // Движки качества модели — на уже готовый кадр.
+    if (iw && ih && quality && !qualityNeutral(quality)) qualityProcessCanvas(canvas, quality, frameUpscale(iw, ih, fit));
+    return canvas;
+  }
+
+  // Холст в JPEG-адрес, но кодирует браузер в фоне (toBlob), а не страница:
+  // toDataURL на кадре 1020x2502 держал её занятой отдельным куском.
+  function canvasToJpegUrl(canvas, quality) {
+    return new Promise((resolve, reject) => {
+      if (!canvas.toBlob) { try { resolve(canvas.toDataURL("image/jpeg", quality)); } catch (err) { reject(err); } return; }
+      canvas.toBlob((blob) => {
+        if (!blob) { reject(new Error("toBlob failed")); return; }
+        const fr = new FileReader();
+        fr.onload = () => resolve(fr.result);
+        fr.onerror = () => reject(fr.error);
+        fr.readAsDataURL(blob);
+      }, "image/jpeg", quality);
+    });
   }
 
   // Средний цвет по краю снимка — им заливается пустое поле рамки.
@@ -9959,8 +10076,19 @@ const DB = {
   }
 
   // Готовый кадр модели из исходника и положения движков.
-  function renderModelPhoto(sourceUrl, fit, quality) {
-    return loadImageAsync(sourceUrl).then((img) => drawModelFrame(img, fit, quality).toDataURL("image/jpeg", 0.92));
+  // isStale (необязательно): подгонку двинули снова, этот кадр уже не нужен —
+  // тогда результат null, и записывать его не надо.
+  function renderModelPhoto(sourceUrl, fit, quality, isStale) {
+    return loadImageAsync(sourceUrl).then(async (img) => {
+      const canvas = drawModelFrameBase(img, fit, quality);
+      const iw = img.naturalWidth || img.width, ih = img.naturalHeight || img.height;
+      if (iw && ih && quality && !qualityNeutral(quality)) {
+        const done = await qualityProcessCanvasSliced(canvas, quality, frameUpscale(iw, ih, fit), isStale);
+        if (!done) return null;
+      }
+      if (isStale && isStale()) return null;
+      return canvasToJpegUrl(canvas, 0.92);
+    });
   }
 
   function modelPhotoOf(modelId) {
