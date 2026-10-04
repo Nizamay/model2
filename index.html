@@ -463,6 +463,20 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 .wall-texture.active { border-color: var(--accent); color: var(--accent); font-weight: 600; }
 
 /* Раздел «2D картинка». */
+/* Кнопка «i» рядом с заголовком: пояснения спрятаны под неё (просьба
+   заказчика — тексты занимали пол-экрана, приходилось крутить вниз-вверх).
+   Нажал — текст раскрылся на месте, нажал ещё раз — спрятался. Видимая
+   кнопка 24 px, а нажимаемая зона — 44 px (::after), чтобы попадать пальцем. */
+.info-btn { position: relative; display: inline-flex; align-items: center; justify-content: center;
+  box-sizing: border-box; width: 24px; height: 24px; margin: 0 0 0 8px; padding: 0; vertical-align: middle;
+  border: 1.5px solid var(--accent); border-radius: 50%; background: transparent; color: var(--accent);
+  font: italic 700 15px/1 Georgia, "Times New Roman", serif; cursor: pointer; flex: 0 0 auto; }
+.info-btn::after { content: ""; position: absolute; inset: -10px; }
+.info-btn[aria-expanded="true"] { background: var(--accent); color: var(--bg, #fff); }
+.info-btn[hidden] { display: none; }
+.info-text { display: none; }
+.info-text.is-open { display: block; }
+.info-text[hidden] { display: none !important; }
 .scene-view-hint { font-size: 13px; color: var(--muted); margin: 0 0 4px; }
 /* Подпись под картинкой: показана дверь фотографией модели или схемой
    (см. updateModelPhotoNote). */
@@ -1130,7 +1144,7 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
   <svg width="0" height="0" style="position:absolute;overflow:hidden" aria-hidden="true"><defs id="colorAdjustDefs"></defs></svg>
   <main class="calc-card">
     <div class="topbar" id="topbar">
-      <h1 id="viewTitle">Расчет — межком&shy;натные двери</h1>
+      <h1 id="viewTitle"><span id="viewTitleText">Расчет — межком&shy;натные двери</span><button type="button" class="info-btn" id="viewInfoBtn" aria-label="Пояснение к странице" aria-expanded="false" hidden>i</button></h1>
       <!-- Быстрый переход к 2D-картинке: дверь там рисуется с текущими
            параметрами расчёта (модель, цвет, стекло, размеры), отдельно
            ничего выбирать не нужно. Обратно — кнопкой «Возврат на страницу
@@ -1373,7 +1387,8 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
     </div><!-- /viewCalc -->
 
     <div id="viewScene" hidden>
-      <p class="scene-view-hint">Дверь — по текущему расчёту.</p>
+      <p class="scene-view-hint info-text" data-scope="view">Дверь — по текущему расчёту.</p>
+      <p class="scene-photo-note info-text" data-scope="view" id="s_modelPhotoNote" hidden></p>
       <div class="door-preview">
         <svg id="s_doorPreview" class="door-preview-svg scene" viewBox="0 0 360 400" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Дверь на стене">
           <defs>
@@ -1402,7 +1417,6 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
           <g id="s_doorHandleGroup"></g>
         </svg>
       </div>
-      <p class="scene-photo-note" id="s_modelPhotoNote" hidden></p>
       <button type="button" id="s_fsBtn" class="fs-btn">⛶ Во весь экран</button>
       <div id="s_fullscreen" class="fs-overlay" hidden>
         <button type="button" class="fs-close" id="s_fsClose" aria-label="Закрыть">✕</button>
@@ -1454,21 +1468,21 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
           </div>
         </details>
         <details class="scene-group" id="s_groupDoor">
-          <summary>Дверь</summary>
+          <summary>Дверь <button type="button" class="info-btn" id="s_doorInfoBtn" hidden data-info="s_doorNoPhoto" aria-label="Почему нет настроек" aria-expanded="false">i</button></summary>
           <div class="scene-group-body">
         <!-- У модели без фото нет ни подгонки, ни чёткости, ни деталей: чинить
              нечего. Чтобы не гадать, куда они делись, вместо них — эта строка
              (см. updateSceneGroups). -->
-        <p class="parts-hint scene-nophoto" id="s_doorNoPhoto" hidden>У этой модели нет фото, поэтому подгонки, чёткости и деталей здесь нет. Загрузите фото: «Изменение цен» → модель → «Загрузить файл» — и настройки появятся.</p>
+        <p class="parts-hint scene-nophoto info-text" id="s_doorNoPhoto" hidden>У этой модели нет фото, поэтому подгонки, чёткости и деталей здесь нет. Загрузите фото: «Изменение цен» → модель → «Загрузить файл» — и настройки появятся.</p>
         <!-- Светотень двери. Программа не выдумывает свет: фаски, фрезеровку
              и тени она берёт со снимка модели, поэтому и направление света —
              то, что на фотографии. Ползунок только усиливает или ослабляет
              эту светотень, направление от него не меняется (см.
              paintPartsLeaf и docs/2d-spec.md, п. 10). -->
         <details class="adjust-panel wall-adjust-panel">
-          <summary>Светотень двери</summary>
+          <summary>Светотень двери <button type="button" class="info-btn" data-info="s_shadeInfo" aria-label="Пояснение" aria-expanded="false">i</button></summary>
           <div class="adjust-body">
-            <p class="parts-hint">Свет на двери — со снимка модели, вместе с его направлением. Ползунок делает фаски и фрезеровку глубже или мягче. 100 % — как на фотографии.</p>
+            <p class="parts-hint info-text" id="s_shadeInfo">Свет на двери — со снимка модели, вместе с его направлением. Ползунок делает фаски и фрезеровку глубже или мягче. 100 % — как на фотографии.</p>
             <div class="arow"><span>Глубина</span><input type="range" id="s_doorShade" min="0" max="200" step="5" value="100">
               <!-- Шкала под ползунком: без неё непонятно, где сейчас ручка и
                    куда её тянуть, чтобы получить ровно 100 % (как на
@@ -1484,9 +1498,9 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
              весь блок — полотно, наличники, зазоры и щель до пола. Снимок стоит
              на месте, рамку блока тянут за углы (см. updateFrameEditor). -->
         <details class="adjust-panel frame-panel" id="s_framePanel" hidden>
-          <summary>Фото в рамке</summary>
+          <summary>Фото в рамке <button type="button" class="info-btn" data-info="s_frameInfo" aria-label="Пояснение" aria-expanded="false">i</button></summary>
           <div class="adjust-body">
-            <p class="parts-hint">Оранжевая рамка — весь блок 850 × 2085 мм: полотно 700 × 2000, наличники по 70, зазоры по 5 и щель до пола 10. Потяните за один угол так, чтобы он встал в угол блока на снимке (левый верхний — внешний угол верхнего наличника, правый нижний — пол), отпустите — сохранится. Затем противоположный угол по диагонали. Пунктир внутри — полотно: его края должны лечь на края полотна на снимке. Если на снимке нет наличника или он обрезан — ведите угол за край снимка, в поле вокруг него. Недостающее место в кадре зальётся цветом края, но на двери оно не показывается: на ней видно только полотно, а наличник рисует программа.</p>
+            <p class="parts-hint info-text" id="s_frameInfo">Оранжевая рамка — весь блок 850 × 2085 мм: полотно 700 × 2000, наличники по 70, зазоры по 5 и щель до пола 10. Потяните за один угол так, чтобы он встал в угол блока на снимке (левый верхний — внешний угол верхнего наличника, правый нижний — пол), отпустите — сохранится. Затем противоположный угол по диагонали. Пунктир внутри — полотно: его края должны лечь на края полотна на снимке. Если на снимке нет наличника или он обрезан — ведите угол за край снимка, в поле вокруг него. Недостающее место в кадре зальётся цветом края, но на двери оно не показывается: на ней видно только полотно, а наличник рисует программа.</p>
             <div class="frame-stage" id="s_frameStage"></div>
             <p class="frame-note" id="s_frameNote"></p>
             <div class="adjust-actions">
@@ -1498,9 +1512,9 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
              тонкие линии. У каждой модели свои — снимки у моделей разные, а
              программа должна работать без нас. -->
         <details class="adjust-panel quality-panel" id="s_qualityPanel" hidden>
-          <summary>Чёткость снимка</summary>
+          <summary>Чёткость снимка <button type="button" class="info-btn" data-info="s_qInfo1 s_qInfo2" aria-label="Пояснение" aria-expanded="false">i</button></summary>
           <div class="adjust-body">
-            <p class="parts-hint">Снимки из каталога бывают маленькими и мягкими. Эти движки подтягивают чёткость <b>именно этой модели</b> — у каждой модели свои. Ниже — кусок двери «как есть» и «с обработкой» (увеличен). Место выбрано само, где больше краёв; коснитесь двери слева, чтобы смотреть другое.</p>
+            <p class="parts-hint info-text" id="s_qInfo1">Снимки из каталога бывают маленькими и мягкими. Эти движки подтягивают чёткость <b>именно этой модели</b> — у каждой модели свои. Ниже — кусок двери «как есть» и «с обработкой» (увеличен). Место выбрано само, где больше краёв; коснитесь двери слева, чтобы смотреть другое.</p>
             <div class="quality-view">
               <div class="quality-thumb" id="s_qThumb"><img id="s_qThumbImg" alt=""><i class="qmark" id="s_qMark"></i></div>
               <div class="quality-pair">
@@ -1517,7 +1531,7 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
             <div class="arow"><span>Тонкие линии <b class="qv" data-k="lines">0</b></span><input type="range" class="q-slider" data-k="lines" min="0" max="100" step="5" value="0">
               <div class="range-scale" aria-hidden="true"><span>0</span><span>50</span><span>100</span></div>
             </div>
-            <p class="parts-hint"><b>Чёткость</b> — подчёркивает края. <b>Сглаживание шума</b> — убирает блоки и крупинки JPEG до чёткости: у маленьких снимков без него шум растёт вместе с резкостью. <b>Тонкие линии</b> — возвращает на перекрашенной двери тонкие канавки по краям филёнок; вместе с ними возвращается и тиснение «под дерево», если оно есть на снимке (на предпросмотре его не видно, смотрите на саму дверь).</p>
+            <p class="parts-hint info-text" id="s_qInfo2"><b>Чёткость</b> — подчёркивает края. <b>Сглаживание шума</b> — убирает блоки и крупинки JPEG до чёткости: у маленьких снимков без него шум растёт вместе с резкостью. <b>Тонкие линии</b> — возвращает на перекрашенной двери тонкие канавки по краям филёнок; вместе с ними возвращается и тиснение «под дерево», если оно есть на снимке (на предпросмотре его не видно, смотрите на саму дверь).</p>
             <p class="frame-note" id="s_qNote"></p>
             <div class="adjust-actions">
               <button type="button" id="s_qAuto">Подобрать само</button>
@@ -1528,9 +1542,9 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
         <!-- Разметка деталей модели по её фотографии (см. PART_KINDS,
              updatePartsEditor). Открывается только когда у модели есть фото. -->
         <details class="adjust-panel parts-panel" id="s_partsPanel" hidden>
-          <summary>Детали модели</summary>
+          <summary>Детали модели <button type="button" class="info-btn" data-info="s_partsHint" aria-label="Пояснение" aria-expanded="false">i</button></summary>
           <div class="adjust-body">
-            <p class="parts-hint" id="s_partsHint"></p>
+            <p class="parts-hint info-text" id="s_partsHint"></p>
             <div class="parts-stage" id="s_partsStage"></div>
             <div class="parts-kinds" id="s_partsKinds"></div>
             <div class="parts-tools" id="s_partsTools"></div>
@@ -1543,12 +1557,12 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
     </div>
 
     <div id="viewPrices" hidden>
-      <p class="prices-hint">Измените любую цену — расчёт в калькуляторе обновится автоматически. Значения сохраняются в этом браузере.</p>
+      <p class="prices-hint info-text" data-scope="view">Измените любую цену — расчёт в калькуляторе обновится автоматически. Значения сохраняются в этом браузере.</p>
       <div id="priceEditor"></div>
     </div>
 
     <div id="viewRoom3d" hidden>
-      <p class="scene-view-hint">Выберите два пространства — между ними построится дверь. Покрытие и цвет настраиваются для каждого. На телефоне: <b>1 палец</b> — перемещение, <b>2 пальца</b> (сжать/раздвинуть) — зум. Ползунок «Поворот» вращает модель.</p>
+      <p class="scene-view-hint info-text" data-scope="view">Выберите два пространства — между ними построится дверь. Покрытие и цвет настраиваются для каждого. На телефоне: <b>1 палец</b> — перемещение, <b>2 пальца</b> (сжать/раздвинуть) — зум. Ползунок «Поворот» вращает модель.</p>
       <div class="r3-stage"><canvas id="r3_c"></canvas></div>
       <div class="r3-rotate">
         <label for="r3_rotate">Поворот</label>
@@ -1573,6 +1587,7 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
     </div>
 
     <div id="viewOrder" hidden>
+      <p class="order-note info-text" data-scope="view">«Поделиться» на телефоне открывает системное меню — там же будут Max, imo, WhatsApp, Telegram, Email и другие установленные приложения. «Скачать файл» подходит и для телефона, и для компьютера.</p>
       <div class="spec-editing-banner" id="specEditingBanner" hidden>
         ✏️ В изменении — эта спецификация уже сохранена. Правки попадут в историю только после повторного «Сохранить спецификацию».
       </div>
@@ -1615,7 +1630,6 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
         <button type="button" id="orderPrintBtn">🖨️ Печать</button>
         <button type="button" id="orderDownloadBtn">💾 Скачать файл</button>
       </div>
-      <p class="order-note">«Поделиться» на телефоне открывает системное меню — там же будут Max, imo, WhatsApp, Telegram, Email и другие установленные приложения. «Скачать файл» подходит и для телефона, и для компьютера.</p>
     </div>
 
     <div id="viewSpecHistory" hidden>
@@ -1623,6 +1637,7 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
     </div>
 
     <div id="viewTag" hidden>
+      <p class="order-note info-text" data-scope="view">«Поделиться» отправляет ценник картинкой в системное меню — там же WhatsApp, Telegram, Max, imo, Email и другие приложения. «Скачать как картинку» и «Печать» — для сохранения на телефон или компьютер.</p>
       <div class="spec-editing-banner" id="tagEditingBanner" hidden>
         ✏️ В изменении — этот ценник уже сохранён. Правки попадут в список только после повторного «Сохранить ценник».
       </div>
@@ -1641,7 +1656,6 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
         <button type="button" id="tagPrintBtn">🖨️ Печать</button>
         <button type="button" id="tagDownloadBtn">💾 Скачать файл</button>
       </div>
-      <p class="order-note">«Поделиться» отправляет ценник картинкой в системное меню — там же WhatsApp, Telegram, Max, imo, Email и другие приложения. «Скачать как картинку» и «Печать» — для сохранения на телефон или компьютер.</p>
     </div>
 
     <div id="viewTagList" hidden>
@@ -2334,6 +2348,8 @@ const DB = {
     menuStorageFill: document.getElementById("menuStorageFill"),
     menuStorageText: document.getElementById("menuStorageText"),
     viewTitle: document.getElementById("viewTitle"),
+    viewTitleText: document.getElementById("viewTitleText"),
+    viewInfoBtn: document.getElementById("viewInfoBtn"),
     viewCalc: document.getElementById("viewCalc"),
     viewScene: document.getElementById("viewScene"),
     viewPrices: document.getElementById("viewPrices"),
@@ -5540,7 +5556,59 @@ const DB = {
     if (hint) {
       const m = getModel(state.modelId);
       hint.hidden = !m || !!frameEditorCtx();
+      // «i» у группы «Дверь» нужна, только когда у модели нет фото и есть что
+      // объяснять; иначе кнопка вела бы в пустоту.
+      const infoBtn = document.getElementById("s_doorInfoBtn");
+      if (infoBtn) infoBtn.hidden = hint.hidden;
     }
+  }
+
+  // Пояснения спрятаны под кнопку «i» (см. .info-btn). Кнопка рядом с
+  // заголовком панели раскрывает её тексты (data-info — id через пробел), а
+  // кнопка у заголовка страницы — тексты текущей страницы
+  // (.info-text[data-scope="view"]). Состояние не запоминается: при каждом
+  // заходе всё свёрнуто, чтобы экран не занимали тексты, которые уже прочитаны.
+  const INFO_VIEW_IDS = ["viewCalc", "viewScene", "viewPrices", "viewRoom3d", "viewOrder", "viewSpecHistory", "viewTag", "viewTagList"];
+  function viewInfoNodes() {
+    const out = [];
+    INFO_VIEW_IDS.forEach((id) => {
+      const v = document.getElementById(id);
+      if (v && !v.hidden) v.querySelectorAll('.info-text[data-scope="view"]').forEach((n) => out.push(n));
+    });
+    return out;
+  }
+  function syncViewInfo() {
+    document.querySelectorAll('.info-text[data-scope="view"]').forEach((n) => n.classList.remove("is-open"));
+    const btn = el.viewInfoBtn;
+    if (!btn) return;
+    btn.setAttribute("aria-expanded", "false");
+    btn.hidden = !viewInfoNodes().length;
+  }
+  function toggleInfo(btn) {
+    const open = btn.getAttribute("aria-expanded") !== "true";
+    const nodes = btn.id === "viewInfoBtn"
+      ? viewInfoNodes()
+      : (btn.dataset.info || "").split(/\s+/).map((id) => document.getElementById(id)).filter(Boolean);
+    nodes.forEach((n) => n.classList.toggle("is-open", open));
+    btn.setAttribute("aria-expanded", open ? "true" : "false");
+    if (open) {
+      // Кнопка стоит в заголовке закрытой панели: открываем её, иначе текст
+      // раскроется внутри свёрнутого и его не будет видно.
+      const d = btn.closest("details");
+      if (d) d.open = true;
+    }
+  }
+  function initInfoButtons() {
+    // Кнопка лежит внутри <summary>: preventDefault не даёт нажатию заодно
+    // раскрывать или сворачивать саму панель.
+    document.addEventListener("click", (e) => {
+      const btn = e.target.closest && e.target.closest(".info-btn");
+      if (!btn) return;
+      e.preventDefault();
+      e.stopPropagation();
+      toggleInfo(btn);
+    });
+    syncViewInfo();
   }
 
   // Какие группы открыты — запоминаем: заказчик настраивает дверь за дверью, и
@@ -8650,6 +8718,7 @@ const DB = {
       });
     }
     initSceneGroups();
+    initInfoButtons();
     // Подгонка блока за углы (см. updateFrameEditor): тянут ручку в углу
     // рамки, отпустили — сохранилось.
     const framePanel = document.getElementById("s_framePanel");
@@ -8882,7 +8951,8 @@ const DB = {
     el.viewSpecHistory.hidden = view !== "history";
     el.viewTag.hidden = view !== "tag";
     el.viewTagList.hidden = view !== "tagList";
-    el.viewTitle.textContent =
+    syncViewInfo();
+    el.viewTitleText.textContent =
       view === "prices" ? "Изменение цен" : view === "scene" ? "2D картинка" :
       view === "room3d" ? "3D комната" : view === "order" ? "Спецификация" :
       view === "history" ? "Сохранённые спецификации" :
