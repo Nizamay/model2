@@ -498,7 +498,7 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
    полностью»). Теперь высота ограничена долей экрана, а ширина считается
    из неё по пропорции рамки. */
 :root { --stage-h: min(58vh, 560px); --stage-w: calc(var(--stage-h) * 850 / 2085); }
-.frame-stage { position: relative; margin: 0 auto 4px; user-select: none; -webkit-user-select: none; }
+.frame-stage { position: relative; margin: 34px auto 36px; user-select: none; -webkit-user-select: none; }
 /* Вокруг снимка в панели — поле: рамку блока можно вести за край снимка. */
 .frame-stage { background: #eef1f5; border-radius: 6px; }
 .frame-stage img.frame-src { position: absolute; inset: 0; display: block; width: 100%; height: 100%;
@@ -507,17 +507,24 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 .frame-clip i { position: absolute; display: block; box-sizing: border-box; }
 .frame-clip .fb { border: 2px solid rgba(232, 74, 14, .95); }
 .frame-clip .fl { border: 1px dashed rgba(232, 74, 14, .95); }
-/* Ручки по углам. Палец толще прежнего кружка в 20 px и закрывал его вместе с
-   тем, что под ним (жалоба заказчика), поэтому кружок теперь 52 px и ПУСТОЙ:
-   сквозь кольцо видно снимок и угол, а точная точка угла — маленькая
-   точка в центре. Касание ловит квадрат 76x76. touch-action только у ручек:
-   страница под снимком продолжает прокручиваться. */
-.fh { position: absolute; width: 76px; height: 76px; margin: -38px 0 0 -38px; touch-action: none; cursor: grab; z-index: 2; }
-.fh::after { content: ""; position: absolute; left: 50%; top: 50%; width: 52px; height: 52px; margin: -26px 0 0 -26px;
-  box-sizing: border-box; border-radius: 50%; background: rgba(255, 255, 255, .10); border: 4px solid rgba(232, 74, 14, .95);
+/* Ручки по углам. Палец толще кружка и закрывал угол вместе с тем, что под
+   ним (жалоба заказчика), поэтому кружок сначала стал в 2,6 раза крупнее и
+   пустым, а теперь ещё и стоит СНАРУЖИ угла по диагонали и касается его
+   только краем: палец лежит на кружке, а сам угол и линии у него остаются на
+   виду. Кружок 88 px; центр сдвинут от угла на --s по каждой оси (радиус на
+   корень из двух, минус 2 px, чтобы край честно заходил на угол). Касание
+   ловит весь круг (border-radius у самой ручки, иначе ловил бы квадрат).
+   touch-action только у ручек: страница под снимком прокручивается. Поля
+   вокруг снимка в панели (margin у .frame-stage) оставлены под кружки. */
+.fh { --d: 88px; --s: 29px; position: absolute; width: var(--d); height: var(--d); border-radius: 50%;
+  touch-action: none; cursor: grab; z-index: 2; }
+.fh-nw { margin: calc(var(--d) / -2 - var(--s)) 0 0 calc(var(--d) / -2 - var(--s)); }
+.fh-ne { margin: calc(var(--d) / -2 - var(--s)) 0 0 calc(var(--d) / -2 + var(--s)); }
+.fh-sw { margin: calc(var(--d) / -2 + var(--s)) 0 0 calc(var(--d) / -2 - var(--s)); }
+.fh-se { margin: calc(var(--d) / -2 + var(--s)) 0 0 calc(var(--d) / -2 + var(--s)); }
+.fh::after { content: ""; position: absolute; inset: 0; box-sizing: border-box; border-radius: 50%;
+  background: rgba(255, 255, 255, .10); border: 4px solid rgba(232, 74, 14, .95);
   box-shadow: 0 0 0 1px rgba(255, 255, 255, .75), 0 1px 5px rgba(0, 0, 0, .35); }
-.fh::before { content: ""; position: absolute; left: 50%; top: 50%; width: 8px; height: 8px; margin: -4px 0 0 -4px; z-index: 1;
-  box-sizing: border-box; border-radius: 50%; background: rgba(232, 74, 14, .95); box-shadow: 0 0 0 1.5px #fff; }
 .frame-note { margin: 0 0 8px; text-align: center; font-size: 13px; color: var(--muted); min-height: 16px; }
 /* Панель «Чёткость снимка»: слева вся дверь (тапом выбирают место), справа два
    увеличенных куска — как есть и с обработкой. Куски рисуются в точках кадра
@@ -4739,9 +4746,11 @@ const DB = {
     // Палец — в доли панели, потом в доли снимка (у панели есть поле, а угол
     // можно вести и за край снимка).
     const kx = 1 + 2 * FRAME_PAD.x, ky = 1 + 2 * FRAME_PAD.y;
-    const clampTo = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
-    const px = clampTo((e.clientX - d.rect.left) / d.rect.width, 0, 1) * kx - FRAME_PAD.x + d.offX;
-    const py = clampTo((e.clientY - d.rect.top) / d.rect.height, 0, 1) * ky - FRAME_PAD.y + d.offY;
+    // Без обрезки пальца по панели: кружок стоит снаружи угла, и палец на нём
+    // легко оказывается за краем панели, хотя угол ещё внутри. Границы ниже
+    // держат уже сам угол.
+    const px = ((e.clientX - d.rect.left) / d.rect.width) * kx - FRAME_PAD.x + d.offX;
+    const py = ((e.clientY - d.rect.top) / d.rect.height) * ky - FRAME_PAD.y + d.offY;
     const lox = -FRAME_PAD.x, hix = 1 + FRAME_PAD.x, loy = -FRAME_PAD.y, hiy = 1 + FRAME_PAD.y;
     let x0, x1, y0, y1;
     if (d.c.indexOf("w") >= 0) { x1 = d.fx; x0 = Math.max(lox, Math.min(px, x1 - FRAME_BOX_MIN)); }
