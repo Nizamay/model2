@@ -9663,31 +9663,28 @@ const DB = {
     } catch (err) { }
   }
 
+  // Образец плёнки — всегда 150 x 200 мм (3:4, 600 x 800 точек), столько же он
+  // занимает на двери (см. DB.colorSwatchSampleSize). Заказчик обрезает снимки
+  // сам, по-разному, убирая дефекты (сучок, трещину, край), и просил
+  // «растянуть их на 150 x 200»: поэтому снимок берётся ЦЕЛИКОМ (кроме чёрных
+  // полос скриншота, см. trimFlatBars) и растягивается на образец, а не
+  // обрезается по центру, как было раньше, — иначе вырезанный им чистый кусок
+  // терял бы края. Если снимок не 3:4, рисунок немного сплющивается или
+  // вытягивается, поэтому резать лучше в пропорции 3:4.
   function cropToSwatchRatio(file) {
     const targetW = 600, targetH = 800;
-    const targetRatio = targetW / targetH;
     return new Promise((resolve, reject) => {
       const url = URL.createObjectURL(file);
       const img = new Image();
       img.onload = () => {
         const src = trimFlatBars(img);
-        const srcRatio = src.w / src.h;
-        let sx, sy, sw, sh;
-        if (srcRatio > targetRatio) {
-          sh = src.h;
-          sw = sh * targetRatio;
-          sx = src.x + (src.w - sw) / 2;
-          sy = src.y;
-        } else {
-          sw = src.w;
-          sh = sw / targetRatio;
-          sx = src.x;
-          sy = src.y + (src.h - sh) / 2;
-        }
+        const sx = src.x, sy = src.y, sw = src.w, sh = src.h;
         const canvas = document.createElement("canvas");
         canvas.width = targetW;
         canvas.height = targetH;
         const ctx = canvas.getContext("2d");
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = "high";
         ctx.drawImage(img, sx, sy, sw, sh, 0, 0, targetW, targetH);
         // Неровный свет снимка убираем уже на готовом кадре — иначе тёмный
         // угол размножится по всей двери (см. flattenLighting).
