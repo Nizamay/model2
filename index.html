@@ -607,6 +607,8 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
   list-style-position: inside; }
 .scene-group[open] > summary { border-bottom: 1px solid var(--border); }
 .scene-group-body { display: flex; flex-direction: column; gap: 10px; padding: 10px 16px 14px; }
+.film-tone-body .adjust-preview { max-width: 150px; }
+.film-color-field select { width: 100%; }
 .scene-nophoto { margin: 0; padding: 10px 12px; border-radius: 8px; background: rgba(168, 85, 0, .09); color: var(--muted); font-size: 13px; }
 .adjust-panel { flex: 1 1 100%; min-width: 0; margin-top: 4px; }
 .adjust-panel > summary { cursor: pointer; font-size: 13px; color: var(--accent); font-weight: 600; }
@@ -651,7 +653,7 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 .adjust-actions .save { background: var(--accent); color: #fff; border-color: var(--accent); }
 .adjust-actions button:disabled { opacity: .55; cursor: default; }
 /* Ползунки заблокированы, пока не нажата «Изменить» — защита от случайной
-   смены тона касанием (см. onPriceClick: editAdjust). */
+   смены тона касанием (см. onFilmPanelClick: editAdjust). */
 .adjust-body input[type="range"].adj:disabled { opacity: .45; }
 /* Крупная кнопка ползунка (удобно на телефоне). touch-action: pan-y —
    вертикальный свайп/скролл проходит мимо ползунка (уходит в прокрутку
@@ -1533,8 +1535,8 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
                 <div><canvas id="s_qAfter"></canvas><span>с обработкой</span></div>
               </div>
             </div>
-            <div class="arow"><span>Чёткость <b class="qv" data-k="sharp">0</b></span><input type="range" class="q-slider" data-k="sharp" min="0" max="300" step="5" value="0">
-              <div class="range-scale" aria-hidden="true"><span>0</span><span>100</span><span>200</span><span>300</span></div>
+            <div class="arow"><span>Чёткость <b class="qv" data-k="sharp">0</b></span><input type="range" class="q-slider" data-k="sharp" min="0" max="400" step="5" value="0">
+              <div class="range-scale" aria-hidden="true"><span>0</span><span>100</span><span>200</span><span>300</span><span>400</span></div>
             </div>
             <div class="arow"><span>Сглаживание шума <b class="qv" data-k="smooth">0</b></span><input type="range" class="q-slider" data-k="smooth" min="0" max="100" step="5" value="0">
               <div class="range-scale" aria-hidden="true"><span>0</span><span>50</span><span>100</span></div>
@@ -1561,6 +1563,19 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
             <div class="parts-tools" id="s_partsTools"></div>
           </div>
         </details>
+          </div>
+        </details>
+        <!-- Плёнка: загрузка своего фото и тон выбранного цвета. Раньше жили в
+             «Изменении цен» у каждого цвета; это настройки вида, на цену они не
+             влияют, и их место рядом с дверью (просьба заказчика). Наценки
+             категорий (это цены) остались в «Изменении цен». Содержимое строит
+             renderFilmPanel. -->
+        <details class="scene-group" id="s_groupFilm">
+          <summary>Плёнка <button type="button" class="info-btn" data-info="s_filmInfo" aria-label="Пояснение" aria-expanded="false">i</button></summary>
+          <div class="scene-group-body">
+            <p class="parts-hint info-text" id="s_filmInfo">Выберите цвет плёнки — дверь выше переключится на него. «Загрузить файл» кладёт своё фото плёнки, «Удалить последний файл» возвращает прежнее. Ползунки заблокированы, пока не нажмёшь «Изменить»; «Сохранить» применяет тон к двери. <b>Матовость</b> убирает «экранную» яркость: поднимает тёмное, притушает светлое и смягчает цвет — плёнка в руках матовее, чем на экране.</p>
+            <label class="field film-color-field"><span>Цвет плёнки</span><select id="s_filmColor"></select></label>
+            <div id="s_filmBody"></div>
           </div>
         </details>
         <button type="button" id="sceneBackBtn" class="btn-goto">← Возврат на страницу расчёта</button>
@@ -3828,9 +3843,11 @@ const DB = {
   // он тянет к середине не плёнку, а уже готовую картинку вместе с тенями от
   // фрезеровки, и рельеф на детали сминается. Заодно под фильтр попадало и
   // то, что плёнкой не красится: стекло, ручка, петли, необведённые места.
-  const ADJ_NEUTRAL = { h: 0, s: 100, b: 100, c: 100, cr: 100, cg: 100, cb: 100 };
+  // Коэффициенты «Матовости» (смысл — у adjOf).
+  const MATTE_SLOPE = 0.45, MATTE_LIFT = 0.30;
+  const ADJ_NEUTRAL = { h: 0, s: 100, b: 100, c: 100, cr: 100, cg: 100, cb: 100, m: 0 };
   function adjIsNeutral(v) {
-    return !v || (!v.h && v.s === 100 && v.b === 100 && v.c === 100 &&
+    return !v || (!v.h && !v.m && v.s === 100 && v.b === 100 && v.c === 100 &&
       (v.cr == null || v.cr === 100) && (v.cg == null || v.cg === 100) && (v.cb == null || v.cb === 100));
   }
   function adjustFilmRgb(rgb, v) {
@@ -3859,6 +3876,11 @@ const DB = {
     if (co2 !== 1) {
       const off = 127.5 * (1 - co2);
       r = cl(r * co2 + off); g = cl(g * co2 + off); b = cl(b * co2 + off);
+    }
+    const mt = (v.m || 0) / 100;
+    if (mt > 0) {
+      const k = 1 - MATTE_SLOPE * mt, o = 255 * MATTE_LIFT * mt;
+      r = cl(r * k + o); g = cl(g * k + o); b = cl(b * k + o);
     }
     return [r, g, b];
   }
@@ -4257,7 +4279,7 @@ const DB = {
     const qual = qualityOf(photo);
     const rest = [state.color, state.glassId,
       Math.round(widthMm / 25), Math.round(heightMm / 25),
-      adj.h, adj.s, adj.b, adj.c, adj.cr, adj.cg, adj.cb,
+      adj.h, adj.s, adj.b, adj.c, adj.cr, adj.cg, adj.cb, adj.m,
       Math.round(doorShadeK() * 100), String(photo.image || "").length,
       qual.sharp, qual.smooth, qual.lines];
     const key = [model.id, doc.rev || 1].concat(rest).join("|");
@@ -5613,6 +5635,74 @@ const DB = {
     }
   }
 
+  // --- Группа «Плёнка» на странице «2D картинка» --------------------------
+  // Выбор цвета плёнки (он же — цвет двери в расчёте), загрузка своего фото и
+  // тон с «Матовостью». Содержимое — filmToneBodyHtml; кнопки «Изменить»/
+  // «Сохранить» и ползунки работают так же, как раньше в «Изменении цен».
+  let filmPanelColor = null;
+  function renderFilmPanel(force) {
+    const g = document.getElementById("s_groupFilm");
+    const body = document.getElementById("s_filmBody");
+    const sel = document.getElementById("s_filmColor");
+    if (!g || !body || !sel) return;
+    const groups = DB.colors[state.material] || {};
+    const colors = Object.values(groups).flat().sort((a, b) => RU_COLLATOR.compare(a, b));
+    const model = getModel(state.modelId);
+    // «Матрица» — законченная картинка, плёнка в ней не красится: настраивать нечего.
+    g.hidden = !colors.length || !!(model && model.type === "матрица");
+    if (g.hidden) return;
+    const name = state.color;
+    // Не перестраиваем панель, пока заказчик двигает ползунки (они разблокированы).
+    if (!force && filmPanelColor === name && body.querySelector(".adj:not(:disabled)")) return;
+    sel.innerHTML = colors.map((c) => `<option value="${esc(c)}">${esc(c)}</option>`).join("");
+    sel.value = name;
+    body.innerHTML = filmToneBodyHtml(name);
+    filmPanelColor = name;
+  }
+  function onFilmPanelClick(e) {
+    const rm = e.target.closest('[data-field="removePhoto"]');
+    if (rm) { armRemoveFileButton(rm, () => onColorRemovePhoto(rm.dataset.color)); return; }
+    // «Изменить» разблокирует ползунки тона (по умолчанию они disabled), чтобы
+    // случайное касание само по себе тон не меняло. «Сохранить» фиксирует
+    // значение, применяет его к двери и блокирует ползунки обратно.
+    const editAdj = e.target.closest('[data-field="editAdjust"]');
+    if (editAdj) {
+      const body = editAdj.closest(".adjust-body");
+      if (body) body.querySelectorAll(".adj").forEach((r) => { r.disabled = false; });
+      editAdj.textContent = "Можно менять ✓";
+      editAdj.disabled = true;
+      return;
+    }
+    const saveAdj = e.target.closest('[data-field="saveAdjust"]');
+    if (saveAdj) {
+      const body = saveAdj.closest(".adjust-body");
+      (DB.colorAdjust || (DB.colorAdjust = {}))[saveAdj.dataset.color] = readAdjustPanel(body);
+      savePrices();
+      if (body) {
+        body.querySelectorAll(".adj").forEach((r) => { r.disabled = true; });
+        const editBtn = body.querySelector('[data-field="editAdjust"]');
+        if (editBtn) { editBtn.disabled = false; editBtn.textContent = "Изменить"; }
+      }
+      saveAdj.textContent = "Сохранено ✓";
+      render();
+    }
+  }
+  function onFilmColorChange(e) {
+    const sel = e.target;
+    if (!sel || sel.id !== "s_filmColor") return false;
+    state.color = sel.value;
+    if (el.color) el.color.value = state.color;
+    render();
+    return true;
+  }
+  function initFilmPanel() {
+    const g = document.getElementById("s_groupFilm");
+    if (!g) return;
+    g.addEventListener("click", onFilmPanelClick);
+    g.addEventListener("input", onAdjustInput);
+    g.addEventListener("change", (e) => { if (!onFilmColorChange(e)) onColorFileUpload(e); });
+  }
+
   // Пояснения спрятаны под кнопку «i» (см. .info-btn). Кнопка рядом с
   // заголовком панели раскрывает её тексты (data-info — id через пробел), а
   // кнопка у заголовка страницы — тексты текущей страницы
@@ -5668,7 +5758,7 @@ const DB = {
   function initSceneGroups() {
     let saved = {};
     try { saved = JSON.parse(localStorage.getItem(SCENE_GROUPS_KEY) || "{}") || {}; } catch (err) { }
-    [["s_groupWall", "wall"], ["s_groupDoor", "door"]].forEach(([id, key]) => {
+    [["s_groupWall", "wall"], ["s_groupDoor", "door"], ["s_groupFilm", "film"]].forEach(([id, key]) => {
       const g = document.getElementById(id);
       if (!g) return;
       if (saved[key]) g.open = true;
@@ -6471,7 +6561,7 @@ const DB = {
     updateSizeUI();
     // Превью плёнки и двери в калькуляторе убраны; картинку в разделе
     // «2D картинка» перерисовываем, только когда он открыт.
-    if (el.viewScene && !el.viewScene.hidden) drawDoor(sceneCtx, true);
+    if (el.viewScene && !el.viewScene.hidden) { drawDoor(sceneCtx, true); renderFilmPanel(false); }
 
     el.breakdown.innerHTML = o.rows.map((r) => `<div class="breakdown-row">${r}</div>`).join("");
     el.total.textContent = o.noPrice ? "нет цены" : o.total.toLocaleString("ru-RU") + " ₽";
@@ -8769,6 +8859,7 @@ const DB = {
     }
     initSceneGroups();
     initInfoButtons();
+    initFilmPanel();
     // Подгонка блока за углы (см. updateFrameEditor): тянут ручку в углу
     // рамки, отпустили — сохранилось.
     const framePanel = document.getElementById("s_framePanel");
@@ -9012,7 +9103,7 @@ const DB = {
       b.classList.toggle("active", b.dataset.view === view)
     );
     if (view === "prices") renderPriceEditor();
-    if (view === "scene") drawDoor(sceneCtx, true);
+    if (view === "scene") { drawDoor(sceneCtx, true); renderFilmPanel(true); }
     if (view === "room3d" && window.initRoom3D) window.initRoom3D();
     if (view === "order") renderOrderPage();
     if (view === "history") renderSpecHistoryPage();
@@ -9302,6 +9393,10 @@ const DB = {
     try {
       const raw = localStorage.getItem(PRICE_STORE_KEY);
       if (raw) applyPrices(JSON.parse(raw));
+      // Снимка ещё нет (первый запуск или чистая память браузера): сбрасывать
+      // нечего, а метку ставим сразу — иначе она встала бы только при ПЕРВОЙ
+      // перезагрузке после сохранения и стёрла бы только что подобранный тон.
+      else localStorage.setItem(FILM_TONE_RESET_KEY, "1");
     } catch (e) {}
   }
 
@@ -9477,8 +9572,39 @@ const DB = {
     const v = store[name] || {};
     return {
       h: v.h || 0, s: (v.s == null ? 100 : v.s), b: (v.b == null ? 100 : v.b), c: (v.c == null ? 100 : v.c),
-      cr: (v.cr == null ? 100 : v.cr), cg: (v.cg == null ? 100 : v.cg), cb: (v.cb == null ? 100 : v.cb)
+      cr: (v.cr == null ? 100 : v.cr), cg: (v.cg == null ? 100 : v.cg), cb: (v.cb == null ? 100 : v.cb),
+      m: v.m || 0
     };
+  }
+  // «Матовость» (0–100): на экране плёнка всегда ярче и «стеклянней», чем в
+  // руках (подсветка, чистые цвета) — заказчик: «не хватает матовости,
+  // пастельности тона». Это лёгкая вуаль: тёмное приподнимается, светлое
+  // слегка притушается, разница между цветами сжимается, а значит и сочность
+  // уходит. Линейно: выход = вход * (1 - MATTE_SLOPE * m) + MATTE_LIFT * m
+  // (m — доля 0–1). При 100 % белое становится 85 %, чёрное — 30 %. Считается
+  // последним шагом, после контраста, и одинаково в CSS-фильтре
+  // (ensureMatteFilterDef) и в пикселях перекраски (adjustFilmRgb).
+  function ensureMatteFilterDef(m) {
+    const id = `adjmat-${m}`;
+    if (!document.getElementById(id)) {
+      const defs = document.getElementById("colorAdjustDefs");
+      if (!defs) return null;
+      const ns = "http://www.w3.org/2000/svg";
+      const filterEl = document.createElementNS(ns, "filter");
+      filterEl.setAttribute("id", id);
+      filterEl.setAttribute("color-interpolation-filters", "sRGB");
+      const tf = document.createElementNS(ns, "feComponentTransfer");
+      ["feFuncR", "feFuncG", "feFuncB"].forEach((tag) => {
+        const f = document.createElementNS(ns, tag);
+        f.setAttribute("type", "linear");
+        f.setAttribute("slope", String(1 - MATTE_SLOPE * m / 100));
+        f.setAttribute("intercept", String(MATTE_LIFT * m / 100));
+        tf.appendChild(f);
+      });
+      filterEl.appendChild(tf);
+      defs.appendChild(filterEl);
+    }
+    return id;
   }
   // Множители каналов R/G/B — через CSS filter напрямую не сделать (нет
   // такой функции), только через SVG feColorMatrix, на который CSS filter
@@ -9506,7 +9632,8 @@ const DB = {
     return id;
   }
   function filterCss(v) {
-    const base = `hue-rotate(${v.h}deg) saturate(${v.s}%) brightness(${v.b}%) contrast(${v.c}%)`;
+    let base = `hue-rotate(${v.h}deg) saturate(${v.s}%) brightness(${v.b}%) contrast(${v.c}%)`;
+    if (v.m > 0) { const mid = ensureMatteFilterDef(v.m); if (mid) base += ` url(#${mid})`; }
     const cr = v.cr == null ? 100 : v.cr, cg = v.cg == null ? 100 : v.cg, cb = v.cb == null ? 100 : v.cb;
     if (cr === 100 && cg === 100 && cb === 100) return base;
     const id = ensureRgbFilterDef(cr, cg, cb);
@@ -9791,11 +9918,11 @@ const DB = {
           let saved = true;
           try { localStorage.setItem(PRICE_STORE_KEY, JSON.stringify(collectPrices())); }
           catch (err) { saved = false; }
-          // renderPriceEditor() — не общий render(): тот отвечает за калькулятор
-          // и НЕ перерисовывает список редактора цен (см. отчёт — фото
-          // сохранялось в DB/localStorage, но кнопка так и висела на
-          // «Обрабатываю…», превью и «Убрать своё фото» не появлялись).
-          renderPriceEditor();
+          // Панель плёнки живёт на «2D картинке» (renderFilmPanel): перестраиваем её
+          // (кнопка «Обрабатываю…» возвращается в «Загрузить файл», появляется
+          // превью и «Удалить последний файл») и перерисовываем дверь.
+          renderFilmPanel(true);
+          render();
           if (!saved) {
             alert("Фото загружено, но не поместилось в памяти браузера (localStorage переполнен). Освободите место — например, удалите старые сохранённые спецификации или ценники — и загрузите фото ещё раз.");
           }
@@ -9907,7 +10034,8 @@ const DB = {
     }
     writing.then(() => saveColorHistory(name)).then(() => {
       savePrices();
-      renderPriceEditor();
+      renderFilmPanel(true);
+      render();
     });
   }
 
@@ -9969,7 +10097,7 @@ const DB = {
     const q = rec && rec.quality;
     if (!q) return { ...QUALITY_DEFAULT };
     const num = (v, hi) => (typeof v === "number" && isFinite(v) ? Math.max(0, Math.min(hi, v)) : 0);
-    return { sharp: num(q.sharp, 300), smooth: num(q.smooth, 100), lines: num(q.lines, 100) };
+    return { sharp: num(q.sharp, 400), smooth: num(q.smooth, 100), lines: num(q.lines, 100) };
   }
   // «Тонкие линии» на сам кадр не влияют — только на перекраску.
   const qualityNeutral = (q) => !(q.sharp > 0) && !(q.smooth > 0);
@@ -10290,8 +10418,11 @@ const DB = {
     });
   }
 
-  function colorRow(mat, cat, i, name) {
-    const a = dataAttrs("color", { material: mat, cat: cat, idx: i });
+  // Панель настройки плёнки цвета: превью, загрузка своего фото, ползунки тона.
+  // Раньше стояла в «Изменении цен» у каждого цвета; теперь живёт на странице
+  // «2D картинка» (группа «Плёнка», см. renderFilmPanel): это настройки вида, на
+  // цену они не влияют, а там дверь перед глазами. Заказчик попросил.
+  function filmToneBodyHtml(name) {
     const sw = DB.colorSwatches[name];
     // В превью — ровно тот образец, который потом ляжет на детали двери
     // (см. partsLeafImage).
@@ -10328,17 +10459,16 @@ const DB = {
     // Ползунки по умолчанию заблокированы (disabled) — иначе случайное
     // касание ползунка на телефоне сразу меняет тон плёнки. Разблокирует их
     // кнопка «Изменить»; «Сохранить» фиксирует значение и снова блокирует
-    // ползунки (см. onPriceClick: editAdjust/saveAdjust, отчёт).
-    const panel = `
-      <details class="adjust-panel">
-        <summary>Настроить тон плёнки</summary>
-        <div class="adjust-body">
+    // ползунки (см. onFilmPanelClick: editAdjust/saveAdjust).
+    return `
+        <div class="adjust-body film-tone-body">
           ${preview}
           <div class="adjust-upload-row">${uploadBtn}</div>
           <div class="arow"><span>Оттенок</span><input type="range" class="adj" data-color="${esc(name)}" data-k="h" min="-90" max="90" step="1" value="${v.h}" disabled></div>
           <div class="arow"><span>Насыщенность</span><input type="range" class="adj" data-color="${esc(name)}" data-k="s" min="0" max="300" step="1" value="${v.s}" disabled></div>
           <div class="arow"><span>Яркость</span><input type="range" class="adj" data-color="${esc(name)}" data-k="b" min="30" max="200" step="1" value="${v.b}" disabled></div>
           <div class="arow"><span>Контраст</span><input type="range" class="adj" data-color="${esc(name)}" data-k="c" min="30" max="200" step="1" value="${v.c}" disabled></div>
+          <div class="arow"><span>Матовость</span><input type="range" class="adj" data-color="${esc(name)}" data-k="m" min="0" max="100" step="1" value="${v.m}" disabled></div>
           <details class="adjust-advanced">
             <summary>Расширенные настройки (RGB)</summary>
             <div class="adjust-advanced-body">
@@ -10351,8 +10481,11 @@ const DB = {
             <button type="button" class="save" data-field="saveAdjust" data-color="${esc(name)}">Сохранить</button>
             <button type="button" data-field="editAdjust" data-color="${esc(name)}">Изменить</button>
           </div>
-        </div>
-      </details>`;
+        </div>`;
+  }
+
+  function colorRow(mat, cat, i, name) {
+    const a = dataAttrs("color", { material: mat, cat: cat, idx: i });
     // color-row — свой класс поверх .choice-row, чтобы разделительную линию
     // между цветами (см. CSS .color-row + .color-row) не задело другие
     // списки, использующие тот же .choice-row (варианты кромки, стекло и т.п.).
@@ -10363,7 +10496,6 @@ const DB = {
         <span class="switch-label">Разрешить удаление</span>
         <button type="button" class="row-del" data-field="del" ${a} disabled>Удалить</button>
       </div>
-      ${panel}
     </div>`;
   }
 
@@ -10562,7 +10694,7 @@ const DB = {
     }).join("");
     colorRows += addBtn("material", {}, "Добавить материал");
     parts.push(`<details class="price-group" data-key="color"${isOpen("color", false) ? " open" : ""}>
-      <summary>Пленка ПВХ и эмаль (цвета и категории)</summary>
+      <summary>Пленка ПВХ и эмаль (категории и наценки)</summary>
       <div class="price-body">${colorRows}</div></details>`);
 
     // Опции — та же логика материала, что и у цветов (см. выше), только
@@ -10925,7 +11057,8 @@ const DB = {
     const g = (k, def) => { const el = panel.querySelector(`.adj[data-k="${k}"]`); return el ? Number(el.value) : def; };
     return {
       h: g("h", 0), s: g("s", 100), b: g("b", 100), c: g("c", 100),
-      cr: g("cr", 100), cg: g("cg", 100), cb: g("cb", 100)
+      cr: g("cr", 100), cg: g("cg", 100), cb: g("cb", 100),
+      m: g("m", 0)
     };
   }
   // Живое превью при движении ползунков (без сохранения).
@@ -10964,39 +11097,9 @@ const DB = {
   }
 
   function onPriceClick(e) {
-    const removePhoto = e.target.closest('[data-field="removePhoto"]');
-    if (removePhoto) {
-      armRemoveFileButton(removePhoto, () => onColorRemovePhoto(removePhoto.dataset.color));
-      return;
-    }
     const removeModelPhoto = e.target.closest('[data-field="removeModelPhoto"]');
     if (removeModelPhoto) {
       armRemoveFileButton(removeModelPhoto, () => onModelRemovePhoto(removeModelPhoto.dataset.model));
-      return;
-    }
-    // «Изменить» разблокирует ползунки тона (по умолчанию они disabled —
-    // см. colorRow), чтобы случайное касание ползунка само по себе тон не
-    // меняло. «Сохранить» фиксирует значение и блокирует их обратно.
-    const editAdj = e.target.closest('[data-field="editAdjust"]');
-    if (editAdj) {
-      const body = editAdj.closest(".adjust-body");
-      if (body) body.querySelectorAll(".adj").forEach((r) => { r.disabled = false; });
-      editAdj.textContent = "Можно менять ✓";
-      editAdj.disabled = true;
-      return;
-    }
-    const saveAdj = e.target.closest('[data-field="saveAdjust"]');
-    if (saveAdj) {
-      const body = saveAdj.closest(".adjust-body");
-      (DB.colorAdjust || (DB.colorAdjust = {}))[saveAdj.dataset.color] = readAdjustPanel(body);
-      savePrices();
-      render();
-      saveAdj.textContent = "Сохранено ✓";
-      if (body) {
-        body.querySelectorAll(".adj").forEach((r) => { r.disabled = true; });
-        const editBtn = body.querySelector('[data-field="editAdjust"]');
-        if (editBtn) { editBtn.disabled = false; editBtn.textContent = "Изменить"; }
-      }
       return;
     }
     const del = e.target.closest("[data-field='del']");
@@ -11302,9 +11405,8 @@ const DB = {
     document.addEventListener("click", (e) => {
       if (!el.menu.hidden && !el.menu.contains(e.target) && e.target !== el.menuBtn) toggleMenu(false);
     });
-    el.priceEditor.addEventListener("input", (e) => { onPriceInput(e); onAdjustInput(e); onModelSearch(e); onTrimSearch(e); onFurnitureSearch(e); });
+    el.priceEditor.addEventListener("input", (e) => { onPriceInput(e); onModelSearch(e); onTrimSearch(e); onFurnitureSearch(e); });
     el.priceEditor.addEventListener("click", onPriceClick);
-    el.priceEditor.addEventListener("change", onColorFileUpload);
     el.priceEditor.addEventListener("change", onModelFileUpload);
     el.priceEditor.addEventListener("click", (e) => {
       const input = e.target.closest("input.edit-name[data-field='name']");
