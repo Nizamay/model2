@@ -9111,6 +9111,19 @@ const DB = {
   // недоступна (старый браузер, приватный режим) или запись не удалась,
   // ничего не теряется, просто не выигрываем место для этого файла.
   const colorPhotosConfirmedInIdb = new Set();
+  // Прежние загрузки цвета (самая поздняя — последняя): «Удалить последний
+  // файл» возвращает предыдущее фото (заказчик: загружает фото плёнки заново,
+  // а прежнее нужно уметь вернуть). Хранятся в IndexedDB под ключом
+  // «hist:<цвет>» в том же хранилище, что и сами фото; помним не больше
+  // COLOR_HISTORY_MAX штук.
+  const COLOR_HISTORY_MAX = 5;
+  const COLOR_HISTORY_PREFIX = "hist:";
+  const colorPhotoHistory = {};
+  function saveColorHistory(name) {
+    const list = colorPhotoHistory[name] || [];
+    return (list.length ? idbPut(PHOTO_STORE_COLOR, COLOR_HISTORY_PREFIX + name, { list: list })
+      : idbDelete(PHOTO_STORE_COLOR, COLOR_HISTORY_PREFIX + name)).catch(() => {});
+  }
   const modelPhotosConfirmedInIdb = new Set();
 
   // --- Сохранение изменённых цен --------------------------------------
@@ -9329,6 +9342,11 @@ const DB = {
     const colorTask = idbGetAll(PHOTO_STORE_COLOR).then(({ keys, values }) => {
       const known = new Set(keys);
       keys.forEach((name, i) => {
+        if (name.indexOf(COLOR_HISTORY_PREFIX) === 0) {
+          const list = values[i] && values[i].list;
+          if (Array.isArray(list)) colorPhotoHistory[name.slice(COLOR_HISTORY_PREFIX.length)] = list;
+          return;
+        }
         DB.colorSwatches[name] = { ...(DB.colorSwatches[name] || {}), ...values[i], custom: true };
         colorPhotosConfirmedInIdb.add(name);
       });
@@ -9772,6 +9790,15 @@ const DB = {
     const label = input.closest("label");
     if (label) label.firstChild.textContent = "⏳ Обрабатываю…";
     cropToSwatchRatio(file).then(({ dataUrl, hex }) => {
+      // Прежняя загрузка уходит в историю (заводской образец — нет: он в коде и
+      // возвращается сам, когда истории не остаётся).
+      const prev = DB.colorSwatches[name];
+      if (prev && prev.custom && prev.image) {
+        const list = (colorPhotoHistory[name] = colorPhotoHistory[name] || []);
+        list.push({ hex: prev.hex, image: prev.image, tileImage: prev.tileImage });
+        while (list.length > COLOR_HISTORY_MAX) list.shift();
+        saveColorHistory(name);
+      }
       DB.colorSwatches[name] = { hex, image: dataUrl, tileImage: dataUrl, custom: true };
       // Ещё не подтверждено в IndexedDB — до подтверждения collectPrices()
       // на всякий случай пишет фото полностью и в localStorage (см. выше).
@@ -9806,17 +9833,13 @@ const DB = {
     });
   }
 
-  // «Убрать своё фото» — возвращает заводское фото (если оно у этого цвета
-  // было, см. FACTORY_COLOR_SWATCHES), а для цветов без заводского фото
-  // (добавленных через «+ Добавить цвет») просто убирает запись целиком —
-  // превью возвращается к обычной заливке цветом (см. colorRow).
-  // «Убрать все свои фото плёнок»: заказчик переснял все плёнки и хочет начать с
-  // чистого места. Трогает ТОЛЬКО плёнки: загруженные фото цветов
-  // (DB.colorSwatches + IndexedDB colorPhotos) и настройки тона цветов ПВХ
-  // (DB.colorAdjust) — тон подбирался под прежние фото и лёг бы поверх новых.
-  // Фото моделей дверей, их подгонка, чёткость и разметка (DB.modelSwatches,
-  // modelParts) и тон цветов эмали (у них фото нет, тон — единственная
-  // настройка) остаются как были.
+  // «Удалить последний файл» (у каждого цвета, рядом с «Загрузить файл») —
+  // шаг назад по загрузкам: удаляет самое свежее загруженное фото и возвращает
+  // предыдущее (см. colorPhotoHistory). Когда прежних загрузок нет — возвращает
+  // заводской образец (см. FACTORY_COLOR_SWATCHES), а для цветов без него
+  // (добавленных через «+ Добавить цвет») убирает запись целиком — превью
+  // возвращается к обычной заливке цветом (см. colorRow). Нажимается дважды
+  // (armRemoveFileButton): первое нажатие только спрашивает.
   function renameColorInSnapshot(s, from, to) {
     if (!s) return;
     const fix = (arr) => Array.isArray(arr) ? arr.map((c) => (c === from ? to : c)) : arr;
@@ -9849,32 +9872,24 @@ const DB = {
     } catch (err) { }
   }
 
-  function onColorRemoveAll() {
-    // Свои фото — с пометкой custom; заводские (из кода) остаются или
-    // возвращаются на место.
-    const photoNames = Object.keys(DB.colorSwatches).filter((n) => DB.colorSwatches[n] && DB.colorSwatches[n].custom);
-    photoNames.forEach((name) => {
+  function onColorRemovePhoto(name) {
+    colorPhotosConfirmedInIdb.delete(name);
+    const list = colorPhotoHistory[name];
+    let writing;
+    if (list && list.length) {
+      // Есть прежняя загрузка — возвращаем её (а текущая удаляется).
+      const prev = list.pop();
+      DB.colorSwatches[name] = { hex: prev.hex, image: prev.image, tileImage: prev.tileImage, custom: true };
+      writing = idbPut(PHOTO_STORE_COLOR, name, { hex: prev.hex, image: prev.image, tileImage: prev.tileImage })
+        .then(() => { colorPhotosConfirmedInIdb.add(name); })
+        .catch(() => {});
+    } else {
+      // Прежних загрузок нет — остаётся заводской образец (если он есть).
       if (FACTORY_COLOR_SWATCHES[name]) DB.colorSwatches[name] = { ...FACTORY_COLOR_SWATCHES[name] };
       else delete DB.colorSwatches[name];
-      colorPhotosConfirmedInIdb.delete(name);
-    });
-    const adj = DB.colorAdjust || (DB.colorAdjust = {});
-    new Set([...photoNames, ...Object.keys(FILM_COLOR_HEX)]).forEach((name) => { delete adj[name]; });
-    idbGetAll(PHOTO_STORE_COLOR)
-      .then(({ keys }) => Promise.all(Array.from(new Set([...keys, ...photoNames])).map((k) => idbDelete(PHOTO_STORE_COLOR, k).catch(() => {}))))
-      .catch(() => {})
-      .then(() => {
-        savePrices();
-        renderPriceEditor();
-        render();
-      });
-  }
-
-  function onColorRemovePhoto(name) {
-    if (FACTORY_COLOR_SWATCHES[name]) DB.colorSwatches[name] = { ...FACTORY_COLOR_SWATCHES[name] };
-    else delete DB.colorSwatches[name];
-    colorPhotosConfirmedInIdb.delete(name);
-    idbDelete(PHOTO_STORE_COLOR, name).catch(() => {}).then(() => {
+      writing = idbDelete(PHOTO_STORE_COLOR, name).catch(() => {});
+    }
+    writing.then(() => saveColorHistory(name)).then(() => {
       savePrices();
       renderPriceEditor();
     });
@@ -10298,7 +10313,7 @@ const DB = {
     // строкой над панелью (см. отчёт).
     const uploadBtn = `<label class="row-add color-upload-btn">📷 Загрузить файл
       <input type="file" accept="image/*" class="color-upload-input sr-only" data-color="${esc(name)}">
-    </label>${sw && sw.custom ? `<button type="button" class="row-add color-upload-remove" data-field="removePhoto" data-color="${esc(name)}">✕ Удалить файл</button>` : ""}`;
+    </label>${sw && sw.custom ? `<button type="button" class="row-add color-upload-remove" data-field="removePhoto" data-color="${esc(name)}">✕ Удалить последний файл</button>` : ""}`;
     // Ползунки по умолчанию заблокированы (disabled) — иначе случайное
     // касание ползунка на телефоне сразу меняет тон плёнки. Разблокирует их
     // кнопка «Изменить»; «Сохранить» фиксирует значение и снова блокирует
@@ -10536,9 +10551,7 @@ const DB = {
     colorRows += addBtn("material", {}, "Добавить материал");
     parts.push(`<details class="price-group" data-key="color"${isOpen("color", false) ? " open" : ""}>
       <summary>Пленка ПВХ и эмаль (цвета и категории)</summary>
-      <div class="price-body">${Object.keys(DB.colorSwatches).some((n) => DB.colorSwatches[n] && DB.colorSwatches[n].custom) || Object.keys(DB.colorAdjust || {}).some((n) => FILM_COLOR_HEX[n])
-        ? `<button type="button" class="row-add color-upload-remove" data-field="removeAllColorPhotos">✕ Убрать все свои фото плёнок и настройки тона</button>`
-        : ""}${colorRows}</div></details>`);
+      <div class="price-body">${colorRows}</div></details>`);
 
     // Опции — та же логика материала, что и у цветов (см. выше), только
     // ключ editItem другой (materialGroupOpt), чтобы состояние открыт/
@@ -10939,11 +10952,6 @@ const DB = {
   }
 
   function onPriceClick(e) {
-    const removeAllColors = e.target.closest('[data-field="removeAllColorPhotos"]');
-    if (removeAllColors) {
-      armRemoveFileButton(removeAllColors, onColorRemoveAll);
-      return;
-    }
     const removePhoto = e.target.closest('[data-field="removePhoto"]');
     if (removePhoto) {
       armRemoveFileButton(removePhoto, () => onColorRemovePhoto(removePhoto.dataset.color));
