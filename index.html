@@ -554,14 +554,16 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
    по жёлтым углам-маркерам. */
 /* Углы выбранной детали — крупные, под палец. Были 9 точек: в такой квадратик
    пальцем не попасть, и угол приходилось ловить по нескольку раз. Теперь 22
-   точек, а захват шире самого квадратика (см. PARTS_CORNER_REACH). Центр
-   квадратика — на самом углу детали. */
+   точки, а захват шире самого квадратика (см. PARTS_CORNER_REACH). Квадратик
+   стоит СНАРУЖИ угла по диагонали и касается его только своим углом (раньше
+   его центр был на самом углу, и палец с квадратиком закрывали то место, куда
+   стекло или филёнку нужно было поставить точно — жалоба заказчика). */
 .part .ph { position: absolute; width: 22px; height: 22px; box-sizing: border-box; background: #ffd54a; border: 2px solid #6b5200;
   border-radius: 5px; box-shadow: 0 1px 4px rgba(0, 0, 0, .4); z-index: 3; }
-.part .ph-nw { left: -12px; top: -12px; }
-.part .ph-ne { right: -12px; top: -12px; }
-.part .ph-sw { left: -12px; bottom: -12px; }
-.part .ph-se { right: -12px; bottom: -12px; }
+.part .ph-nw { left: -22px; top: -22px; }
+.part .ph-ne { right: -22px; top: -22px; }
+.part .ph-sw { left: -22px; bottom: -22px; }
+.part .ph-se { right: -22px; bottom: -22px; }
 /* Цвет детали = её вид. Те же цвета у кнопок вида ниже. Заливка нарочно
    очень слабая: под ней фотография, по которой и ведётся разметка, — при
    плотной заливке дверь под ней пропадала и ориентиров не оставалось.
@@ -3511,7 +3513,11 @@ const DB = {
     // а не рамка под снимок.
     d: { w: LEAF_MM.w, h: LEAF_MM.h, fix: true },
     s: { w: PROFILE_MM, h: LEAF_MM.h, fix: true },
-    p: { w: INNER_MM, h: PROFILE_MM, fix: true },
+    // Царга: верхняя и нижняя встают в рамке сами (см. framePartRect), но
+    // на многих моделях есть и средние (поясок посередине, две царги над
+    // стеклом) — поэтому царгу можно двигать и тянуть за углы, а третья и
+    // следующие ставятся в середину полотна, а не на верх и низ.
+    p: { w: INNER_MM, h: PROFILE_MM, free: true },
     // Филёнка и стекло по умолчанию — всё поле между стойками и царгами,
     // раскладка — планка во всё это поле: так сразу видно, куда их сажать,
     // а дальше поле делится по рисунку модели.
@@ -3546,6 +3552,17 @@ const DB = {
   // филёнка, стекло, раскладка — у них размер свой у каждой модели. У рамки
   // полотна, стоек, царг и наличников размер и место известны из рамки кадра,
   // поэтому углов у них нет и случайно растянуть их нельзя.
+  // Деталь каркаса — та, что стоит в рамке на заданном месте и пересобирается
+  // кнопкой «+ Каркас»: полотно, стойки, наличники и царги наверху и внизу.
+  // Средние царги (их ставит и двигает заказчик) к каркасу не относятся.
+  function isFramePart(p) {
+    if (!framePartRect(p.k)) return false;
+    if (p.k !== "p") return true;
+    const top = framePartRect("p", false), bottom = framePartRect("p", true);
+    const near = (r) => Math.abs(p.x - r.x) < 0.02 && Math.abs(p.y - r.y) < 0.012;
+    return near(top) || near(bottom);
+  }
+
   function partsResizable(kind) {
     const mm = PART_MM[kind];
     return !!(mm && mm.free);
@@ -3574,6 +3591,22 @@ const DB = {
   function newPart(kind, parts) {
     const sc = partsScale();
     const has = (k) => parts.some((p) => p.k === k);
+    // Царг может быть больше двух: первая — вверху, вторая — внизу, третья и
+    // следующие — в середине полотна (одна под другой), дальше их ставят руками.
+    // Верх и низ определяются по тому, что уже стоит на этих местах: после
+    // «+ Каркас» средние царги остаются, а верхняя и нижняя ставятся заново.
+    let railMid = 0;
+    if (kind === "p") {
+      const top = framePartRect("p", false), bottom = framePartRect("p", true);
+      const at = (p, r) => p.k === "p" && Math.abs(p.x - r.x) < 0.02 && Math.abs(p.y - r.y) < 0.012;
+      const hasTop = parts.some((p) => at(p, top)), hasBottom = parts.some((p) => at(p, bottom));
+      if (!hasTop) return { x: top.x, y: top.y, w: top.w, h: top.h, k: kind };
+      if (!hasBottom) return { x: bottom.x, y: bottom.y, w: bottom.w, h: bottom.h, k: kind };
+      railMid = parts.filter((p) => p.k === "p" && !at(p, top) && !at(p, bottom)).length;
+      const L = FRAME_LEAF, profW = PROFILE_MM / FRAME_MM.w, profH = PROFILE_MM / FRAME_MM.h;
+      const y = Math.min(L.y + L.h - 2 * profH, L.y + (L.h - profH) / 2 + railMid * profH * 1.1);
+      return { x: L.x + profW, y: y, w: L.w - profW * 2, h: profH, k: kind };
+    }
     const fixed = framePartRect(kind, has(kind));
     if (fixed) return { x: fixed.x, y: fixed.y, w: fixed.w, h: fixed.h, k: kind };
     const mm = PART_MM[kind] || { w: 300, h: 300 };
@@ -5002,7 +5035,7 @@ const DB = {
             p.x = p.x * dw + ox; p.w = p.w * dw;
             p.y = p.y * dh + oy; p.h = p.h * dh;
           });
-          const kept = doc.parts.filter((p) => !framePartRect(p.k));
+          const kept = doc.parts.filter((p) => !isFramePart(p));
           if (kept.length !== doc.parts.length) {
             doc.parts = kept;
             ["d", "s", "s", "p", "p", "nv", "nv", "nh"].forEach((k) => { doc.parts.push(newPart(k, doc.parts)); });
@@ -5158,20 +5191,26 @@ const DB = {
     // по списку оказывался левым — правый край тянули, а схлопывался левый.
     if (partsSel !== null && doc.parts[partsSel] && partsResizable(doc.parts[partsSel].k)) {
       const p = doc.parts[partsSel];
-      const corners = [["nw", p.x, p.y], ["ne", p.x + p.w, p.y], ["sw", p.x, p.y + p.h], ["se", p.x + p.w, p.y + p.h]];
+      // Центр квадратика стоит снаружи угла на половину его стороны по каждой
+      // оси (см. .ph в CSS): целимся в него, а не в сам угол.
+      const H2 = PARTS_HANDLE_PX / 2;
+      const corners = [["nw", p.x, p.y, -1, -1], ["ne", p.x + p.w, p.y, 1, -1], ["sw", p.x, p.y + p.h, -1, 1], ["se", p.x + p.w, p.y + p.h, 1, 1]];
       let near = null;
-      corners.forEach(([name, cx2, cy2]) => {
-        const dx = (fx - cx2) * box.width, dy = (fy - cy2) * box.height;
+      corners.forEach(([name, cx2, cy2, sx, sy]) => {
+        const dx = fx * box.width - (cx2 * box.width + sx * H2), dy = fy * box.height - (cy2 * box.height + sy * H2);
         const dist = Math.sqrt(dx * dx + dy * dy);
-        if (!near || dist < near.dist) near = { name: name, dist: dist };
+        if (!near || dist < near.dist) near = { name: name, dist: dist, cx: cx2, cy: cy2 };
       });
-      // Радиус захвата угла — под палец, а не под мышь: квадратик маленький, и
-      // по нему надо попасть. У небольшой детали радиус меньше, иначе любое
-      // касание её середины считалось бы угловым, и двигать её было бы нечем.
-      const pw = p.w * box.width, ph = p.h * box.height;
-      const reach = Math.min(PARTS_CORNER_REACH, Math.max(22, 0.4 * Math.max(pw, ph)));
+      // Радиус захвата — под палец, а не под мышь. Квадратик теперь вне детали,
+      // поэтому касание середины даже маленькой детали далеко от него и
+      // двигать её по-прежнему можно.
+      const reach = PARTS_CORNER_REACH;
       if (near && near.dist < reach) {
-        partsDragStart({ mode: "resize", i: partsSel, corner: near.name, modelId: ctx.model.id, moved: false }, doc, els, box);
+        // Палец лежит на квадратике снаружи угла: запоминаем, насколько он
+        // отстоит от самого угла, и ведём угол на столько же позади пальца —
+        // иначе при первом движении угол прыгнул бы под палец.
+        partsDragStart({ mode: "resize", i: partsSel, corner: near.name, modelId: ctx.model.id, moved: false,
+          offX: near.cx - fx, offY: near.cy - fy }, doc, els, box);
         els.stage.setPointerCapture(e.pointerId);
         e.preventDefault();
         return;
@@ -5188,11 +5227,11 @@ const DB = {
           updatePartsEditor();
           return;
         }
-        // Полотно, стойки, царги и наличники в рамке стоят на своём
-        // единственном месте (см. framePartRect) — двигать их нечего, и если
+        // Полотно, стойки и наличники в рамке стоят на своём единственном
+        // месте (см. framePartRect) — двигать их нечего, и если
         // разрешить, вся привязка к миллиметрам развалится. Под рамку
         // подгоняется рамка блока под дверь на снимке (см. «Фото в рамке»).
-        if (framePartRect(p.k)) return;
+        if (framePartRect(p.k) && !partsResizable(p.k)) return;
         partsDragStart({ mode: "move", i: i, dx: fx - p.x, dy: fy - p.y, modelId: ctx.model.id, moved: false }, doc, els, box);
         els.stage.setPointerCapture(e.pointerId);
         e.preventDefault();
@@ -5202,9 +5241,9 @@ const DB = {
     if (partsSel !== null) { partsSel = null; updatePartsEditor(); }
   }
 
-  // Радиус захвата угла, точек. Раньше 22 при квадратике в 9 точек — теперь
-  // квадратик 22, а захват шире.
-  const PARTS_CORNER_REACH = 40;
+  // Радиус захвата угла, точек, — от центра квадратика. Квадратик 22 точки.
+  const PARTS_HANDLE_PX = 22;
+  const PARTS_CORNER_REACH = 32;
 
   // Всё, что не меняется, пока палец ведёт деталь, считаем один раз в начале:
   // положение фотографии на экране, рамку прямоугольника и края соседних деталей
@@ -5241,8 +5280,8 @@ const DB = {
     const p = doc.parts[drag.i];
     if (!p) return;
     const box = drag.box;
-    const fx = (drag.last.x - box.left) / box.width;
-    const fy = (drag.last.y - box.top) / box.height;
+    const fx = (drag.last.x - box.left) / box.width + (drag.offX || 0);
+    const fy = (drag.last.y - box.top) / box.height + (drag.offY || 0);
     const tolX = 8 / box.width, tolY = 8 / box.height;
     const xs = drag.xs, ys = drag.ys;
     const MIN = 0.015;
@@ -5333,7 +5372,7 @@ const DB = {
       // прежние стойки, царги и наличники убираем, чтобы не остались
       // задвоенными на старых местах. Филёнки, стёкла и раскладки — свои у
       // модели, их не трогаем.
-      doc.parts = doc.parts.filter((p) => !framePartRect(p.k));
+      doc.parts = doc.parts.filter((p) => !isFramePart(p));
       ["d", "s", "s", "p", "p", "nv", "nv", "nh"].forEach((k) => { doc.parts.push(newPart(k, doc.parts)); });
       partsSel = null;
       savePartsDoc(doc, ctx.model.id);
