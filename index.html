@@ -5285,12 +5285,17 @@ const DB = {
     const tolX = 8 / box.width, tolY = 8 / box.height;
     const xs = drag.xs, ys = drag.ys;
     const MIN = 0.015;
+    // У царги прилипания к краям соседних деталей нет: между двумя царгами
+    // бывает зазор в несколько миллиметров, а прилипание в 8 точек стягивало
+    // их края вплотную, и выставить зазор было нельзя (жалоба заказчика).
+    // Остальные детали прилипают, как раньше.
+    const snap = p.k === "p" ? (v) => v : partsSnap;
     if (partsDrag.mode === "move") {
       let nx = Math.max(0, Math.min(1 - p.w, fx - partsDrag.dx));
       let ny = Math.max(0, Math.min(1 - p.h, fy - partsDrag.dy));
-      const sxL = partsSnap(nx, xs, tolX), sxR = partsSnap(nx + p.w, xs, tolX) - p.w;
+      const sxL = snap(nx, xs, tolX), sxR = snap(nx + p.w, xs, tolX) - p.w;
       nx = Math.abs(sxL - nx) <= Math.abs(sxR - nx) ? sxL : sxR;
-      const syT = partsSnap(ny, ys, tolY), syB = partsSnap(ny + p.h, ys, tolY) - p.h;
+      const syT = snap(ny, ys, tolY), syB = snap(ny + p.h, ys, tolY) - p.h;
       ny = Math.abs(syT - ny) <= Math.abs(syB - ny) ? syT : syB;
       p.x = Math.max(0, Math.min(1 - p.w, nx));
       p.y = Math.max(0, Math.min(1 - p.h, ny));
@@ -5299,17 +5304,17 @@ const DB = {
       const north = partsDrag.corner === "nw" || partsDrag.corner === "ne";
       const right = p.x + p.w, bottom = p.y + p.h;
       if (west) {
-        const nx = Math.max(0, Math.min(right - MIN, partsSnap(fx, xs, tolX)));
+        const nx = Math.max(0, Math.min(right - MIN, snap(fx, xs, tolX)));
         p.w = right - nx; p.x = nx;
       } else {
-        const nr = Math.max(p.x + MIN, Math.min(1, partsSnap(fx, xs, tolX)));
+        const nr = Math.max(p.x + MIN, Math.min(1, snap(fx, xs, tolX)));
         p.w = nr - p.x;
       }
       if (north) {
-        const ny = Math.max(0, Math.min(bottom - MIN, partsSnap(fy, ys, tolY)));
+        const ny = Math.max(0, Math.min(bottom - MIN, snap(fy, ys, tolY)));
         p.h = bottom - ny; p.y = ny;
       } else {
-        const nb = Math.max(p.y + MIN, Math.min(1, partsSnap(fy, ys, tolY)));
+        const nb = Math.max(p.y + MIN, Math.min(1, snap(fy, ys, tolY)));
         p.h = nb - p.y;
       }
     }
