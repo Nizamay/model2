@@ -4084,8 +4084,113 @@ const DB = {
     // qualityReliefMm): 5 мм убирают тиснение «под дерево» со снимка, но
     // вместе с ним и тонкие канавки по краям филёнок; меньше — канавки
     // остаются, а с ними и тиснение.
-    const relief0 = blurLuminance(rdata, rw, rh, Math.max(1, Math.round((reliefMm > 0 ? reliefMm : 5) * reliefPxPerMm)));
+    const reliefR = Math.max(1, Math.round((reliefMm > 0 ? reliefMm : 5) * reliefPxPerMm));
+    // Та же яркость, но резкая, без размытия, — снятая со снимка ДО того, как
+    // по нему пошла перекраска. Нужна стеклу: у него рельеф свой, гравировка
+    // и блики, размывать их нельзя. Раньше стекло читало яркость прямо из
+    // перекрашиваемой картинки, а филёнка под ним к тому времени уже была
+    // закрашена плёнкой, — и стекло темнело или светлело вслед за цветом
+    // плёнки, хотя к плёнке никакого отношения не имеет.
+    const sharp = blurLuminance(rdata, rw, rh, 0);
+    let relief0 = blurLuminance(rdata, rw, rh, reliefR);
     if (await pause()) return null;
+    // Большие тёмные пятна — чёрное стекло, глухие вставки — в усреднении
+    // светотени участвовать не должны. Раньше они утягивали вниз и размытие
+    // рельефа, и ещё сильнее — широкое поле, на которое рельеф делится (см.
+    // ниже); вокруг стекла рельеф выходил выше единицы на сорок миллиметров, и
+    // на двери вокруг каждого стекла лежала светлая «аура» (+30 % к плёнке, на
+    // снимке модели «Модерн 1 ПО» — жалоба заказчика); ползунок «Светотень
+    // двери» её только усиливал или гасил вместе со всей светотенью. Теперь
+    // такие пятна исключаются из усреднения.
+    //
+    // Пятно — это темнее половины яркости красимых деталей и при этом толще
+    // примерно шести миллиметров (канавки, швы и тени от фрезеровки тоньше и
+    // остаются в рельефе: они и есть рельеф). Если таких пятен на снимке нет,
+    // расчёт не меняется ни на точку.
+    let avgMask = null;
+    // Считаем вполовину меньшим кадром (пятна толщиной в миллиметры не нужны, а
+    // это вчетверо дешевле) и, где можно, отдаём странице касания: размытия
+    // на весь кадр — самая тяжёлая часть, одним куском они «замораживали» страницу.
+    const hw = Math.max(2, rw >> 1), hh = Math.max(2, rh >> 1);
+    {
+      const painted = doc.parts.filter((p) => PART_KINDS[p.k] && !PART_KINDS[p.k].ref && p.k !== "g");
+      const samp = [];
+      painted.forEach((p) => {
+        const sx0 = Math.max(0, Math.round(p.x * rw)), sy0 = Math.max(0, Math.round(p.y * rh));
+        const sx1 = Math.min(rw, Math.round((p.x + p.w) * rw)), sy1 = Math.min(rh, Math.round((p.y + p.h) * rh));
+        for (let y = sy0; y < sy1; y += 4) for (let x = sx0; x < sx1; x += 4) samp.push(sharp[y * rw + x]);
+      });
+      if (samp.length > 16) {
+        const arr = Float32Array.from(samp); arr.sort();
+        const thr = 0.5 * arr[arr.length >> 1];
+        const dark = new Float32Array(hw * hh);
+        let anyDark = false;
+        for (let y = 0; y < hh; y++) {
+          const row = Math.min(rh - 1, y * 2) * rw;
+          for (let x = 0; x < hw; x++) if (sharp[row + Math.min(rw - 1, x * 2)] < thr) { dark[y * hw + x] = 1; anyDark = true; }
+        }
+        if (anyDark) {
+          const frac = boxBlurField(dark, hw, hh, Math.max(1, Math.round(1.5 * reliefPxPerMm)));
+          if (await pause()) return null;
+          const core = new Float32Array(frac.length);
+          let anyCore = false;
+          for (let i = 0; i < frac.length; i++) if (frac[i] > 0.85) { core[i] = 1; anyCore = true; }
+          if (anyCore) {
+            const near = boxBlurField(core, hw, hh, Math.max(1, Math.round(3.5 * reliefPxPerMm)));
+            if (await pause()) return null;
+            avgMask = new Float32Array(rw * rh);
+            for (let y = 0; y < rh; y++) {
+              const hrow = Math.min(hh - 1, y >> 1) * hw, row = y * rw;
+              for (let x = 0; x < rw; x++) avgMask[row + x] = near[hrow + Math.min(hw - 1, x >> 1)] > 0.02 ? 0 : 1;
+            }
+          }
+        }
+      }
+    }
+    // Размытие с весами: тёмные пятна считаются нулём, там, где весов почти нет
+    // (в самом пятне), остаётся обычное значение. Версия с паузами для кадра
+    // целиком (светотень).
+    const boxBlurSliced = async (src, w, h, r) => {
+      const tmp = new Float32Array(w * h), out = new Float32Array(w * h);
+      for (let y = 0; y < h; y++) {
+        const row = y * w;
+        let sum = 0;
+        for (let x = 0; x <= r && x < w; x++) sum += src[row + x];
+        let n = Math.min(r + 1, w);
+        for (let x = 0; x < w; x++) {
+          tmp[row + x] = sum / n;
+          const add = x + r + 1, drop = x - r;
+          if (add < w) { sum += src[row + add]; n++; }
+          if (drop >= 0) { sum -= src[row + drop]; n--; }
+        }
+        if ((y & 31) === 31 && await pause()) return null;
+      }
+      for (let x0 = 0; x0 < w; x0 += 64) {
+        const x1 = Math.min(w, x0 + 64);
+        for (let x = x0; x < x1; x++) {
+          let sum = 0;
+          for (let y = 0; y <= r && y < h; y++) sum += tmp[y * w + x];
+          let n = Math.min(r + 1, h);
+          for (let y = 0; y < h; y++) {
+            out[y * w + x] = sum / n;
+            const add = y + r + 1, drop = y - r;
+            if (add < h) { sum += tmp[add * w + x]; n++; }
+            if (drop >= 0) { sum -= tmp[drop * w + x]; n--; }
+          }
+        }
+        if (await pause()) return null;
+      }
+      return out;
+    };
+    if (avgMask) {
+      const num = new Float32Array(sharp.length);
+      for (let i = 0; i < num.length; i++) num[i] = sharp[i] * avgMask[i];
+      const bn = await boxBlurSliced(num, rw, rh, reliefR);
+      if (!bn) return null;
+      const bd = await boxBlurSliced(avgMask, rw, rh, reliefR);
+      if (!bd) return null;
+      for (let i = 0; i < relief0.length; i++) if (bd[i] > 0.05) relief0[i] = bn[i] / bd[i];
+    }
     // Крупный рисунок дерева со снимка убираем отдельно. Размытие в 5 мм
     // снимает мелкую прядь, но у дуба есть и широкая «пламя»-текстура в два
     // и пять сантиметров — её пятью миллиметрами не взять. На плёнке с
@@ -4098,7 +4203,36 @@ const DB = {
     // фрезеровка, тень в стыке. Уровень возвращаем общим множителем, чтобы
     // деталь не поменяла яркость.
     const flatR = Math.max(2, Math.round(40 * reliefPxPerMm));
-    const wide = boxBlurField(relief0, rw, rh, flatR);
+    let wide;
+    if (avgMask) {
+      // Широкое поле — это сорок миллиметров: половинного кадра хватает с
+      // запасом. Усредняем только то, что вне тёмных пятен, и растягиваем обратно.
+      const hr = new Float32Array(hw * hh), hm = new Float32Array(hw * hh);
+      for (let y = 0; y < hh; y++) {
+        const r0 = Math.min(rh - 1, y * 2) * rw;
+        for (let x = 0; x < hw; x++) {
+          const i = r0 + Math.min(rw - 1, x * 2);
+          hm[y * hw + x] = avgMask[i];
+          hr[y * hw + x] = relief0[i] * avgMask[i];
+        }
+      }
+      const hfr = Math.max(1, flatR >> 1);
+      const bn = boxBlurField(hr, hw, hh, hfr);
+      if (await pause()) return null;
+      const bd = boxBlurField(hm, hw, hh, hfr);
+      if (await pause()) return null;
+      const plain = boxBlurField(relief0, rw, rh, flatR);
+      wide = new Float32Array(rw * rh);
+      for (let y = 0; y < rh; y++) {
+        const hrow = Math.min(hh - 1, y >> 1) * hw, row = y * rw;
+        for (let x = 0; x < rw; x++) {
+          const j = hrow + Math.min(hw - 1, x >> 1);
+          wide[row + x] = bd[j] > 0.05 ? bn[j] / bd[j] : plain[row + x];
+        }
+      }
+    } else {
+      wide = boxBlurField(relief0, rw, rh, flatR);
+    }
     if (await pause()) return null;
     let wideMean = 0;
     for (let i = 0; i < wide.length; i++) wideMean += wide[i];
@@ -4108,14 +4242,6 @@ const DB = {
       const b = wide[i] > 1 ? wide[i] : 1;
       relief[i] = relief0[i] / b * wideMean;
     }
-    // Та же яркость, но резкая, без размытия, — снятая со снимка ДО того, как
-    // по нему пошла перекраска. Нужна стеклу: у него рельеф свой, гравировка
-    // и блики, размывать их нельзя. Раньше стекло читало яркость прямо из
-    // перекрашиваемой картинки, а филёнка под ним к тому времени уже была
-    // закрашена плёнкой, — и стекло темнело или светлело вслед за цветом
-    // плёнки, хотя к плёнке никакого отношения не имеет.
-    const sharp = blurLuminance(rdata, rw, rh, 0);
-    if (await pause()) return null;
     // Ровный цвет (эмаль, плёнка без образца) настраивается тем же правилом.
     // Стекло — нет: у него свой цвет из позиции «Стекло», к плёнке он
     // отношения не имеет.
