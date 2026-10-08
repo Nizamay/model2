@@ -3413,7 +3413,20 @@ const DB = {
   // — искать больше нечего.
   function partsLeafBox(doc) {
     if (!doc) return null;
-    return { x: FRAME_LEAF.x, y: FRAME_LEAF.y, w: FRAME_LEAF.w, h: FRAME_LEAF.h };
+    return leafOfParts(doc.parts);
+  }
+
+  // Полотно модели в кадре. По умолчанию оно стоит на месте, заданном рамкой
+  // (FRAME_LEAF), но у каталожных снимков дверь на фото не всегда ложится на
+  // эту рамку (снимок снят под углом, наличник толще или тоньше положенного),
+  // и заказчик попросил сделать пунктир «Полотно» активным: его можно
+  // двигать и тянуть за углы, а каркас (стойки, царги, наличники) строится
+  // по нему, а не по стандартному месту. Если полотно обведено, место берётся
+  // с него.
+  function leafOfParts(parts) {
+    const d = parts && parts.find((p) => p.k === "d");
+    if (!d || !(d.w >= 0.1) || !(d.h >= 0.1)) return { x: FRAME_LEAF.x, y: FRAME_LEAF.y, w: FRAME_LEAF.w, h: FRAME_LEAF.h };
+    return { x: d.x, y: d.y, w: d.w, h: d.h };
   }
 
   // Первая разметка делалась сеткой линий на всю фотографию (DB.modelGrids).
@@ -3507,11 +3520,11 @@ const DB = {
   // fix — размер задан правилами, за углы тянуть нечего (деталь только
   // переносится); free — размер свой у каждой модели, углы нужны.
   const PART_MM = {
-    // Рамка полотна больше не тянется руками: её место в кадре задано
-    // рамкой (см. FRAME_LEAF) — 700x2000 мм, отступ сверху и с боков на
-    // наличник с зазором. Подгоняется под неё сам СНИМОК (см. modelFrameFit),
-    // а не рамка под снимок.
-    d: { w: LEAF_MM.w, h: LEAF_MM.h, fix: true },
+    // Полотно по умолчанию стоит в кадре на месте, заданном рамкой (см.
+    // FRAME_LEAF) — 700x2000 мм, отступ сверху и с боков на наличник с
+    // зазором, — но его можно подвинуть и потянуть за углы под дверь на
+    // снимке (см. leafOfParts): каркас строится по нему.
+    d: { w: LEAF_MM.w, h: LEAF_MM.h, free: true },
     s: { w: PROFILE_MM, h: LEAF_MM.h, fix: true },
     // Царга: верхняя и нижняя встают в рамке сами (см. framePartRect), но
     // на многих моделях есть и средние (поясок посередине, две царги над
@@ -3536,15 +3549,27 @@ const DB = {
   // экземпляр (правая стойка, нижняя царга, правый наличник) — second=true.
   // Наличник отделён от полотна зазором 5 мм, поэтому его место считается от
   // края кадра, а не от полотна.
-  function framePartRect(kind, second) {
-    const L = FRAME_LEAF;
-    const casW = CASING_MM / FRAME_MM.w, casH = CASING_MM / FRAME_MM.h;
-    const profW = PROFILE_MM / FRAME_MM.w, profH = PROFILE_MM / FRAME_MM.h;
+  function framePartRect(kind, second, leaf) {
+    const L = leaf || FRAME_LEAF;
+    // Доля кадра на миллиметр у этого полотна: у стандартного места она та
+    // же, что у всей рамки (1 / FRAME_MM), у подогнанного полотна своя по
+    // каждой оси.
+    const sx = L.w / LEAF_MM.w, sy = L.h / LEAF_MM.h;
+    const casW = CASING_MM * sx, casH = CASING_MM * sy;
+    const profW = PROFILE_MM * sx, profH = PROFILE_MM * sy;
+    const gapX = GAP_MM * sx, gapY = GAP_MM * sy, floorY = FLOOR_GAP_MM * sy;
+    // Не дальше края кадра: у сдвинутого к краю полотна наличник обрезается.
+    const fit = (r) => {
+      const x0 = Math.max(0, r.x), y0 = Math.max(0, r.y);
+      const x1 = Math.min(1, r.x + r.w), y1 = Math.min(1, r.y + r.h);
+      return { x: x0, y: y0, w: Math.max(0.001, x1 - x0), h: Math.max(0.001, y1 - y0) };
+    };
     if (kind === "d") return { x: L.x, y: L.y, w: L.w, h: L.h };
     if (kind === "s") return { x: second ? L.x + L.w - profW : L.x, y: L.y, w: profW, h: L.h };
     if (kind === "p") return { x: L.x + profW, y: second ? L.y + L.h - profH : L.y, w: L.w - profW * 2, h: profH };
-    if (kind === "nv") return { x: second ? 1 - casW : 0, y: casH, w: casW, h: 1 - casH };
-    if (kind === "nh") return { x: 0, y: 0, w: 1, h: casH };
+    const top = L.y - gapY - casH;
+    if (kind === "nv") return fit({ x: second ? L.x + L.w + gapX : L.x - gapX - casW, y: top + casH, w: casW, h: L.y + L.h + floorY - (top + casH) });
+    if (kind === "nh") return fit({ x: L.x - gapX - casW, y: top, w: L.w + 2 * (gapX + casW), h: casH });
     return null;
   }
 
@@ -3555,10 +3580,10 @@ const DB = {
   // Деталь каркаса — та, что стоит в рамке на заданном месте и пересобирается
   // кнопкой «+ Каркас»: полотно, стойки, наличники и царги наверху и внизу.
   // Средние царги (их ставит и двигает заказчик) к каркасу не относятся.
-  function isFramePart(p) {
-    if (!framePartRect(p.k)) return false;
+  function isFramePart(p, leaf) {
+    if (!framePartRect(p.k, false, leaf)) return false;
     if (p.k !== "p") return true;
-    const top = framePartRect("p", false), bottom = framePartRect("p", true);
+    const top = framePartRect("p", false, leaf), bottom = framePartRect("p", true, leaf);
     const near = (r) => Math.abs(p.x - r.x) < 0.02 && Math.abs(p.y - r.y) < 0.012;
     return near(top) || near(bottom);
   }
@@ -3573,14 +3598,15 @@ const DB = {
   // неё. Раньше масштаб приходилось снимать с уже поставленных
   // деталей, и он гулял от модели к модели — отсюда и расхождения, которые
   // заказчик показал на «Империи» (верхняя царга выходила толще 110 мм).
-  function partsScale() {
-    return { x: 1 / FRAME_MM.w, y: 1 / FRAME_MM.h };
+  function partsScale(leaf) {
+    const L = leaf || FRAME_LEAF;
+    return { x: L.w / LEAF_MM.w, y: L.h / LEAF_MM.h };
   }
 
   // Где на снимке полотно — тоже задано рамкой: наличник с зазором сверху и с
   // боков, щель до пола снизу.
-  function partsLeafPlace() {
-    return { x: FRAME_LEAF.x, y: FRAME_LEAF.y, w: FRAME_LEAF.w, h: FRAME_LEAF.h };
+  function partsLeafPlace(parts) {
+    return leafOfParts(parts);
   }
 
   // Новая деталь. Полотно, стойки, царги и наличники встают в рамке на своё
@@ -3589,7 +3615,8 @@ const DB = {
   // первого. Филёнка, стекло и раскладка — свои у каждой модели, поэтому
   // появляются в поле между стойками и царгами и дальше ставятся руками.
   function newPart(kind, parts) {
-    const sc = partsScale();
+    const L = leafOfParts(parts);
+    const sc = partsScale(L);
     const has = (k) => parts.some((p) => p.k === k);
     // Царг может быть больше двух: первая — вверху, вторая — внизу, третья и
     // следующие — в середине полотна (одна под другой), дальше их ставят руками.
@@ -3597,22 +3624,22 @@ const DB = {
     // «+ Каркас» средние царги остаются, а верхняя и нижняя ставятся заново.
     let railMid = 0;
     if (kind === "p") {
-      const top = framePartRect("p", false), bottom = framePartRect("p", true);
+      const top = framePartRect("p", false, L), bottom = framePartRect("p", true, L);
       const at = (p, r) => p.k === "p" && Math.abs(p.x - r.x) < 0.02 && Math.abs(p.y - r.y) < 0.012;
       const hasTop = parts.some((p) => at(p, top)), hasBottom = parts.some((p) => at(p, bottom));
       if (!hasTop) return { x: top.x, y: top.y, w: top.w, h: top.h, k: kind };
       if (!hasBottom) return { x: bottom.x, y: bottom.y, w: bottom.w, h: bottom.h, k: kind };
       railMid = parts.filter((p) => p.k === "p" && !at(p, top) && !at(p, bottom)).length;
-      const L = FRAME_LEAF, profW = PROFILE_MM / FRAME_MM.w, profH = PROFILE_MM / FRAME_MM.h;
+      const profW = PROFILE_MM * sc.x, profH = PROFILE_MM * sc.y;
       const y = Math.min(L.y + L.h - 2 * profH, L.y + (L.h - profH) / 2 + railMid * profH * 1.1);
       return { x: L.x + profW, y: y, w: L.w - profW * 2, h: profH, k: kind };
     }
-    const fixed = framePartRect(kind, has(kind));
+    const fixed = framePartRect(kind, has(kind), L);
     if (fixed) return { x: fixed.x, y: fixed.y, w: fixed.w, h: fixed.h, k: kind };
     const mm = PART_MM[kind] || { w: 300, h: 300 };
     const w = Math.max(0.01, Math.min(1, mm.w * sc.x));
     const h = Math.max(0.01, Math.min(1, mm.h * sc.y));
-    const leaf = partsLeafPlace();
+    const leaf = partsLeafPlace(parts);
     let x = leaf.x + (leaf.w - w) / 2;
     let y = leaf.y + (leaf.h - h) / 2;
     if (kind === "f" || kind === "g") { x = leaf.x + PROFILE_MM * sc.x; y = leaf.y + PROFILE_MM * sc.y; }
@@ -4586,14 +4613,18 @@ const DB = {
     const pct = (v) => (v * 100).toFixed(3) + "%";
     // Из долей снимка — в доли панели: у панели вокруг снимка есть поле.
     const kx = 1 + 2 * FRAME_PAD.x, ky = 1 + 2 * FRAME_PAD.y;
+    // Пунктир — место полотна в блоке; у модели с подогнанным полотном это
+    // оно, а не стандартное (см. leafOfParts).
+    const mdl = frameEditorCtx();
+    const leafNow = leafOfParts((mdl && partsOf(mdl.model.id) || {}).parts);
     const set = (n, r) => {
       n.style.left = pct((r.x + FRAME_PAD.x) / kx); n.style.top = pct((r.y + FRAME_PAD.y) / ky);
       n.style.width = pct(r.w / kx); n.style.height = pct(r.h / ky);
     };
     set(els.box, box);
     set(els.leaf, {
-      x: box.x + FRAME_LEAF.x * box.w, y: box.y + FRAME_LEAF.y * box.h,
-      w: FRAME_LEAF.w * box.w, h: FRAME_LEAF.h * box.h
+      x: box.x + leafNow.x * box.w, y: box.y + leafNow.y * box.h,
+      w: leafNow.w * box.w, h: leafNow.h * box.h
     });
     const at = {
       nw: [box.x, box.y], ne: [box.x + box.w, box.y],
@@ -5113,10 +5144,12 @@ const DB = {
     if (hint) {
       const activeKind = partsSel === null ? null : parts[partsSel].k;
       hint.textContent = !parts.length
-        ? "Начните с «+ Каркас»: полотно, стойки, царги и наличники встанут сами — их место в рамке задано в миллиметрах. Если они не совпали с дверью на снимке, двигать надо не их, а рамку блока на снимке — в панели «Фото в рамке» (тянуть за углы)."
+        ? "Начните с «+ Каркас»: полотно, стойки, царги и наличники встанут сами — их место в рамке задано в миллиметрах. Если они не совпали с дверью на снимке, нажмите на пунктир «Полотно» и подгоните его за углы под край двери: каркас встанет за ним. Масштаб и положение самого снимка — в панели «Фото в рамке»."
         : (partsSel === null
           ? "Нажмите на деталь — она станет активной, и только тогда её можно двигать. Кнопка вида добавляет новую."
-          : (partsResizable(activeKind)
+          : (activeKind === "d"
+            ? "Активно полотно. Тяните за середину — место, за углы — размер: края должны лечь на края двери на снимке. Стойки, царги и наличники встают по нему сами. Нажатие мимо снимает."
+            : partsResizable(activeKind)
             ? `Активна: ${PART_KINDS[activeKind].name.toLowerCase()}. Тяните за середину — место, за углы — размер. Нажатие мимо снимает.`
             : `Активна: ${PART_KINDS[activeKind].name.toLowerCase()}. Размер у неё по правилам, тянуть нечего — поставьте на место. Нажатие мимо снимает.`));
     }
@@ -5256,6 +5289,9 @@ const DB = {
     drag.el = els.layer.querySelector('.part[data-i="' + drag.i + '"]');
     drag.raf = 0;
     drag.last = null;
+    // Полотно тянут — каркас после этого переезжает за ним, для этого
+    // нужно знать, где оно стояло.
+    if (doc.parts[drag.i] && doc.parts[drag.i].k === "d") drag.oldLeaf = leafOfParts(doc.parts);
     partsDrag = drag;
     // Тянут — значит, отложенная перекраска пока подождёт: пересчёт картинки
     // во время движения пальца только мешал бы.
@@ -5284,12 +5320,18 @@ const DB = {
     const fy = (drag.last.y - box.top) / box.height + (drag.offY || 0);
     const tolX = 8 / box.width, tolY = 8 / box.height;
     const xs = drag.xs, ys = drag.ys;
-    const MIN = 0.015;
+    // Наименьший размер детали — 3 мм настоящей двери по каждой оси (было
+    // 1.5 % кадра, то есть 31 мм по высоте: тонкое горизонтальное стекло —
+    // канавка на снимке в 4–6 мм — сузить до неё было нельзя, жалоба
+    // заказчика). Полотно не меньше десятой части кадра, иначе масштаб
+    // миллиметров от него уходит в бесконечность.
+    const MIN_X = p.k === "d" ? 0.1 : 3 / FRAME_MM.w, MIN_Y = p.k === "d" ? 0.1 : 3 / FRAME_MM.h;
     // У царги прилипания к краям соседних деталей нет: между двумя царгами
     // бывает зазор в несколько миллиметров, а прилипание в 8 точек стягивало
     // их края вплотную, и выставить зазор было нельзя (жалоба заказчика).
-    // Остальные детали прилипают, как раньше.
-    const snap = p.k === "p" ? (v) => v : partsSnap;
+    // У полотна его тоже нет: его края должны лечь на край двери на снимке, а
+    // не на край случайной детали рядом. Остальные детали прилипают, как раньше.
+    const snap = p.k === "p" || p.k === "d" ? (v) => v : partsSnap;
     if (partsDrag.mode === "move") {
       let nx = Math.max(0, Math.min(1 - p.w, fx - partsDrag.dx));
       let ny = Math.max(0, Math.min(1 - p.h, fy - partsDrag.dy));
@@ -5304,17 +5346,17 @@ const DB = {
       const north = partsDrag.corner === "nw" || partsDrag.corner === "ne";
       const right = p.x + p.w, bottom = p.y + p.h;
       if (west) {
-        const nx = Math.max(0, Math.min(right - MIN, snap(fx, xs, tolX)));
+        const nx = Math.max(0, Math.min(right - MIN_X, snap(fx, xs, tolX)));
         p.w = right - nx; p.x = nx;
       } else {
-        const nr = Math.max(p.x + MIN, Math.min(1, snap(fx, xs, tolX)));
+        const nr = Math.max(p.x + MIN_X, Math.min(1, snap(fx, xs, tolX)));
         p.w = nr - p.x;
       }
       if (north) {
-        const ny = Math.max(0, Math.min(bottom - MIN, snap(fy, ys, tolY)));
+        const ny = Math.max(0, Math.min(bottom - MIN_Y, snap(fy, ys, tolY)));
         p.h = bottom - ny; p.y = ny;
       } else {
-        const nb = Math.max(p.y + MIN, Math.min(1, snap(fy, ys, tolY)));
+        const nb = Math.max(p.y + MIN_Y, Math.min(1, snap(fy, ys, tolY)));
         p.h = nb - p.y;
       }
     }
@@ -5340,8 +5382,33 @@ const DB = {
     partsDrag = null;
     const doc = partsOf(drag.modelId);
     if (!doc) return;
-    if (drag.moved) savePartsDoc(doc, drag.modelId, true);
+    if (drag.moved) {
+      if (drag.oldLeaf) partsFollowLeaf(doc, drag.oldLeaf);
+      savePartsDoc(doc, drag.modelId, true);
+    }
     updatePartsEditor();
+  }
+
+  // Каркас стоит по полотну: когда полотно подвинули или потянули, стойки,
+  // верхняя и нижняя царги и наличники встают заново — по новому месту
+  // полотна, каждая на свою сторону. Свои детали модели (филёнки, стёкла,
+  // раскладки, средние царги) стоят на снимке и остаются где были.
+  function partsFollowLeaf(doc, oldLeaf) {
+    const newLeaf = leafOfParts(doc.parts);
+    const moved = [];
+    doc.parts = doc.parts.filter((p) => {
+      if (p.k === "d" || !isFramePart(p, oldLeaf)) return true;
+      const mid = (r) => r.x + r.w / 2;
+      const second = p.k === "p" ? Math.abs(p.y - framePartRect("p", true, oldLeaf).y) < Math.abs(p.y - framePartRect("p", false, oldLeaf).y)
+        : mid(p) > oldLeaf.x + oldLeaf.w / 2;
+      moved.push({ k: p.k, second: second });
+      return false;
+    });
+    moved.forEach((m) => {
+      const r = framePartRect(m.k, m.second, newLeaf);
+      doc.parts.push({ x: r.x, y: r.y, w: r.w, h: r.h, k: m.k });
+    });
+    partsSel = doc.parts.findIndex((p) => p.k === "d");
   }
 
   // Кнопки: вид детали (добавить новую или поменять вид выбранной), копия,
@@ -5377,8 +5444,14 @@ const DB = {
       // прежние стойки, царги и наличники убираем, чтобы не остались
       // задвоенными на старых местах. Филёнки, стёкла и раскладки — свои у
       // модели, их не трогаем.
-      doc.parts = doc.parts.filter((p) => !isFramePart(p));
-      ["d", "s", "s", "p", "p", "nv", "nv", "nh"].forEach((k) => { doc.parts.push(newPart(k, doc.parts)); });
+      // Полотно, если оно уже обведено и подогнано под дверь на снимке,
+      // остаётся как есть: каркас строится по нему, а не по стандартному месту.
+      const leaf = leafOfParts(doc.parts);
+      doc.parts = doc.parts.filter((p) => p.k === "d" || !isFramePart(p, leaf));
+      ["d", "s", "s", "p", "p", "nv", "nv", "nh"].forEach((k) => {
+        if (k === "d" && doc.parts.some((p) => p.k === "d")) return;
+        doc.parts.push(newPart(k, doc.parts));
+      });
       partsSel = null;
       savePartsDoc(doc, ctx.model.id);
     } else if (act === "copy" && partsSel !== null && doc.parts[partsSel]) {
