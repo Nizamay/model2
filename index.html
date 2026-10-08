@@ -547,6 +547,7 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
    листаться пальцем, а начатое на детали движение уже не перехватывается
    прокруткой. */
 .part, .part .ph { touch-action: none; }
+.parts-stage.leaf-edit { margin-top: 26px; margin-bottom: 26px; }
 .part { position: absolute; display: flex; align-items: center; justify-content: center; box-sizing: border-box; border: 1px solid rgba(0,0,0,.7); }
 .part > span { min-width: 16px; padding: 1px 4px; border-radius: 9px; font-size: 10px; font-weight: 700; color: #fff; text-align: center; text-shadow: 0 1px 2px rgba(0,0,0,.6); pointer-events: none; }
 /* Выбранная деталь ничем не обводится дополнительно: любая вторая линия
@@ -3589,6 +3590,9 @@ const DB = {
   }
 
   function partsResizable(kind) {
+    // Полотно двигается только в режиме «Подогнать полотно» (leafEdit): иначе
+    // его желтые углы постоянно торчали на снимке и мешали (жалоба заказчика).
+    if (kind === "d") return !!leafEdit;
     const mm = PART_MM[kind];
     return !!(mm && mm.free);
   }
@@ -4502,6 +4506,9 @@ const DB = {
   // Отдельного экрана и числовых полей нет намеренно — программой пользуются
   // с телефона.
   let partsSel = null;  // индекс выбранной детали
+  // Режим «Подогнать полотно»: { modelId, backup, oldLeaf } или null. Пока он
+  // включён, двигается только полотно, а по «Сохранить» каркас встаёт по нему.
+  let leafEdit = null;
   let partsDrag = null;
 
   function partsEditorCtx() {
@@ -5138,12 +5145,21 @@ const DB = {
     const tools = document.getElementById("s_partsTools");
     const doc = partsOf(ctx.model.id);
     const parts = doc ? doc.parts : [];
+    if (leafEdit && (leafEdit.modelId !== ctx.model.id || !doc)) {
+      // Ушли на другую модель, не сохранив: полотно возвращается на место.
+      const old = partsOf(leafEdit.modelId);
+      partsLeafEditEnd(old, false);
+      return updatePartsEditor();
+    }
     if (partsSel !== null && !parts[partsSel]) partsSel = null;
+    if (els) els.stage.classList.toggle("leaf-edit", !!leafEdit);
     if (els && els.img.getAttribute("src") !== ctx.photo.image) els.img.setAttribute("src", ctx.photo.image);
 
     if (hint) {
       const activeKind = partsSel === null ? null : parts[partsSel].k;
-      hint.textContent = !parts.length
+      hint.textContent = leafEdit
+        ? "Подгонка полотна: тяните за середину — место, за углы — размер, чтобы края пунктира легли на края двери на снимке. Потом «Сохранить»: стойки, царги и наличники встанут по нему."
+        : !parts.length
         ? "Начните с «+ Каркас»: полотно, стойки, царги и наличники встанут сами — их место в рамке задано в миллиметрах. Если они не совпали с дверью на снимке, нажмите на пунктир «Полотно» и подгоните его за углы под край двери: каркас встанет за ним. Масштаб и положение самого снимка — в панели «Фото в рамке»."
         : (partsSel === null
           ? "Нажмите на деталь — она станет активной, и только тогда её можно двигать. Кнопка вида добавляет новую."
@@ -5164,7 +5180,8 @@ const DB = {
           + `<span>${PART_KINDS[p.k].short}</span>${handles}</div>`;
       }).join("");
     }
-    if (kinds) {
+    if (kinds && leafEdit) kinds.innerHTML = "";
+    else if (kinds) {
       // Когда активна рамка полотна, кнопки вида добавляют новую деталь, а не
       // переделывают рамку — подпись должна говорить именно это.
       const refActive = partsSel !== null && parts[partsSel] && parts[partsSel].k === "d";
@@ -5177,7 +5194,13 @@ const DB = {
       // три доски наличника. Место каждой детали задано рамкой в
       // миллиметрах, поэтому ставить их по одной и подгонять не нужно.
       // Кнопка доступна всегда, в том числе на пустой разметке.
+      if (leafEdit) {
+        tools.innerHTML = `<button type="button" data-act="leafSave">✓ Сохранить полотно</button>`
+          + `<button type="button" data-act="leafCancel">Отмена</button>`;
+        return;
+      }
       tools.innerHTML = `<button type="button" data-act="frame">+ Каркас</button>`
+        + `<button type="button" data-act="leafEdit">Подогнать полотно</button>`
         + (partsSel === null ? "" :
         `<button type="button" data-act="copy">Копия</button>`
         + `<button type="button" data-act="del">✕ Удалить</button>`
@@ -5249,6 +5272,19 @@ const DB = {
         return;
       }
     }
+    // В режиме подгонки полотна двигается только оно: остальные детали не
+    // выбираются, чтобы не сдвинуть их случайно.
+    if (leafEdit) {
+      const di = doc.parts.findIndex((p) => p.k === "d");
+      const p = doc.parts[di];
+      if (p && fx >= p.x && fx <= p.x + p.w && fy >= p.y && fy <= p.y + p.h) {
+        partsSel = di;
+        partsDragStart({ mode: "move", i: di, dx: fx - p.x, dy: fy - p.y, modelId: ctx.model.id, moved: false }, doc, els, box);
+        els.stage.setPointerCapture(e.pointerId);
+        e.preventDefault();
+      }
+      return;
+    }
     // Деталь берётся в два касания: первое делает её активной, и только
     // после этого она двигается. Иначе любое касание фотографии сдвигало
     // деталь под пальцем, и поставленную на место было не удержать.
@@ -5289,9 +5325,6 @@ const DB = {
     drag.el = els.layer.querySelector('.part[data-i="' + drag.i + '"]');
     drag.raf = 0;
     drag.last = null;
-    // Полотно тянут — каркас после этого переезжает за ним, для этого
-    // нужно знать, где оно стояло.
-    if (doc.parts[drag.i] && doc.parts[drag.i].k === "d") drag.oldLeaf = leafOfParts(doc.parts);
     partsDrag = drag;
     // Тянут — значит, отложенная перекраска пока подождёт: пересчёт картинки
     // во время движения пальца только мешал бы.
@@ -5382,10 +5415,9 @@ const DB = {
     partsDrag = null;
     const doc = partsOf(drag.modelId);
     if (!doc) return;
-    if (drag.moved) {
-      if (drag.oldLeaf) partsFollowLeaf(doc, drag.oldLeaf);
-      savePartsDoc(doc, drag.modelId, true);
-    }
+    // В режиме подгонки полотна ничего не записываем: запись и каркас — по
+    // кнопке «Сохранить».
+    if (drag.moved && !leafEdit) savePartsDoc(doc, drag.modelId, true);
     updatePartsEditor();
   }
 
@@ -5408,7 +5440,33 @@ const DB = {
       const r = framePartRect(m.k, m.second, newLeaf);
       doc.parts.push({ x: r.x, y: r.y, w: r.w, h: r.h, k: m.k });
     });
+  }
+
+  function partsLeafEditStart(ctx, doc) {
+    // Разметки ещё нет — появится только одно полотно; если подгонку
+    // отменят, не останется и его.
+    const fresh = !DB.modelParts || !DB.modelParts[ctx.model.id] || !DB.modelParts[ctx.model.id].parts.length;
+    if (!doc.parts.some((p) => p.k === "d")) doc.parts.push(newPart("d", doc.parts));
+    if (fresh) (DB.modelParts || (DB.modelParts = {}))[ctx.model.id] = doc;
+    leafEdit = { modelId: ctx.model.id, fresh: fresh, backup: JSON.parse(JSON.stringify(doc.parts)), oldLeaf: leafOfParts(doc.parts) };
     partsSel = doc.parts.findIndex((p) => p.k === "d");
+  }
+
+  // Выход из подгонки. save=true — каркас встаёт по новому полотну и всё
+  // записывается; иначе полотно возвращается на прежнее место.
+  function partsLeafEditEnd(doc, save) {
+    const st = leafEdit;
+    leafEdit = null;
+    partsSel = null;
+    if (!st || !doc) return;
+    if (save) {
+      partsFollowLeaf(doc, st.oldLeaf);
+      savePartsDoc(doc, st.modelId);
+    } else if (st.fresh) {
+      delete DB.modelParts[st.modelId];
+    } else {
+      doc.parts = st.backup;
+    }
   }
 
   // Кнопки: вид детали (добавить новую или поменять вид выбранной), копия,
@@ -5439,6 +5497,10 @@ const DB = {
         partsSel = doc.parts.length - 1;
       }
       savePartsDoc(doc, ctx.model.id);
+    } else if (act === "leafEdit") {
+      partsLeafEditStart(ctx, doc);
+    } else if (act === "leafSave" || act === "leafCancel") {
+      partsLeafEditEnd(partsOf(ctx.model.id), act === "leafSave");
     } else if (act === "frame") {
       // Каркас в рамке стоит однозначно, поэтому ставим его заново целиком:
       // прежние стойки, царги и наличники убираем, чтобы не остались
