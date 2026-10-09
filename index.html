@@ -3702,40 +3702,77 @@ const DB = {
     return src;
   }
 
-  // Точное уменьшение до нужного размера: каждая точка результата — среднее
-  // по всем точкам исходника, которые в неё попали.
-  //
-  // Половинками (shrinkImage) можно дойти только до двукратного запаса, а
-  // последний шаг остаётся произвольным — скажем, из 300 точек в 180. Такой
-  // шаг браузер делает грубо, и на мелком частом рисунке вроде прожилок
-  // плёнки вылезает муар: ровное волокно идёт ромбиками. Поэтому последний
-  // шаг считаем сами. Работы немного: к этому моменту в исходнике не больше
-  // чем вчетверо против результата.
-  function resizeAverage(img, w, h) {
+  // Уменьшение одним проходом фильтром Ланцоша (a = 3), раздельно по осям.
+  // Раньше образец шёл через два уменьшения подряд — вдвое (shrinkImage, это
+  // сглаживание браузера) и ещё «коробочкой» с дробным шагом, —
+  // и каждое из них размывало прожилки. Замер на «Беленном дубе» (плитка 248
+  // точек на 150 мм): контраст волокна у двойного уменьшения 7.7, у одного
+  // прохода «коробочкой» 9.5, образец 600 точек 12.6 по той же мере. Ланцош
+  // держит резкость тонких линий лучше коробочки и не даёт ступенек: волокно
+  // на двери чётче при том же размере кадра, лишних точек не надо.
+  function resizeLanczos(img, w, h) {
     const sw = img.naturalWidth || img.width || 1;
     const sh = img.naturalHeight || img.height || 1;
     const scv = document.createElement("canvas");
     scv.width = sw; scv.height = sh;
-    const sx = scv.getContext("2d");
-    sx.drawImage(img, 0, 0);
-    const sd = sx.getImageData(0, 0, sw, sh).data;
+    const sx0 = scv.getContext("2d");
+    sx0.drawImage(img, 0, 0);
+    const sd = sx0.getImageData(0, 0, sw, sh).data;
+    const A = 3;
+    const lz = (x) => {
+      if (x === 0) return 1;
+      if (x <= -A || x >= A) return 0;
+      const px = Math.PI * x;
+      return (Math.sin(px) / px) * (Math.sin(px / A) / (px / A));
+    };
+    // Веса по одной оси: для каждой выходной точки — окно исходных точек.
+    const axis = (srcN, dstN) => {
+      const k = srcN / dstN, support = A * Math.max(1, k);
+      const out = new Array(dstN);
+      for (let i = 0; i < dstN; i++) {
+        const c = (i + 0.5) * k - 0.5;
+        const a = Math.max(0, Math.ceil(c - support)), b = Math.min(srcN - 1, Math.floor(c + support));
+        const wts = new Float32Array(b - a + 1);
+        let sum = 0;
+        for (let j = a; j <= b; j++) { const v = lz((j - c) / Math.max(1, k)); wts[j - a] = v; sum += v; }
+        for (let j = 0; j < wts.length; j++) wts[j] /= sum || 1;
+        out[i] = { a: a, w: wts };
+      }
+      return out;
+    };
+    const ax = axis(sw, w), ay = axis(sh, h);
+    // Сначала по горизонтали (sh строк, w столбцов), потом по вертикали.
+    const tmp = new Float32Array(w * sh * 3);
+    for (let y = 0; y < sh; y++) {
+      const rowBase = y * sw * 4;
+      for (let x = 0; x < w; x++) {
+        const e = ax[x], wts = e.w, n = wts.length;
+        let i = rowBase + e.a * 4, r = 0, g = 0, b = 0;
+        for (let j = 0; j < n; j++, i += 4) {
+          const v = wts[j];
+          r += sd[i] * v; g += sd[i + 1] * v; b += sd[i + 2] * v;
+        }
+        const o = (y * w + x) * 3;
+        tmp[o] = r; tmp[o + 1] = g; tmp[o + 2] = b;
+      }
+    }
     const out = document.createElement("canvas");
     out.width = w; out.height = h;
     const ox = out.getContext("2d");
     const od = ox.createImageData(w, h);
     const dd = od.data;
-    const kx = sw / w, ky = sh / h;
+    const clamp = (v) => (v < 0 ? 0 : v > 255 ? 255 : v);
+    const rowStep = w * 3;
     for (let y = 0; y < h; y++) {
-      const y0 = Math.floor(y * ky), y1 = Math.max(y0 + 1, Math.min(sh, Math.ceil((y + 1) * ky)));
+      const e = ay[y], wts = e.w, n = wts.length;
       for (let x = 0; x < w; x++) {
-        const x0 = Math.floor(x * kx), x1 = Math.max(x0 + 1, Math.min(sw, Math.ceil((x + 1) * kx)));
-        let r = 0, g = 0, b = 0, n = 0;
-        for (let yy = y0; yy < y1; yy++) {
-          let i = (yy * sw + x0) * 4;
-          for (let xx = x0; xx < x1; xx++, i += 4) { r += sd[i]; g += sd[i + 1]; b += sd[i + 2]; n++; }
+        let o = e.a * rowStep + x * 3, r = 0, g = 0, b = 0;
+        for (let j = 0; j < n; j++, o += rowStep) {
+          const v = wts[j];
+          r += tmp[o] * v; g += tmp[o + 1] * v; b += tmp[o + 2] * v;
         }
-        const j = (y * w + x) * 4;
-        dd[j] = r / n; dd[j + 1] = g / n; dd[j + 2] = b / n; dd[j + 3] = 255;
+        const q = (y * w + x) * 4;
+        dd[q] = clamp(r); dd[q + 1] = clamp(g); dd[q + 2] = clamp(b); dd[q + 3] = 255;
       }
     }
     ox.putImageData(od, 0, 0);
@@ -3822,7 +3859,7 @@ const DB = {
     // телефона. Пробовал вернуть её нерезкой маской — стало хуже: маска
     // поднимает как раз ту частоту, что уже на пределе, и ровное волокно
     // пошло ромбиками (муар). Поэтому не поднимаем ничего: аккуратно
-    // усредняем (resizeAverage) и оставляем то, что честно помещается, —
+    // уменьшаем фильтром Ланцоша (resizeLanczos) и оставляем то, что честно помещается, —
     // ровное спокойное волокно вместо клочковатой ряби.
     const feather = (c, alongX) => {
       const w = c.width, h = c.height;
@@ -3857,7 +3894,7 @@ const DB = {
       // вместо ровного волокна на детали идут широкие разводы, а после
       // зеркальной укладки — «плетёнка».
       const tw2 = rotate ? h : w, th2 = rotate ? w : h;
-      const src = resizeAverage(shrinkImage(filmImg, tw2, th2), tw2, th2);
+      const src = resizeLanczos(filmImg, tw2, th2);
       if (rotate) { ox.translate(w, 0); ox.rotate(Math.PI / 2); ox.drawImage(src, 0, 0); }
       else ox.drawImage(src, 0, 0);
       // Волокно сверху вниз — значит вбок плитки идут подряд, и сводить надо
