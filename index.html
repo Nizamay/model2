@@ -1520,6 +1520,7 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
             <div class="frame-stage" id="s_frameStage"></div>
             <p class="frame-note" id="s_frameNote"></p>
             <div class="adjust-actions">
+              <button type="button" id="s_frameAuto">Подогнать автоматически</button>
               <button type="button" id="s_frameReset">Сбросить подгонку</button>
             </div>
           </div>
@@ -4725,6 +4726,69 @@ const DB = {
     return { x: Math.min(x0, hi.x - w), y: Math.min(y0, hi.y - h), w: w, h: h };
   }
 
+  // Автоподгонка рамки блока под дверь на снимке. Каталожный снимок снят на
+  // ровном (чаще белом) фоне, поэтому дверь вместе с наличниками — это всё, что
+  // от фона отличается. Нордик ПГ (белая дверь на белом): край наличника там
+  // еле заметный серый, поэтому порог чувствительный — чуть выше шума самого
+  // фона, а не фиксированный. Возвращает рамку блока в долях снимка или null,
+  // если фон неровный или найденное на дверь не похоже: тогда остаётся
+  // подгонка руками.
+  function detectDoorBlock(img) {
+    try {
+      const iw = img.naturalWidth || img.width, ih = img.naturalHeight || img.height;
+      if (!iw || !ih) return null;
+      const w = 200, h = Math.max(8, Math.round(w * ih / iw));
+      const cv = document.createElement("canvas");
+      cv.width = w; cv.height = h;
+      const cx = cv.getContext("2d");
+      cx.imageSmoothingEnabled = true;
+      cx.imageSmoothingQuality = "high";
+      cx.drawImage(shrinkImage(img, w, h), 0, 0, w, h);
+      const d = cx.getImageData(0, 0, w, h).data;
+      const at = (x, y) => { const i = (y * w + x) * 4; return [d[i], d[i + 1], d[i + 2]]; };
+      const ring = [];
+      for (let x = 0; x < w; x++) { ring.push(at(x, 0)); ring.push(at(x, 1)); ring.push(at(x, h - 1)); ring.push(at(x, h - 2)); }
+      for (let y = 0; y < h; y++) { ring.push(at(0, y)); ring.push(at(1, y)); ring.push(at(w - 1, y)); ring.push(at(w - 2, y)); }
+      const mid = (k) => { const a = ring.map((p) => p[k]).sort((u, v) => u - v); return a[a.length >> 1]; };
+      const bg = [mid(0), mid(1), mid(2)];
+      const dist = (p) => Math.abs(p[0] - bg[0]) + Math.abs(p[1] - bg[1]) + Math.abs(p[2] - bg[2]);
+      const ringD = ring.map(dist).sort((u, v) => u - v);
+      const ringHigh = ringD[Math.floor(ringD.length * 0.98)];
+      if (ringHigh > 40) return null;
+      const lim = Math.max(6, ringHigh * 2 + 3);
+      const colHas = (x) => { let n = 0; for (let y = 0; y < h; y++) if (dist(at(x, y)) > lim) n++; return n > h * 0.04; };
+      const rowHas = (y) => { let n = 0; for (let x = 0; x < w; x++) if (dist(at(x, y)) > lim) n++; return n > w * 0.04; };
+      let x0 = 0; while (x0 < w && !colHas(x0)) x0++;
+      let x1 = w - 1; while (x1 > x0 && !colHas(x1)) x1--;
+      let y0 = 0; while (y0 < h && !rowHas(y0)) y0++;
+      let y1 = h - 1; while (y1 > y0 && !rowHas(y1)) y1--;
+      const bw = x1 - x0 + 1, bh = y1 - y0 + 1;
+      if (!(bw > w * 0.12 && bw < w * 0.97 && bh > h * 0.30 && bh < h * 0.99)) return null;
+      let box = { x: x0 / w, y: y0 / h, w: bw / w, h: bh / h };
+      // Пропорция найденного. Блок с наличниками — 850 : 2085 (0.408), одно
+      // полотно — 700 : 2000 (0.35). Ближе к полотну — наличника на снимке нет
+      // или он слился с фоном: достраиваем блок вокруг полотна по размерам из
+      // правил. Совсем не похоже на дверь — не берёмся.
+      const ratio = (box.w * iw) / (box.h * ih);
+      if (ratio > 0.52 || ratio < 0.2) return null;
+      if (ratio < 0.38) {
+        const gx = box.w * (CASING_MM + GAP_MM) / LEAF_MM.w, gy = box.h * (CASING_MM + GAP_MM) / LEAF_MM.h;
+        box = { x: box.x - gx, y: box.y - gy, w: box.w + gx * 2, h: box.h + gy + box.h * FLOOR_GAP_MM / LEAF_MM.h };
+      }
+      return frameClampBox(box);
+    } catch (err) { return null; }
+  }
+
+  // Положение снимка в кадре по найденной двери; null — не нашли.
+  function autoFitFor(sourceUrl) {
+    return loadImageAsync(sourceUrl).then((img) => {
+      const box = detectDoorBlock(img);
+      if (!box) return null;
+      const iw = img.naturalWidth || img.width, ih = img.naturalHeight || img.height;
+      return frameFitFromBox(box, iw, ih);
+    }).catch(() => null);
+  }
+
   function frameStageEls() {
     const stage = document.getElementById("s_frameStage");
     if (!stage) return null;
@@ -5080,6 +5144,21 @@ const DB = {
         });
       })
       .catch(() => { frameNote(""); });
+  }
+
+  // «Подогнать автоматически»: найти дверь на снимке и поставить рамку на неё.
+  // Не нашли — подгонка остаётся прежней, об этом пишем.
+  function onFrameAuto() {
+    const ctx = frameEditorCtx();
+    if (!ctx) return;
+    const source = ctx.rec.source || ctx.rec.image;
+    frameNote("Ищу дверь на снимке…");
+    autoFitFor(source).then((fit) => {
+      if (!fit) { frameNote("Не нашёл дверь на снимке (фон неровный). Подгоните углами."); return; }
+      saveFrameFit(ctx.model.id, fit);
+      updateFrameEditor();
+      applyFrameFit(ctx.model.id, "Подогнано автоматически. Проверьте углы и поправьте.");
+    });
   }
 
   function onFrameReset() {
@@ -9318,6 +9397,8 @@ const DB = {
     });
     const frameReset = document.getElementById("s_frameReset");
     if (frameReset) frameReset.addEventListener("click", onFrameReset);
+    const frameAuto = document.getElementById("s_frameAuto");
+    if (frameAuto) frameAuto.addEventListener("click", onFrameAuto);
     // Движки качества снимка (см. updateQualityEditor).
     const qualityPanel = document.getElementById("s_qualityPanel");
     if (qualityPanel) qualityPanel.addEventListener("toggle", () => updateQualityEditor());
@@ -10836,8 +10917,11 @@ const DB = {
     if (!file || !modelId) { input.value = ""; return; }
     const label = input.closest("label");
     if (label) label.firstChild.textContent = "⏳ Обрабатываю…";
-    const fit = { ...FRAME_FIT };
+    let fit = { ...FRAME_FIT };
     modelSourceFromFile(file)
+      // Дверь на снимке ищется сама (см. detectDoorBlock): рамка встаёт на неё,
+      // а поправить её можно углами, как и раньше.
+      .then((source) => autoFitFor(source).then((auto) => { if (auto) fit = auto; return source; }))
       .then((source) => renderModelPhoto(source, fit).then((image) => ({ source: source, image: image })))
       .then(({ source, image }) => saveModelPhoto(modelId, { image: image, source: source, fit: fit, custom: true }, (saved) => {
         renderPriceEditor();
