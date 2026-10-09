@@ -10,10 +10,29 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..')
 SRC = os.path.dirname(os.path.abspath(__file__))
 fits = json.load(open(os.path.join(SRC, 'fits.json')))
 rows = []
+# Улучшенные нейросетью кадры (enhance_sr.py): sr/<Название>.jpg — уже готовый кадр
+# 1020 x 2502, подгонка у него нулевая. Названия из sr_skip.txt остаются на
+# исходном фото: нейросеть там исказила рельеф.
+SR_DIR = os.path.join(SRC, 'sr')
+skip_path = os.path.join(SRC, 'sr_skip.txt')
+sr_skip = set(l.strip() for l in open(skip_path, encoding='utf-8')) if os.path.exists(skip_path) else set()
+SR_LINES = 100   # «Тонкие линии» у таких кадров: зерно со снимка нейросеть уже убрала
+n_sr = 0
 for name in sorted(fits):
     path = os.path.join(SRC, name + '.jpg')
     if not os.path.exists(path):
         sys.exit('нет файла ' + path)
+    sr_path = os.path.join(SR_DIR, name + '.jpg')
+    if os.path.exists(sr_path) and name not in sr_skip:
+        import io
+        from PIL import Image
+        buf = io.BytesIO()
+        Image.open(sr_path).convert('RGB').save(buf, 'WEBP', quality=88, method=6)
+        b64 = base64.b64encode(buf.getvalue()).decode()
+        rows.append('    %s: { v: 2, fit: { zx: 1, zy: 1, dx: 0, dy: 0 }, q: { lines: %d }, source: "data:image/webp;base64,%s" }'
+                    % (json.dumps(name, ensure_ascii=False), SR_LINES, b64))
+        n_sr += 1
+        continue
     b64 = base64.b64encode(open(path, 'rb').read()).decode()
     fit = fits[name]
     rows.append('    %s: { v: 1, fit: { zx: %r, zy: %r, dx: %r, dy: %r }, source: "data:image/jpeg;base64,%s" }'
@@ -28,7 +47,7 @@ if not pat.search(s):
     sys.exit('в index.html нет маркеров FACTORY_MODEL_PHOTOS_BEGIN/END')
 s = pat.sub(lambda m: block, s, count=1)
 open(idx, 'w', encoding='utf-8').write(s)
-print('вшито моделей:', len(rows))
+print('вшито моделей:', len(rows), '(улучшено нейросетью: %d)' % n_sr)
 
 # Список моделей программы, у которых ещё нет вшитого фото (кроме «Матрицы»).
 m = re.search(r'models: \[(.*?)\]\.map\(', s, re.S)
