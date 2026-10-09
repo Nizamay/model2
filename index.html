@@ -4302,6 +4302,44 @@ const DB = {
       }
       return out;
     };
+    // Среднее вдоль одной оси (вертикали или горизонтали) с паузами. Нужно
+    // для «длинных линий» ниже: коробочка по двум осям сразу сгладила бы
+    // канавку вместе с фоном, а вдоль самой канавки она остаётся.
+    const boxBlurAxis = async (src, w, h, r, vertical) => {
+      const out = new Float32Array(w * h);
+      if (!vertical) {
+        for (let y = 0; y < h; y++) {
+          const row = y * w;
+          let sum = 0;
+          for (let x = 0; x <= r && x < w; x++) sum += src[row + x];
+          let n = Math.min(r + 1, w);
+          for (let x = 0; x < w; x++) {
+            out[row + x] = sum / n;
+            const add = x + r + 1, drop = x - r;
+            if (add < w) { sum += src[row + add]; n++; }
+            if (drop >= 0) { sum -= src[row + drop]; n--; }
+          }
+          if ((y & 31) === 31 && await pause()) return null;
+        }
+        return out;
+      }
+      for (let x0 = 0; x0 < w; x0 += 64) {
+        const x1 = Math.min(w, x0 + 64);
+        for (let x = x0; x < x1; x++) {
+          let sum = 0;
+          for (let y = 0; y <= r && y < h; y++) sum += src[y * w + x];
+          let n = Math.min(r + 1, h);
+          for (let y = 0; y < h; y++) {
+            out[y * w + x] = sum / n;
+            const add = y + r + 1, drop = y - r;
+            if (add < h) { sum += src[add * w + x]; n++; }
+            if (drop >= 0) { sum -= src[drop * w + x]; n--; }
+          }
+        }
+        if (await pause()) return null;
+      }
+      return out;
+    };
     const W = photo.naturalWidth, H = photo.naturalHeight;
     // Рабочий размер кадра задаётся НЕ размером фотографии, а тем, сколько
     // точек нужно плёнке. Раньше он был «не больше, чем в снимке», а снимки
@@ -4585,28 +4623,65 @@ const DB = {
       const midR = Math.max(2, Math.round(20 * reliefPxPerMm));
       const mid = await boxBlurSliced(relief, rw, rh, midR);
       if (!mid) return null;
-      const dev = [];
+      // Длинные линии не глушим. Разброс считался по всему снимку, и у модели
+      // с настоящим рельефом — канавками, резьбой, рейками — сам рельеф его и
+      // раздувал: порог уходил выше самих канавок, и они пропадали вместе с
+      // «отголосками» (замер на «Водопад ПГ»: канавки ±4–9 % при пороге
+      // около 12 %; без этого шага они возвращаются). Отголоски — короткие
+      // штрихи, два-пять сантиметров, а канавка, рейка, резной завиток
+      // тянутся на десять сантиметров и больше. Поэтому от рельефа сначала
+      // отделяем «линейную» часть — среднее отклонения вдоль вертикали или
+      // горизонтали на десять сантиметров, — слабую (до одного процента
+      // яркости) отбрасываем, остальное пропускаем как есть. Приглушаем
+      // только остаток, и разброс для порога считаем тоже по остатку.
+      const lineR = Math.max(3, Math.round(50 * reliefPxPerMm));
+      const n = relief.length;
+      const dev = new Float32Array(n);
+      for (let i = 0; i < n; i++) {
+        dev[i] = relief[i] - mid[i];
+        if ((i & 0x3ffff) === 0x3ffff && await pause()) return null;
+      }
+      const lineV = await boxBlurAxis(dev, rw, rh, lineR, true);
+      if (!lineV) return null;
+      const lineH = await boxBlurAxis(dev, rw, rh, lineR, false);
+      if (!lineH) return null;
+      const cLo = 0.008 * wideMean, cHi = 0.02 * wideMean;
+      for (let i = 0; i < n; i++) {
+        const v = lineV[i], h = lineH[i];
+        const c = Math.abs(v) >= Math.abs(h) ? v : h;
+        const a = c < 0 ? -c : c;
+        const k = a <= cLo ? 0 : a >= cHi ? 1 : (a - cLo) / (cHi - cLo);
+        lineH[i] = c * k * k * (3 - 2 * k);
+        if ((i & 0x3ffff) === 0x3ffff && await pause()) return null;
+      }
+      const line = lineH;
+      const res = [];
       for (let y = 0; y < rh; y += 5) {
         const row = y * rw;
         for (let x = 0; x < rw; x += 5) {
           if (avgMask && !avgMask[row + x]) continue;
-          dev.push(Math.abs(relief[row + x] - mid[row + x]));
+          const r = dev[row + x] - line[row + x];
+          res.push(r < 0 ? -r : r);
         }
       }
-      if (dev.length > 64) {
-        const arr = Float32Array.from(dev); arr.sort();
+      let t0 = 0, t1 = 0;
+      if (res.length > 64) {
+        const arr = Float32Array.from(res); arr.sort();
         const sigma = 1.4826 * arr[arr.length >> 1];
-        const t0 = 2.5 * sigma, t1 = 6 * sigma;
+        t0 = 2.5 * sigma; t1 = 6 * sigma;
+      }
+      for (let i = 0; i < n; i++) {
+        const dv = dev[i] - line[i];
+        let keep = dv;
         if (t0 > 0.002) {
-          for (let i = 0; i < relief.length; i++) {
-            const dv = relief[i] - mid[i];
-            const a = dv < 0 ? -dv : dv;
-            if (a >= t1) continue;
+          const a = dv < 0 ? -dv : dv;
+          if (a < t1) {
             const k = a <= t0 ? 0 : (a - t0) / (t1 - t0);
-            relief[i] = mid[i] + dv * (k * k * (3 - 2 * k));
-            if ((i & 0x3ffff) === 0x3ffff && await pause()) return null;
+            keep = dv * (k * k * (3 - 2 * k));
           }
         }
+        relief[i] = mid[i] + line[i] + keep;
+        if ((i & 0x3ffff) === 0x3ffff && await pause()) return null;
       }
     }
     // Ровный цвет (эмаль, плёнка без образца) настраивается тем же правилом.
