@@ -59,7 +59,7 @@ def main():
     names = sorted(fits)
     # самые тяжёлые (большой кусок) раздаём вперемешку
     mine = [nm for i, nm in enumerate(names) if i % n == k]
-    up = rg.Realesrgan(gpuid=-1, model=4)
+    up = rg.Realesrgan(gpuid=-1, model=4, tilesize=256)   # плитками: целиком кадр на процессоре съедает до 10 ГБ памяти
     for nm in mine:
         out = os.path.join(OUT, nm + '.jpg')
         if os.path.exists(out):
