@@ -4046,6 +4046,42 @@ const DB = {
       sliceAt = performance.now();
       return !!(isStale && isStale());
     };
+    // Размытие «коробочкой» с паузами (то же, что boxBlurField, результат тот же
+    // до точки): на весь кадр оно одним куском держит страницу сотни
+    // миллисекунд. null — расчёт устарел.
+    const boxBlurSliced = async (src, w, h, r) => {
+      if (r < 1) return src;
+      const tmp = new Float32Array(w * h), out = new Float32Array(w * h);
+      for (let y = 0; y < h; y++) {
+        const row = y * w;
+        let sum = 0;
+        for (let x = 0; x <= r && x < w; x++) sum += src[row + x];
+        let n = Math.min(r + 1, w);
+        for (let x = 0; x < w; x++) {
+          tmp[row + x] = sum / n;
+          const add = x + r + 1, drop = x - r;
+          if (add < w) { sum += src[row + add]; n++; }
+          if (drop >= 0) { sum -= src[row + drop]; n--; }
+        }
+        if ((y & 31) === 31 && await pause()) return null;
+      }
+      for (let x0 = 0; x0 < w; x0 += 64) {
+        const x1 = Math.min(w, x0 + 64);
+        for (let x = x0; x < x1; x++) {
+          let sum = 0;
+          for (let y = 0; y <= r && y < h; y++) sum += tmp[y * w + x];
+          let n = Math.min(r + 1, h);
+          for (let y = 0; y < h; y++) {
+            out[y * w + x] = sum / n;
+            const add = y + r + 1, drop = y - r;
+            if (add < h) { sum += tmp[add * w + x]; n++; }
+            if (drop >= 0) { sum -= tmp[drop * w + x]; n--; }
+          }
+        }
+        if (await pause()) return null;
+      }
+      return out;
+    };
     const W = photo.naturalWidth, H = photo.naturalHeight;
     // Рабочий размер кадра задаётся НЕ размером фотографии, а тем, сколько
     // точек нужно плёнке. Раньше он был «не больше, чем в снимке», а снимки
@@ -4124,8 +4160,13 @@ const DB = {
     rcx.imageSmoothingEnabled = true;
     rcx.imageSmoothingQuality = "high";
     rcx.drawImage(shrinkImage(photo, rw, rh), 0, 0, rw, rh);
-    const rdata = rcx.getImageData(0, 0, rw, rh).data;
-    if (await pause()) return null;
+    // Читаем полосами, как и большой кадр выше: один вызов на два с лишним
+    // миллиона точек держит страницу заметно дольше порции.
+    const rdata = new Uint8ClampedArray(rw * rh * 4);
+    for (let sy = 0; sy < rh; sy += 192) {
+      rdata.set(rcx.getImageData(0, sy, rw, Math.min(192, rh - sy)).data, sy * rw * 4);
+      if (await pause()) return null;
+    }
     // Точка большого кадра → точка маленького.
     const rsx = rw / cw, rsy = rh / ch;
     const rAt = (x, y) => ((y * rsy) | 0) * rw + ((x * rsx) | 0);
@@ -4155,9 +4196,18 @@ const DB = {
     // перекрашиваемой картинки, а филёнка под ним к тому времени уже была
     // закрашена плёнкой, — и стекло темнело или светлело вслед за цветом
     // плёнки, хотя к плёнке никакого отношения не имеет.
-    const sharp = blurLuminance(rdata, rw, rh, 0);
-    let relief0 = blurLuminance(rdata, rw, rh, reliefR);
-    if (await pause()) return null;
+    const sharp = new Float32Array(rw * rh);
+    for (let y = 0; y < rh; y++) {
+      for (let i = y * rw * 4, p = y * rw, e = p + rw; p < e; i += 4, p++) {
+        sharp[p] = 0.299 * rdata[i] + 0.587 * rdata[i + 1] + 0.114 * rdata[i + 2];
+      }
+      if ((y & 63) === 63 && await pause()) return null;
+    }
+    // Размытая копия (блюр даёт новый массив; при радиусе меньше единицы
+    // вернулся бы сам sharp, поэтому берём копию — relief0 ниже правится).
+    let relief0 = await boxBlurSliced(sharp, rw, rh, reliefR);
+    if (!relief0) return null;
+    if (relief0 === sharp) relief0 = Float32Array.from(sharp);
     // Большие тёмные пятна — чёрное стекло, глухие вставки — в усреднении
     // светотени участвовать не должны. Раньше они утягивали вниз и размытие
     // рельефа, и ещё сильнее — широкое поле, на которое рельеф делится (см.
@@ -4192,68 +4242,39 @@ const DB = {
         for (let y = 0; y < hh; y++) {
           const row = Math.min(rh - 1, y * 2) * rw;
           for (let x = 0; x < hw; x++) if (sharp[row + Math.min(rw - 1, x * 2)] < thr) { dark[y * hw + x] = 1; anyDark = true; }
+          if ((y & 127) === 127 && await pause()) return null;
         }
         if (anyDark) {
-          const frac = boxBlurField(dark, hw, hh, Math.max(1, Math.round(1.5 * reliefPxPerMm)));
-          if (await pause()) return null;
+          const frac = await boxBlurSliced(dark, hw, hh, Math.max(1, Math.round(1.5 * reliefPxPerMm)));
+          if (!frac) return null;
           const core = new Float32Array(frac.length);
           let anyCore = false;
           for (let i = 0; i < frac.length; i++) if (frac[i] > 0.85) { core[i] = 1; anyCore = true; }
           if (anyCore) {
-            const near = boxBlurField(core, hw, hh, Math.max(1, Math.round(3.5 * reliefPxPerMm)));
-            if (await pause()) return null;
+            const near = await boxBlurSliced(core, hw, hh, Math.max(1, Math.round(3.5 * reliefPxPerMm)));
+            if (!near) return null;
             avgMask = new Float32Array(rw * rh);
             for (let y = 0; y < rh; y++) {
               const hrow = Math.min(hh - 1, y >> 1) * hw, row = y * rw;
               for (let x = 0; x < rw; x++) avgMask[row + x] = near[hrow + Math.min(hw - 1, x >> 1)] > 0.02 ? 0 : 1;
+              if ((y & 127) === 127 && await pause()) return null;
             }
           }
         }
       }
     }
-    // Размытие с весами: тёмные пятна считаются нулём, там, где весов почти нет
-    // (в самом пятне), остаётся обычное значение. Версия с паузами для кадра
-    // целиком (светотень).
-    const boxBlurSliced = async (src, w, h, r) => {
-      const tmp = new Float32Array(w * h), out = new Float32Array(w * h);
-      for (let y = 0; y < h; y++) {
-        const row = y * w;
-        let sum = 0;
-        for (let x = 0; x <= r && x < w; x++) sum += src[row + x];
-        let n = Math.min(r + 1, w);
-        for (let x = 0; x < w; x++) {
-          tmp[row + x] = sum / n;
-          const add = x + r + 1, drop = x - r;
-          if (add < w) { sum += src[row + add]; n++; }
-          if (drop >= 0) { sum -= src[row + drop]; n--; }
-        }
-        if ((y & 31) === 31 && await pause()) return null;
-      }
-      for (let x0 = 0; x0 < w; x0 += 64) {
-        const x1 = Math.min(w, x0 + 64);
-        for (let x = x0; x < x1; x++) {
-          let sum = 0;
-          for (let y = 0; y <= r && y < h; y++) sum += tmp[y * w + x];
-          let n = Math.min(r + 1, h);
-          for (let y = 0; y < h; y++) {
-            out[y * w + x] = sum / n;
-            const add = y + r + 1, drop = y - r;
-            if (add < h) { sum += tmp[add * w + x]; n++; }
-            if (drop >= 0) { sum -= tmp[drop * w + x]; n--; }
-          }
-        }
-        if (await pause()) return null;
-      }
-      return out;
-    };
     if (avgMask) {
       const num = new Float32Array(sharp.length);
       for (let i = 0; i < num.length; i++) num[i] = sharp[i] * avgMask[i];
+      if (await pause()) return null;
       const bn = await boxBlurSliced(num, rw, rh, reliefR);
       if (!bn) return null;
       const bd = await boxBlurSliced(avgMask, rw, rh, reliefR);
       if (!bd) return null;
-      for (let i = 0; i < relief0.length; i++) if (bd[i] > 0.05) relief0[i] = bn[i] / bd[i];
+      for (let i = 0; i < relief0.length; i++) {
+        if (bd[i] > 0.05) relief0[i] = bn[i] / bd[i];
+        if ((i & 0x3ffff) === 0x3ffff && await pause()) return null;
+      }
     }
     // Крупный рисунок дерева со снимка убираем отдельно. Размытие в 5 мм
     // снимает мелкую прядь, но у дуба есть и широкая «пламя»-текстура в два
@@ -4281,11 +4302,12 @@ const DB = {
         }
       }
       const hfr = Math.max(1, flatR >> 1);
-      const bn = boxBlurField(hr, hw, hh, hfr);
-      if (await pause()) return null;
-      const bd = boxBlurField(hm, hw, hh, hfr);
-      if (await pause()) return null;
-      const plain = boxBlurField(relief0, rw, rh, flatR);
+      const bn = await boxBlurSliced(hr, hw, hh, hfr);
+      if (!bn) return null;
+      const bd = await boxBlurSliced(hm, hw, hh, hfr);
+      if (!bd) return null;
+      const plain = await boxBlurSliced(relief0, rw, rh, flatR);
+      if (!plain) return null;
       wide = new Float32Array(rw * rh);
       for (let y = 0; y < rh; y++) {
         const hrow = Math.min(hh - 1, y >> 1) * hw, row = y * rw;
@@ -4293,9 +4315,11 @@ const DB = {
           const j = hrow + Math.min(hw - 1, x >> 1);
           wide[row + x] = bd[j] > 0.05 ? bn[j] / bd[j] : plain[row + x];
         }
+        if ((y & 127) === 127 && await pause()) return null;
       }
     } else {
-      wide = boxBlurField(relief0, rw, rh, flatR);
+      wide = await boxBlurSliced(relief0, rw, rh, flatR);
+      if (!wide) return null;
     }
     if (await pause()) return null;
     let wideMean = 0;
@@ -4305,6 +4329,7 @@ const DB = {
     for (let i = 0; i < relief.length; i++) {
       const b = wide[i] > 1 ? wide[i] : 1;
       relief[i] = relief0[i] / b * wideMean;
+      if ((i & 0x3ffff) === 0x3ffff && await pause()) return null;
     }
     // Ровный цвет (эмаль, плёнка без образца) настраивается тем же правилом.
     // Стекло — нет: у него свой цвет из позиции «Стекло», к плёнке он
@@ -4481,7 +4506,10 @@ const DB = {
     if (hit !== undefined) return hit === "pending" || !hit ? (partsLastReady.get(baseKey) || null) : hit;
     partsImageCache.set(key, "pending");
     partsLatestKey.set(model.id, key);
-    const isStale = () => partsLatestKey.get(model.id) !== key;
+    // Пока палец ведёт деталь, считать картинку незачем: она сразу устареет,
+    // а страница занята и не отвечает на касания (жалоба заказчика: «при
+    // строительстве деталей торможение и зависание»).
+    const isStale = () => partsLatestKey.get(model.id) !== key || !!partsDrag;
     Promise.all([loadImageAsync(photo.image), filmHref ? loadImageAsync(filmHref) : Promise.resolve(null)])
       .then(([ph, film]) => paintPartsLeaf(ph, film, filmHex, doc, glass, widthMm, heightMm, adj, isStale, qualityReliefMm(qual)))
       .then((url) => {
@@ -5138,6 +5166,9 @@ const DB = {
     // момент заменить прямоугольники новыми, браузер отменяет начатое
     // движение (pointercancel) и отдаёт жест прокрутке страницы — деталь
     // «прилипала» к месту, а вместо неё ехал экран.
+    // Жест, оборвавшийся без «пальца вверх» (страница была занята), не должен
+    // навсегда замораживать разметку: деталь «зависала» и не правилась.
+    if (partsDrag && Date.now() - (partsDrag.at || 0) > 20000) partsDrag = null;
     if (partsDrag) return;
     const els = partsStageEls();
     const hint = document.getElementById("s_partsHint");
@@ -5231,6 +5262,8 @@ const DB = {
   }
 
   function onPartsPointerDown(e) {
+    // Новое касание — прежний жест закончен, даже если «палец вверх» потерялся.
+    if (partsDrag) { if (partsDrag.raf) cancelAnimationFrame(partsDrag.raf); partsDrag = null; }
     const ctx = partsEditorCtx();
     const els = partsStageEls();
     if (!ctx || !els) return;
@@ -5320,6 +5353,7 @@ const DB = {
   // и getBoundingClientRect каждый раз заставлял браузер заново считать вёрстку.
   function partsDragStart(drag, doc, els, box) {
     drag.box = box;
+    drag.at = Date.now();
     drag.xs = partsEdges(doc.parts, drag.i, "x");
     drag.ys = partsEdges(doc.parts, drag.i, "y");
     drag.el = els.layer.querySelector('.part[data-i="' + drag.i + '"]');
@@ -5461,7 +5495,7 @@ const DB = {
     if (!st || !doc) return;
     if (save) {
       partsFollowLeaf(doc, st.oldLeaf);
-      savePartsDoc(doc, st.modelId);
+      savePartsDoc(doc, st.modelId, true);
     } else if (st.fresh) {
       delete DB.modelParts[st.modelId];
     } else {
@@ -5496,7 +5530,9 @@ const DB = {
         doc.parts.push(newPart(kind, doc.parts));
         partsSel = doc.parts.length - 1;
       }
-      savePartsDoc(doc, ctx.model.id);
+      // Перекраску откладываем (см. schedulePartsRedraw): деталь сразу
+      // начинают двигать, а считать картинку под пальцем нельзя.
+      savePartsDoc(doc, ctx.model.id, true);
     } else if (act === "leafEdit") {
       partsLeafEditStart(ctx, doc);
     } else if (act === "leafSave" || act === "leafCancel") {
@@ -5515,16 +5551,16 @@ const DB = {
         doc.parts.push(newPart(k, doc.parts));
       });
       partsSel = null;
-      savePartsDoc(doc, ctx.model.id);
+      savePartsDoc(doc, ctx.model.id, true);
     } else if (act === "copy" && partsSel !== null && doc.parts[partsSel]) {
       const p = doc.parts[partsSel];
       doc.parts.push({ x: Math.min(0.98 - p.w, p.x + 0.05), y: Math.min(0.98 - p.h, p.y + 0.05), w: p.w, h: p.h, k: p.k });
       partsSel = doc.parts.length - 1;
-      savePartsDoc(doc, ctx.model.id);
+      savePartsDoc(doc, ctx.model.id, true);
     } else if (act === "del" && partsSel !== null) {
       doc.parts.splice(partsSel, 1);
       partsSel = null;
-      savePartsDoc(doc.parts.length ? doc : null, ctx.model.id);
+      savePartsDoc(doc.parts.length ? doc : null, ctx.model.id, !!doc.parts.length);
     } else if (act === "deselect") {
       partsSel = null;
     } else if (act === "clear") {
@@ -9213,6 +9249,7 @@ const DB = {
       partsStage.addEventListener("pointermove", onPartsPointerMove);
       partsStage.addEventListener("pointerup", onPartsPointerUp);
       partsStage.addEventListener("pointercancel", onPartsPointerUp);
+      partsStage.addEventListener("lostpointercapture", onPartsPointerUp);
       // Касание приходит раньше как pointerdown, потом как touchstart. Если к
       // этому моменту деталь взята — запрещаем браузеру считать жест
       // прокруткой. Одного touch-action в стилях не хватало: палец нередко
