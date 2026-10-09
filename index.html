@@ -525,6 +525,9 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 .fh::after { content: ""; position: absolute; inset: 0; box-sizing: border-box; border-radius: 50%;
   background: rgba(255, 255, 255, .10); border: 4px solid rgba(232, 74, 14, .95);
   box-shadow: 0 0 0 1px rgba(255, 255, 255, .75), 0 1px 5px rgba(0, 0, 0, .35); }
+.straight-box .frame-stage { margin-top: 40px; }
+.straight-box svg.straight-quad { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+.straight-box svg.straight-quad polygon { fill: rgba(232, 74, 14, .10); stroke: rgba(232, 74, 14, .95); stroke-width: 2; vector-effect: non-scaling-stroke; }
 .frame-note { margin: 0 0 8px; text-align: center; font-size: 13px; color: var(--muted); min-height: 16px; }
 /* Панель «Чёткость снимка»: слева вся дверь (тапом выбирают место), справа два
    увеличенных куска — как есть и с обработкой. Куски рисуются в точках кадра
@@ -1519,9 +1522,21 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
             <p class="parts-hint info-text" id="s_frameInfo">Оранжевая рамка — весь блок 850 × 2085 мм: полотно 700 × 2000, наличники по 70, зазоры по 5 и щель до пола 10. Потяните за один угол так, чтобы он встал в угол блока на снимке (левый верхний — внешний угол верхнего наличника, правый нижний — пол), отпустите — сохранится. Затем противоположный угол по диагонали. Пунктир внутри — полотно: его края должны лечь на края полотна на снимке. Если на снимке нет наличника или он обрезан — ведите угол за край снимка, в поле вокруг него. Недостающее место в кадре зальётся цветом края, но на двери оно не показывается: на ней видно только полотно, а наличник рисует программа.</p>
             <div class="frame-stage" id="s_frameStage"></div>
             <p class="frame-note" id="s_frameNote"></p>
-            <div class="adjust-actions">
+            <div class="adjust-actions" id="s_frameActions">
               <button type="button" id="s_frameAuto">Подогнать автоматически</button>
               <button type="button" id="s_frameReset">Сбросить подгонку</button>
+              <button type="button" id="s_straightOpen">Выпрямить фото</button>
+              <button type="button" id="s_straightRestore" hidden>Вернуть исходное фото</button>
+            </div>
+            <!-- Выпрямление кривого фото (как в сканерах документов): четыре угла
+                 ставятся на углы двери, снимок растягивается в прямоугольник. -->
+            <div class="straight-box" id="s_straightBox" hidden>
+              <p class="frame-note" id="s_straightNote">Поставьте четыре угла на углы двери со всеми наличниками (верх — внешний край верхнего наличника, низ — пол).</p>
+              <div class="frame-stage" id="s_straightStage"></div>
+              <div class="adjust-actions">
+                <button type="button" id="s_straightApply">✓ Выпрямить</button>
+                <button type="button" id="s_straightCancel">Отмена</button>
+              </div>
             </div>
           </div>
         </details>
@@ -4867,6 +4882,9 @@ const DB = {
     // не должен блокировать панель навсегда.
     if (frameDrag && (frameDrag.modelId !== ctx.model.id || Date.now() - frameDrag.at > 20000)) frameDrag = null;
     if (frameDrag) return;
+    if (straight && straight.modelId !== ctx.model.id) straightClose();
+    const restoreBtn = document.getElementById("s_straightRestore");
+    if (restoreBtn) restoreBtn.hidden = !ctx.rec.sourceOrig;
     const els = frameStageEls();
     if (!els) return;
     const src = ctx.rec.source || ctx.rec.image;
@@ -5144,6 +5162,230 @@ const DB = {
         });
       })
       .catch(() => { frameNote(""); });
+  }
+
+  // --- Выпрямление кривого фото -------------------------------------------
+  //
+  // Фото из интернета и снятые с руки бывают завалены или сняты под углом, и
+  // дверь на них — трапеция. Как в сканере документов (заказчик показал Tiny
+  // Scanner): четыре угла ставятся на углы двери, и снимок растягивается в
+  // прямоугольник. Рамка блока (850 × 2085 мм) после этого ложится на него
+  // ровно. Выпрямленное становится исходником модели, а прежний исходник
+  // хранится рядом (sourceOrig), чтобы «Вернуть исходное фото».
+  let straight = null; // { modelId, quad: [tl, tr, br, bl] в долях снимка, drag }
+  const STRAIGHT_CORNER = { nw: 0, ne: 1, se: 2, sw: 3 };
+
+  function straightEls() {
+    const stage = document.getElementById("s_straightStage");
+    if (!stage) return null;
+    let img = stage.querySelector("img.frame-src");
+    if (!img) {
+      stage.innerHTML = `<img class="frame-src" alt=""><svg class="straight-quad" viewBox="0 0 100 100" preserveAspectRatio="none"><polygon points=""></polygon></svg>`
+        + ["nw", "ne", "sw", "se"].map((c) => `<i class="fh fh-${c}" data-c="${c}"></i>`).join("");
+      img = stage.querySelector("img.frame-src");
+    }
+    return { stage: stage, img: img, poly: stage.querySelector("polygon"), handles: Array.from(stage.querySelectorAll(".fh")) };
+  }
+
+  function straightDraw(els, quad) {
+    els.poly.setAttribute("points", quad.map((q) => (q.x * 100).toFixed(3) + "," + (q.y * 100).toFixed(3)).join(" "));
+    els.handles.forEach((h) => {
+      const q = quad[STRAIGHT_CORNER[h.dataset.c]];
+      h.style.left = (q.x * 100).toFixed(3) + "%"; h.style.top = (q.y * 100).toFixed(3) + "%";
+    });
+  }
+
+  function straightLayout(els) {
+    const iw = els.img.naturalWidth, ih = els.img.naturalHeight;
+    if (!iw || !ih) return;
+    const maxW = (els.stage.parentElement && els.stage.parentElement.clientWidth) || 300;
+    const k = Math.min((maxW - 80) / iw, Math.min(window.innerHeight * 0.58, 560) / ih);
+    els.stage.style.width = Math.round(iw * k) + "px";
+    els.stage.style.height = Math.round(ih * k) + "px";
+    straightDraw(els, straight.quad);
+  }
+
+  function straightNote(text) {
+    const n = document.getElementById("s_straightNote");
+    if (n) n.textContent = text;
+  }
+
+  function straightShow(on) {
+    const box = document.getElementById("s_straightBox");
+    const acts = document.getElementById("s_frameActions");
+    const stage = document.getElementById("s_frameStage");
+    const note = document.getElementById("s_frameNote");
+    if (box) box.hidden = !on;
+    if (acts) acts.hidden = !!on;
+    if (stage) stage.hidden = !!on;
+    if (note) note.hidden = !!on;
+  }
+
+  function onStraightOpen() {
+    const ctx = frameEditorCtx();
+    if (!ctx) return;
+    const source = ctx.rec.source || ctx.rec.image;
+    const els = straightEls();
+    if (!els) return;
+    loadImageAsync(source).then((img) => {
+      // Первое положение углов — найденная на снимке дверь, а нет её — рамка
+      // с отступом.
+      const b = detectDoorBlock(img) || { x: 0.1, y: 0.08, w: 0.8, h: 0.84 };
+      const clamp = (v) => Math.max(0, Math.min(1, v));
+      const x0 = clamp(b.x), y0 = clamp(b.y), x1 = clamp(b.x + b.w), y1 = clamp(b.y + b.h);
+      straight = { modelId: ctx.model.id, quad: [{ x: x0, y: y0 }, { x: x1, y: y0 }, { x: x1, y: y1 }, { x: x0, y: y1 }], drag: null };
+      straightShow(true);
+      els.img.onload = () => straightLayout(els);
+      if (els.img.getAttribute("src") !== source) els.img.setAttribute("src", source);
+      else straightLayout(els);
+    }).catch(() => {});
+  }
+
+  function straightClose() {
+    straight = null;
+    straightShow(false);
+  }
+
+  function onStraightDown(e) {
+    const h = e.target.closest ? e.target.closest(".fh") : null;
+    if (!h || !straight) return;
+    const els = straightEls();
+    const rect = els.stage.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    const i = STRAIGHT_CORNER[h.dataset.c];
+    const q = straight.quad[i];
+    // Палец лежит на кольце снаружи угла: запоминаем смещение, чтобы угол не
+    // прыгал под палец (как у рамки блока).
+    straight.drag = {
+      i: i, rect: rect, pointerId: e.pointerId, els: els,
+      offX: q.x - (e.clientX - rect.left) / rect.width, offY: q.y - (e.clientY - rect.top) / rect.height
+    };
+    try { h.setPointerCapture(e.pointerId); } catch (err) { }
+    e.preventDefault();
+  }
+
+  function onStraightMove(e) {
+    const d = straight && straight.drag;
+    if (!d || e.pointerId !== d.pointerId) return;
+    const x = (e.clientX - d.rect.left) / d.rect.width + d.offX;
+    const y = (e.clientY - d.rect.top) / d.rect.height + d.offY;
+    straight.quad[d.i] = { x: Math.max(0, Math.min(1, x)), y: Math.max(0, Math.min(1, y)) };
+    straightDraw(d.els, straight.quad);
+    e.preventDefault();
+  }
+
+  function onStraightUp(e) {
+    if (straight && straight.drag && e.pointerId === straight.drag.pointerId) straight.drag = null;
+  }
+
+  // Четырёхугольник → прямоугольник. Проекционное преобразование «единичный
+  // квадрат → четырёхугольник» (Хекберт), снимок читается билинейно. Размер
+  // результата — средние длины сторон, не больше FRAME_SOURCE_MAX. Идёт
+  // порциями по строкам, чтобы страница не замерзала.
+  async function warpQuad(img, quad) {
+    const sw = img.naturalWidth, sh = img.naturalHeight;
+    const P = quad.map((q) => ({ x: q.x * sw, y: q.y * sh }));
+    const len = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+    let ow = Math.round((len(P[0], P[1]) + len(P[3], P[2])) / 2);
+    let oh = Math.round((len(P[0], P[3]) + len(P[1], P[2])) / 2);
+    const k = Math.min(1, FRAME_SOURCE_MAX / Math.max(ow, oh, 1));
+    ow = Math.max(8, Math.round(ow * k)); oh = Math.max(8, Math.round(oh * k));
+    const scv = document.createElement("canvas");
+    scv.width = sw; scv.height = sh;
+    const scx = scv.getContext("2d");
+    scx.drawImage(img, 0, 0);
+    const sd = scx.getImageData(0, 0, sw, sh).data;
+    const [p0, p1, p2, p3] = P;
+    const dx1 = p1.x - p2.x, dx2 = p3.x - p2.x, dx3 = p0.x - p1.x + p2.x - p3.x;
+    const dy1 = p1.y - p2.y, dy2 = p3.y - p2.y, dy3 = p0.y - p1.y + p2.y - p3.y;
+    let g = 0, hh = 0;
+    const den = dx1 * dy2 - dx2 * dy1;
+    if (Math.abs(dx3) > 1e-9 || Math.abs(dy3) > 1e-9) {
+      g = (dx3 * dy2 - dx2 * dy3) / den;
+      hh = (dx1 * dy3 - dx3 * dy1) / den;
+    }
+    const a = p1.x - p0.x + g * p1.x, b = p3.x - p0.x + hh * p3.x, c = p0.x;
+    const d = p1.y - p0.y + g * p1.y, e = p3.y - p0.y + hh * p3.y, f = p0.y;
+    const out = document.createElement("canvas");
+    out.width = ow; out.height = oh;
+    const ox = out.getContext("2d");
+    const od = ox.createImageData(ow, oh);
+    const dd = od.data;
+    // Сжатие: если исходник крупнее результата, сначала берём уменьшенную
+    // копию, чтобы мелкие линии усреднялись, а не выпадали (см. shrinkImage).
+    for (let y = 0; y < oh; y++) {
+      const v = (y + 0.5) / oh;
+      for (let x = 0; x < ow; x++) {
+        const u = (x + 0.5) / ow;
+        const w = g * u + hh * v + 1;
+        let X = (a * u + b * v + c) / w - 0.5, Y = (d * u + e * v + f) / w - 0.5;
+        if (X < 0) X = 0; else if (X > sw - 1) X = sw - 1;
+        if (Y < 0) Y = 0; else if (Y > sh - 1) Y = sh - 1;
+        const x0 = X | 0, y0 = Y | 0, x1 = Math.min(sw - 1, x0 + 1), y1 = Math.min(sh - 1, y0 + 1);
+        const fx = X - x0, fy = Y - y0;
+        const i00 = (y0 * sw + x0) * 4, i10 = (y0 * sw + x1) * 4, i01 = (y1 * sw + x0) * 4, i11 = (y1 * sw + x1) * 4;
+        const q = (y * ow + x) * 4;
+        for (let ch = 0; ch < 3; ch++) {
+          dd[q + ch] = (sd[i00 + ch] * (1 - fx) + sd[i10 + ch] * fx) * (1 - fy) + (sd[i01 + ch] * (1 - fx) + sd[i11 + ch] * fx) * fy;
+        }
+        dd[q + 3] = 255;
+      }
+      if ((y & 63) === 63) await new Promise((r) => setTimeout(r, 0));
+    }
+    ox.putImageData(od, 0, 0);
+    return out;
+  }
+
+  function onStraightApply() {
+    const ctx = frameEditorCtx();
+    if (!ctx || !straight || straight.modelId !== ctx.model.id) return;
+    if (partsOf(ctx.model.id) && !confirm("У модели уже есть разметка деталей. После выпрямления снимок изменится, и разметку придётся проверить. Выпрямить?")) return;
+    const quad = straight.quad.map((q) => ({ x: q.x, y: q.y }));
+    const modelId = ctx.model.id;
+    const source = ctx.rec.source || ctx.rec.image;
+    straightNote("Выпрямляю…");
+    loadImageAsync(source)
+      .then((img) => warpQuad(img, quad))
+      .then(async (canvas) => {
+        const newSource = canvas.toDataURL("image/jpeg", 0.92);
+        // После выпрямления дверь занимает почти весь снимок: ищем её заново, а
+        // не нашли — весь снимок и есть блок (углы стояли на углах двери).
+        const auto = await autoFitFor(newSource);
+        const fit = auto || frameFitFromBox({ x: 0, y: 0, w: 1, h: 1 }, canvas.width, canvas.height);
+        const cur = modelPhotoOf(modelId) || ctx.rec;
+        const quality = qualityOf(cur);
+        const image = await renderModelPhoto(newSource, fit, quality);
+        if (image === null) return;
+        await saveModelPhoto(modelId, { ...cur, image: image, source: newSource, sourceOrig: cur.sourceOrig || cur.source || cur.image, fit: fit, quality: quality, custom: true }, () => {
+          straightClose();
+          frameNote("Фото выпрямлено. Проверьте углы рамки и поправьте.");
+          schedulePartsRedraw();
+        });
+        updateFrameEditor();
+      })
+      .catch(() => { straightNote("Не удалось выпрямить это фото."); });
+  }
+
+  function onStraightRestore() {
+    const ctx = frameEditorCtx();
+    if (!ctx || !ctx.rec.sourceOrig) return;
+    if (!confirm("Вернуть исходное фото, без выпрямления?")) return;
+    const modelId = ctx.model.id;
+    const orig = ctx.rec.sourceOrig;
+    autoFitFor(orig).then(async (auto) => {
+      const fit = auto || { ...FRAME_FIT };
+      const cur = modelPhotoOf(modelId) || ctx.rec;
+      const quality = qualityOf(cur);
+      const image = await renderModelPhoto(orig, fit, quality);
+      if (image === null) return;
+      const next = { ...cur, image: image, source: orig, fit: fit, quality: quality, custom: true };
+      delete next.sourceOrig;
+      await saveModelPhoto(modelId, next, () => {
+        frameNote("Исходное фото возвращено.");
+        schedulePartsRedraw();
+      });
+      updateFrameEditor();
+    });
   }
 
   // «Подогнать автоматически»: найти дверь на снимке и поставить рамку на неё.
@@ -9397,6 +9639,15 @@ const DB = {
     });
     const frameReset = document.getElementById("s_frameReset");
     if (frameReset) frameReset.addEventListener("click", onFrameReset);
+    const straightStage = document.getElementById("s_straightStage");
+    if (straightStage) {
+      straightStage.addEventListener("pointerdown", onStraightDown);
+      straightStage.addEventListener("pointermove", onStraightMove);
+      straightStage.addEventListener("pointerup", onStraightUp);
+      straightStage.addEventListener("pointercancel", onStraightUp);
+    }
+    [["s_straightOpen", onStraightOpen], ["s_straightApply", onStraightApply], ["s_straightCancel", straightClose], ["s_straightRestore", onStraightRestore]]
+      .forEach(([id, fn]) => { const b = document.getElementById(id); if (b) b.addEventListener("click", fn); });
     const frameAuto = document.getElementById("s_frameAuto");
     if (frameAuto) frameAuto.addEventListener("click", onFrameAuto);
     // Движки качества снимка (см. updateQualityEditor).
@@ -9983,7 +10234,7 @@ const DB = {
         const sw = DB.modelSwatches[id];
         if (sw && sw.custom && sw.image && !known.has(id)) {
           migrations.push(
-            idbPut(PHOTO_STORE_MODEL, id, { image: sw.image, source: sw.source, fit: sw.fit, quality: sw.quality })
+            idbPut(PHOTO_STORE_MODEL, id, { image: sw.image, source: sw.source, sourceOrig: sw.sourceOrig, fit: sw.fit, quality: sw.quality })
               .then(() => { modelPhotosConfirmedInIdb.add(id); })
               .catch(() => {})
           );
@@ -10894,7 +11145,7 @@ const DB = {
   function saveModelPhoto(modelId, rec, after) {
     (DB.modelSwatches || (DB.modelSwatches = {}))[modelId] = rec;
     modelPhotosConfirmedInIdb.delete(modelId);
-    return idbPut(PHOTO_STORE_MODEL, modelId, { image: rec.image, source: rec.source, fit: rec.fit, quality: rec.quality })
+    return idbPut(PHOTO_STORE_MODEL, modelId, { image: rec.image, source: rec.source, sourceOrig: rec.sourceOrig, fit: rec.fit, quality: rec.quality })
       .then(() => { modelPhotosConfirmedInIdb.add(modelId); })
       .catch(() => {})
       .then(() => {
