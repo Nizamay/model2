@@ -29,3 +29,16 @@ if not pat.search(s):
 s = pat.sub(lambda m: block, s, count=1)
 open(idx, 'w', encoding='utf-8').write(s)
 print('вшито моделей:', len(rows))
+
+# Список моделей программы, у которых ещё нет вшитого фото (кроме «Матрицы»).
+m = re.search(r'models: \[(.*?)\]\.map\(', s, re.S)
+names = re.findall(r'"([^"]+)"', m.group(1)) if m else []
+have = set(fits)
+missing = [n for n in names if n not in have]
+out = ['# Модели без вшитого фото\n', '\nСписок собирается `build_models.py` из `DB.models` (без «Матрицы»). '
+       'Модели с названием, которого нет в программе, сюда не попадают — о них пишется в чате.\n',
+       '\nВсего моделей: %d, с фото: %d, без фото: %d.\n\n' % (len(names), len([n for n in names if n in have]), len(missing))]
+out += ['- %s\n' % n for n in missing]
+open(os.path.join(SRC, 'НЕТ_ФОТО.md'), 'w', encoding='utf-8').write(''.join(out))
+print('без фото:', len(missing))
+
