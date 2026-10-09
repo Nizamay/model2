@@ -655,7 +655,11 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 .adjust-advanced > summary { cursor: pointer; font-size: 12px; color: var(--muted); font-weight: 600; }
 .adjust-advanced-body { display: flex; flex-direction: column; gap: 2px; padding-top: 8px; }
 .adjust-actions { display: flex; gap: 8px; margin-top: 2px; }
-.adjust-actions button { flex: 1 1 0; min-width: 0; padding: 10px 6px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font-weight: 600; cursor: pointer; }
+.adjust-actions button { flex: 1 1 0; min-width: 0; padding: 10px 6px; line-height: 1.2; text-align: center; overflow-wrap: anywhere; hyphens: auto; -webkit-hyphens: auto; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font-weight: 600; cursor: pointer; }
+/* Кнопки подгонки фото: длинные подписи переносятся (до трёх строк), а четвёртая
+   кнопка («Вернуть исходное фото») уходит на свою строку, а не сжимает остальные. */
+#s_frameActions { flex-wrap: wrap; }
+#s_frameActions button { flex: 1 1 30%; font-size: 13px; padding: 9px 4px; }
 .adjust-actions .save { background: var(--accent); color: #fff; border-color: var(--accent); }
 .adjust-actions button:disabled { opacity: .55; cursor: default; }
 /* Ползунки заблокированы, пока не нажата «Изменить» — защита от случайной
@@ -1523,9 +1527,9 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
             <div class="frame-stage" id="s_frameStage"></div>
             <p class="frame-note" id="s_frameNote"></p>
             <div class="adjust-actions" id="s_frameActions">
-              <button type="button" id="s_frameAuto">Подогнать автоматически</button>
-              <button type="button" id="s_frameReset">Сбросить подгонку</button>
-              <button type="button" id="s_straightOpen">Выпрямить фото</button>
+              <button type="button" id="s_frameAuto">Подогнать авто&shy;матически</button>
+              <button type="button" id="s_frameReset">Сбро&shy;сить под&shy;гонку</button>
+              <button type="button" id="s_straightOpen">Выпря&shy;мить фото</button>
               <button type="button" id="s_straightRestore" hidden>Вернуть исходное фото</button>
             </div>
             <!-- Выпрямление кривого фото (как в сканерах документов): четыре угла
