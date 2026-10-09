@@ -3168,7 +3168,11 @@ const DB = {
   // рисунок гравировки это отдельная задача.
   function glassPaint(glassId, glassName) {
     const n = (glassName || "").toLowerCase();
-    if (glassId === "black" || /чёрн|черн|лакобель ч/.test(n)) return { fill: "#111317", light: 0.10 };
+    // flat — на фотографии стекло красится ровным цветом deep, без бликов и
+    // отражений со снимка: чёрное стекло должно быть чёрным (жалоба заказчика:
+    // «стекло недокрашивается в чисто чёрный», по краям выделения и в местах
+    // бликов оставались серые полосы).
+    if (glassId === "black" || /чёрн|черн|лакобель ч/.test(n)) return { fill: "#111317", light: 0.10, flat: true, deep: "#070809" };
     if (glassId === "white" || /бел/.test(n)) return { fill: "#f1efe9", light: 0.22 };
     if (glassId === "mirror" || /зеркал/.test(n)) return { fill: "#c3ccd1", light: 0.42 };
     return { fill: "#dde7ea", light: 0.26 }; // сатин/матовое и декоративные
@@ -4263,6 +4267,25 @@ const DB = {
         }
       }
     }
+    // Обведённое стекло в усреднении светотени не участвует вовсе — мы точно
+    // знаем, где оно. Раньше исключались только крупные тёмные пятна (толще
+    // 6 мм), а узкие чёрные планки стекла (3–6 мм) попадали и в размытие
+    // рельефа, и в широкое поле: рядом с каждой планкой на гладкой филёнке
+    // (Ваниль) выходила светлая кайма шириной около 40 мм, а в середине —
+    // «тёмный прямоугольник», будто филёнка фрезерованная (жалоба заказчика).
+    // Замер на ровной филёнке между планками: у планки 209, в середине 195;
+    // без этой поправки — 195 по всей филёнке.
+    const glassRects = doc.parts.filter((p) => p.k === "g");
+    if (glassRects.length) {
+      if (!avgMask) avgMask = new Float32Array(rw * rh).fill(1);
+      const pad = Math.max(1, Math.round(1.5 * reliefPxPerMm));
+      glassRects.forEach((g) => {
+        const gx0 = Math.max(0, Math.round(g.x * rw) - pad), gx1 = Math.min(rw, Math.round((g.x + g.w) * rw) + pad);
+        const gy0 = Math.max(0, Math.round(g.y * rh) - pad), gy1 = Math.min(rh, Math.round((g.y + g.h) * rh) + pad);
+        for (let y = gy0; y < gy1; y++) avgMask.fill(0, y * rw + gx0, y * rw + gx1);
+      });
+      if (await pause()) return null;
+    }
     if (avgMask) {
       const num = new Float32Array(sharp.length);
       for (let i = 0; i < num.length; i++) num[i] = sharp[i] * avgMask[i];
@@ -4331,11 +4354,50 @@ const DB = {
       relief[i] = relief0[i] / b * wideMean;
       if ((i & 0x3ffff) === 0x3ffff && await pause()) return null;
     }
+    // «Отголоски» тиснения снимка. Модель на фото часто снята с структурной
+    // плёнкой (Британия ПГ и т. п.): тиснение — горизонтальные штрихи в
+    // два-три миллиметра высотой и в два-пять сантиметров длиной. Размытие в
+    // пять миллиметров глушит его только по вертикали, и вдоль штриха оно
+    // остаётся: на гладкой плёнке (Ваниль) по филёнкам, наличникам и верху
+    // полотна идёт лёгкая рябь «от структурной» (жалоба заказчика). Поэтому
+    // от рельефа отделяем среднюю часть (окно в десять миллиметров) и то, что
+    // от неё отличается слабее обычного разброса (его считаем по самому
+    // снимку: медианное отклонение), приглушаем. Фаска, фрезеровка и канавка
+    // — это перепад в разы больше разброса, они проходят без изменений; у
+    // гладкого снимка разброс почти нулевой, и рельеф не меняется.
+    {
+      const midR = Math.max(2, Math.round(20 * reliefPxPerMm));
+      const mid = await boxBlurSliced(relief, rw, rh, midR);
+      if (!mid) return null;
+      const dev = [];
+      for (let y = 0; y < rh; y += 5) {
+        const row = y * rw;
+        for (let x = 0; x < rw; x += 5) {
+          if (avgMask && !avgMask[row + x]) continue;
+          dev.push(Math.abs(relief[row + x] - mid[row + x]));
+        }
+      }
+      if (dev.length > 64) {
+        const arr = Float32Array.from(dev); arr.sort();
+        const sigma = 1.4826 * arr[arr.length >> 1];
+        const t0 = 2.5 * sigma, t1 = 6 * sigma;
+        if (t0 > 0.002) {
+          for (let i = 0; i < relief.length; i++) {
+            const dv = relief[i] - mid[i];
+            const a = dv < 0 ? -dv : dv;
+            if (a >= t1) continue;
+            const k = a <= t0 ? 0 : (a - t0) / (t1 - t0);
+            relief[i] = mid[i] + dv * (k * k * (3 - 2 * k));
+            if ((i & 0x3ffff) === 0x3ffff && await pause()) return null;
+          }
+        }
+      }
+    }
     // Ровный цвет (эмаль, плёнка без образца) настраивается тем же правилом.
     // Стекло — нет: у него свой цвет из позиции «Стекло», к плёнке он
     // отношения не имеет.
     const flat = adjustFilmRgb(partsRgb(filmHex), adjust);
-    const glassRgb = partsRgb(glass.fill);
+    const glassRgb = partsRgb(glass.flat && glass.deep ? glass.deep : glass.fill);
     // Свет. Затемнение и подсветку до четверти считаем умножением: так цвет
     // плёнки остаётся собой, и деталь садится ровно в тот цвет, что выбран в
     // расчёте. Раньше любое превышение уводило к белому, и филёнка — а она
@@ -4428,7 +4490,7 @@ const DB = {
           // сводит рельеф к единице, то есть к ровной плёнке. Направление
           // света при этом не меняется — оно со снимка (см. doorShadeK).
           const raw = clampRel(clampRel(lum / ref) * norm);
-          const rel = shadeK === 1 ? raw : clampRel(1 + (raw - 1) * shadeK);
+          const rel = glassPart && glass.flat ? 1 : shadeK === 1 ? raw : clampRel(1 + (raw - 1) * shadeK);
           let fr, fg, fb;
           if (glassPart) { fr = glassRgb[0]; fg = glassRgb[1]; fb = glassRgb[2]; }
           else if (tile) {
