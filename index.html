@@ -4986,7 +4986,7 @@ const DB = {
   // фона, а не фиксированный. Возвращает рамку блока в долях снимка или null,
   // если фон неровный или найденное на дверь не похоже: тогда остаётся
   // подгонка руками.
-  function detectDoorBlock(img) {
+  function detectDoorBlock(img, raw) {
     try {
       const iw = img.naturalWidth || img.width, ih = img.naturalHeight || img.height;
       if (!iw || !ih) return null;
@@ -5024,6 +5024,7 @@ const DB = {
       // правил. Совсем не похоже на дверь — не берёмся.
       const ratio = (box.w * iw) / (box.h * ih);
       if (ratio > 0.52 || ratio < 0.2) return null;
+      if (raw) return box;
       if (ratio < 0.38) {
         const gx = box.w * (CASING_MM + GAP_MM) / LEAF_MM.w, gy = box.h * (CASING_MM + GAP_MM) / LEAF_MM.h;
         box = { x: box.x - gx, y: box.y - gy, w: box.w + gx * 2, h: box.h + gy + box.h * FLOOR_GAP_MM / LEAF_MM.h };
@@ -5468,7 +5469,7 @@ const DB = {
     loadImageAsync(source).then((img) => {
       // Первое положение углов — найденная на снимке дверь, а нет её — рамка
       // с отступом.
-      const b = detectDoorBlock(img) || { x: 0.1, y: 0.08, w: 0.8, h: 0.84 };
+      const b = detectDoorBlock(img, true) || { x: 0.1, y: 0.08, w: 0.8, h: 0.84 };
       const clamp = (v) => Math.max(0, Math.min(1, v));
       const x0 = clamp(b.x), y0 = clamp(b.y), x1 = clamp(b.x + b.w), y1 = clamp(b.y + b.h);
       straight = { modelId: ctx.model.id, quad: [{ x: x0, y: y0 }, { x: x1, y: y0 }, { x: x1, y: y1 }, { x: x0, y: y1 }], drag: null };
@@ -5588,8 +5589,18 @@ const DB = {
         const newSource = canvas.toDataURL("image/jpeg", 0.92);
         // После выпрямления дверь занимает почти весь снимок: ищем её заново, а
         // не нашли — весь снимок и есть блок (углы стояли на углах двери).
-        const auto = await autoFitFor(newSource);
-        const fit = auto || frameFitFromBox({ x: 0, y: 0, w: 1, h: 1 }, canvas.width, canvas.height);
+        // Углы ставят на сам блок или на одно полотно (снимок без наличников).
+        // Узкая пропорция — полотно: тогда весь выпрямленный снимок и есть
+        // полотно, рамку блока достраиваем вокруг него по размерам из правил, а
+        // не принимаем за блок (иначе полотно в разметке не совпадает с дверью).
+        let fit;
+        if (canvas.width / canvas.height < 0.38) {
+          const gx = (CASING_MM + GAP_MM) / LEAF_MM.w, gy = (CASING_MM + GAP_MM) / LEAF_MM.h;
+          fit = frameFitFromBox({ x: -gx, y: -gy, w: 1 + gx * 2, h: 1 + gy + FLOOR_GAP_MM / LEAF_MM.h }, canvas.width, canvas.height);
+        } else {
+          const auto = await autoFitFor(newSource);
+          fit = auto || frameFitFromBox({ x: 0, y: 0, w: 1, h: 1 }, canvas.width, canvas.height);
+        }
         const cur = modelPhotoOf(modelId) || ctx.rec;
         const quality = qualityOf(cur);
         const image = await renderModelPhoto(newSource, fit, quality);
