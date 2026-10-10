@@ -5381,11 +5381,19 @@ const DB = {
   // Номер последней пересборки кадра по моделям (см. applyFrameFit).
   const frameRenderSeq = {};
 
+  // Срез по штриху нужен снимкам без наличника. Если у модели обведён
+  // наличник, он есть на снимке и срез его бы стёр — тогда срез не действует
+  // сам (флаг остаётся и включится снова, когда наличник уберут из разметки).
+  function cutAllowed(modelId) { return !partsHaveCasing(partsOf(modelId)); }
+
   function applyFrameFit(modelId, doneText) {
     const rec = modelPhotoOf(modelId);
     const source = rec && (rec.source || rec.image);
     if (!source) return Promise.resolve();
     const fit = frameFitOf(rec);
+    const blocked = !!(fit.cut && !cutAllowed(modelId));
+    const drawFit = blocked ? { ...fit, cut: false } : fit;
+    if (blocked) doneText = "Срез не действует: у модели обведён наличник со снимка.";
     const quality = qualityOf(rec);
     // Подгонку часто двигают подряд. Каждая новая пересборка отменяет прежнюю
     // (она ещё считается порциями) и не даёт ей потом записать устаревший кадр
@@ -5393,7 +5401,7 @@ const DB = {
     const seq = (frameRenderSeq[modelId] = (frameRenderSeq[modelId] || 0) + 1);
     const isStale = () => frameRenderSeq[modelId] !== seq;
     frameNote("Собираю кадр…");
-    return renderModelPhoto(source, fit, quality, isStale)
+    return renderModelPhoto(source, drawFit, quality, isStale)
       .then((image) => {
         if (image === null || isStale()) return null;
         const cur = modelPhotoOf(modelId) || rec;
@@ -5601,7 +5609,7 @@ const DB = {
         if (canvas.width / canvas.height < 0.38) {
           const gx = (CASING_MM + GAP_MM) / LEAF_MM.w, gy = (CASING_MM + GAP_MM) / LEAF_MM.h;
           fit = frameFitFromBox({ x: -gx, y: -gy, w: 1 + gx * 2, h: 1 + gy + FLOOR_GAP_MM / LEAF_MM.h }, canvas.width, canvas.height);
-          fit.cut = true;
+          fit.cut = cutAllowed(modelId);
         } else {
           const auto = await autoFitFor(newSource);
           fit = auto || frameFitFromBox({ x: 0, y: 0, w: 1, h: 1 }, canvas.width, canvas.height);
@@ -5783,7 +5791,7 @@ const DB = {
         // Кадр, улучшенный нейросетью (build_models.py: q), несёт свои движки
         // качества — «Тонкие линии» у него полные: зерно со снимка уже убрано.
         const quality = f.q ? { sharp: f.q.sharp || 0, smooth: f.q.smooth || 0, lines: f.q.lines || 0 } : undefined;
-        const image = await renderModelPhoto(f.source, fit, quality);
+        const image = await renderModelPhoto(f.source, fit.cut && !cutAllowed(model.id) ? { ...fit, cut: false } : fit, quality);
         if (!image) continue;
         const rec = { image: image, source: f.source, fit: fit, custom: true };
         if (quality) rec.quality = quality;
@@ -5854,6 +5862,7 @@ const DB = {
 
   function savePartsDoc(doc, modelId, deferRedraw) {
     if (!DB.modelParts) DB.modelParts = {};
+    const hadCasing = partsHaveCasing(partsOf(modelId));
     if (doc && doc.parts.length) {
       doc.rev = (doc.rev || 0) + 1;
       DB.modelParts[modelId] = doc;
@@ -5862,6 +5871,10 @@ const DB = {
       partsSel = null;
     }
     savePrices();
+    // Обвели наличник (или стёрли) — срез по штриху включается/выключается
+    // сам: наличник со снимка срезом не трогаем (см. cutAllowed).
+    const rec0 = modelPhotoOf(modelId);
+    if (rec0 && rec0.fit && rec0.fit.cut && hadCasing !== partsHaveCasing(doc)) applyFrameFit(modelId);
     if (deferRedraw) schedulePartsRedraw();
     else { clearTimeout(partsRedrawTimer); partsRedrawTimer = null; drawDoor(sceneCtx, true); }
   }
