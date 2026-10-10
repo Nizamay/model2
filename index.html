@@ -1529,7 +1529,6 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
             <div class="adjust-actions" id="s_frameActions">
               <button type="button" id="s_frameAuto">Подогнать авто&shy;матически</button>
               <button type="button" id="s_frameReset">Сбро&shy;сить под&shy;гонку</button>
-              <button type="button" id="s_frameCut">Срезать по штриху</button>
               <button type="button" id="s_straightOpen">Выпря&shy;мить фото</button>
               <button type="button" id="s_straightRestore" hidden>Вернуть исходное фото</button>
             </div>
@@ -5123,8 +5122,6 @@ const DB = {
     if (frameDrag && (frameDrag.modelId !== ctx.model.id || Date.now() - frameDrag.at > 20000)) frameDrag = null;
     if (frameDrag) return;
     if (straight && straight.modelId !== ctx.model.id) straightClose();
-    const cutBtn = document.getElementById("s_frameCut");
-    if (cutBtn) cutBtn.textContent = frameFitOf(ctx.rec).cut ? "Срез по штриху: вкл" : "Срезать по штриху";
     const restoreBtn = document.getElementById("s_straightRestore");
     if (restoreBtn) restoreBtn.hidden = !ctx.rec.sourceOrig;
     const els = frameStageEls();
@@ -5493,6 +5490,7 @@ const DB = {
   }
 
   function straightClose() {
+    straightDisarm();
     straight = null;
     straightShow(false);
   }
@@ -5587,9 +5585,27 @@ const DB = {
     return out;
   }
 
+  // Кнопка «✓ Выпрямить» — с защитой: первое нажатие только предупреждает, что
+  // наличники со снимка срежутся, второе (в течение 6 секунд) выпрямляет.
+  let straightArmAt = 0, straightArmTimer = 0;
+  function straightDisarm() {
+    straightArmAt = 0; clearTimeout(straightArmTimer);
+    const b = document.getElementById("s_straightApply");
+    if (b) b.textContent = "✓ Выпрямить";
+  }
   function onStraightApply() {
     const ctx = frameEditorCtx();
     if (!ctx || !straight || straight.modelId !== ctx.model.id) return;
+    if (!straightArmAt || Date.now() - straightArmAt > 6000) {
+      straightArmAt = Date.now();
+      const b = document.getElementById("s_straightApply");
+      if (b) b.textContent = "Ещё раз: срезать";
+      straightNote("Внимание: наличники на снимке срежутся — останется только полотно. Нажмите ещё раз, чтобы выпрямить.");
+      clearTimeout(straightArmTimer);
+      straightArmTimer = setTimeout(() => { straightDisarm(); straightNote(""); }, 6000);
+      return;
+    }
+    straightDisarm();
     if (partsOf(ctx.model.id) && !confirm("У модели уже есть разметка деталей. После выпрямления снимок изменится, и разметку придётся проверить. Выпрямить?")) return;
     const quad = straight.quad.map((q) => ({ x: q.x, y: q.y }));
     const modelId = ctx.model.id;
@@ -5609,11 +5625,14 @@ const DB = {
         if (canvas.width / canvas.height < 0.38) {
           const gx = (CASING_MM + GAP_MM) / LEAF_MM.w, gy = (CASING_MM + GAP_MM) / LEAF_MM.h;
           fit = frameFitFromBox({ x: -gx, y: -gy, w: 1 + gx * 2, h: 1 + gy + FLOOR_GAP_MM / LEAF_MM.h }, canvas.width, canvas.height);
-          fit.cut = cutAllowed(modelId);
+          
         } else {
           const auto = await autoFitFor(newSource);
           fit = auto || frameFitFromBox({ x: 0, y: 0, w: 1, h: 1 }, canvas.width, canvas.height);
         }
+        // Выпрямляли по краям двери: всё снаружи штриховой линии полотна
+        // срезается (наличники со снимка тоже), см. drawModelFrameBase.
+        fit.cut = true;
         const cur = modelPhotoOf(modelId) || ctx.rec;
         const quality = qualityOf(cur);
         const image = await renderModelPhoto(newSource, fit, quality);
@@ -5663,18 +5682,6 @@ const DB = {
       updateFrameEditor();
       applyFrameFit(ctx.model.id, "Подогнано автоматически. Проверьте углы и поправьте.");
     });
-  }
-
-  // «Срезать по штриху»: у снимка без наличников всё вне штриховой линии
-  // полотна отрезается (см. drawModelFrameBase). Нажать ещё раз — вернуть.
-  function onFrameCut() {
-    const ctx = frameEditorCtx();
-    if (!ctx) return;
-    const fit = frameFitOf(ctx.rec);
-    fit.cut = !fit.cut;
-    saveFrameFit(ctx.model.id, fit);
-    updateFrameEditor();
-    applyFrameFit(ctx.model.id, fit.cut ? "Всё вне штриха срезано." : "Срез снят.");
   }
 
   function onFrameReset() {
@@ -9967,8 +9974,6 @@ const DB = {
     }
     [["s_straightOpen", onStraightOpen], ["s_straightApply", onStraightApply], ["s_straightCancel", straightClose], ["s_straightRestore", onStraightRestore]]
       .forEach(([id, fn]) => { const b = document.getElementById(id); if (b) b.addEventListener("click", fn); });
-    const frameCut = document.getElementById("s_frameCut");
-    if (frameCut) frameCut.addEventListener("click", onFrameCut);
     const frameAuto = document.getElementById("s_frameAuto");
     if (frameAuto) frameAuto.addEventListener("click", onFrameAuto);
     // Движки качества снимка (см. updateQualityEditor).
