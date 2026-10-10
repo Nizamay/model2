@@ -10131,6 +10131,29 @@ const DB = {
     if (bar) bar.classList.toggle("has-goto", !hide);
   }
 
+  // Список «Модель» на калькуляторе — производный от «Изменение цен» → «Модели
+  // (базовая цена полотна)»: там модели заводят, переименовывают и удаляют, а
+  // калькулятор только показывает их. Перестраиваем его при каждом заходе на
+  // калькулятор, что бы ни менялось в DB.models и откуда бы оно ни пришло
+  // (правка в редакторе, загрузка сохранённых данных, переименование модели
+  // программой): типы двери, список моделей раздела и выбранная модель —
+  // если выбранной больше нет, берётся первая в разделе, а зависящие от неё
+  // поля (материал, цвет, стекло, патина, опции) пересобираются.
+  function syncCalcWithModels() {
+    const sec = state.section, mid = state.modelId;
+    populateSection();
+    populateModels();
+    if (state.section !== sec) { applySectionUI(); populateModels(); }
+    if (state.section !== sec || state.modelId !== mid) {
+      populateMaterial();
+      populateColors();
+      populateGlass();
+      populatePatina();
+      populateOptions();
+    }
+    render();
+  }
+
   function setView(view) {
     // См. DEFAULT_DOCUMENT_TITLE — вне «Спецификации» заголовок обычный,
     // renderOrderPage сам выставит нужный при входе на страницу.
@@ -10153,6 +10176,7 @@ const DB = {
     el.menu.querySelectorAll(".menu-item").forEach((b) =>
       b.classList.toggle("active", b.dataset.view === view)
     );
+    if (view === "calc") syncCalcWithModels();
     if (view === "prices") renderPriceEditor();
     if (view === "scene") { drawDoor(sceneCtx, true); renderFilmPanel(true); }
     if (view === "room3d" && window.initRoom3D) window.initRoom3D();
