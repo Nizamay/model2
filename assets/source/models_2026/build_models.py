@@ -35,8 +35,9 @@ for name in sorted(fits):
         continue
     b64 = base64.b64encode(open(path, 'rb').read()).decode()
     fit = fits[name]
-    rows.append('    %s: { v: 1, fit: { zx: %r, zy: %r, dx: %r, dy: %r }, source: "data:image/jpeg;base64,%s" }'
-                % (json.dumps(name, ensure_ascii=False), fit['zx'], fit['zy'], fit['dx'], fit['dy'], b64))
+    cut = ', cut: true' if fit.get('cut') else ''
+    rows.append('    %s: { v: 1, fit: { zx: %r, zy: %r, dx: %r, dy: %r%s }, source: "data:image/jpeg;base64,%s" }'
+                % (json.dumps(name, ensure_ascii=False), fit['zx'], fit['zy'], fit['dx'], fit['dy'], cut, b64))
 block = '  // FACTORY_MODEL_PHOTOS_BEGIN (собирается build_models.py из assets/source/models_2026)\n' \
         '  const FACTORY_MODEL_PHOTOS = {\n' + ',\n'.join(rows) + '\n  };\n' \
         '  // FACTORY_MODEL_PHOTOS_END'
