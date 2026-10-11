@@ -624,7 +624,7 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
    реальным пропорциям двери с наличником (см. FRAME_MM: 850×2085) —
    иначе object-fit: cover обрезал бы большую часть высоты двери в узкий
    квадратный кадр, как у образца материала. */
-.model-photo-preview { max-width: 200px; aspect-ratio: 4/9; }
+.model-photo-preview { max-width: 200px; aspect-ratio: 850 / 2085; }
 /* Блок «Фото модели» — без своей тон-коррекции (см. modelPhotoRow/отчёт),
    поэтому просто центрированная колонка превью + кнопки, без .adjust-body. */
 .model-photo-block { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 6px 0; }
