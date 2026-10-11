@@ -33,10 +33,15 @@ for name in sorted(fits):
                     % (json.dumps(name, ensure_ascii=False), SR_LINES, b64))
         n_sr += 1
         continue
-    b64 = base64.b64encode(open(path, 'rb').read()).decode()
+    # Исходник вшивается в WebP q90: вдвое легче JPEG при тех же на вид деталях.
+    import io
+    from PIL import Image
+    buf = io.BytesIO()
+    Image.open(path).convert('RGB').save(buf, 'WEBP', quality=90, method=6)
+    b64 = base64.b64encode(buf.getvalue()).decode()
     fit = fits[name]
     cut = ', cut: true' if fit.get('cut') else ''
-    rows.append('    %s: { v: 1, fit: { zx: %r, zy: %r, dx: %r, dy: %r%s }, source: "data:image/jpeg;base64,%s" }'
+    rows.append('    %s: { v: 3, fit: { zx: %r, zy: %r, dx: %r, dy: %r%s }, source: "data:image/webp;base64,%s" }'
                 % (json.dumps(name, ensure_ascii=False), fit['zx'], fit['zy'], fit['dx'], fit['dy'], cut, b64))
 block = '  // FACTORY_MODEL_PHOTOS_BEGIN (собирается build_models.py из assets/source/models_2026)\n' \
         '  const FACTORY_MODEL_PHOTOS = {\n' + ',\n'.join(rows) + '\n  };\n' \
