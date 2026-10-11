@@ -2058,7 +2058,7 @@ const DEFAULT_GLASSES = [
 
 // Каталог стёкол — общий для всех моделей (см. DB.glassLooks): у каждого
 // стекла цвет и блеск. Блеск — сколько от бликов и гравировки со снимка двери
-// остаётся на стекле: 0 — ровный цвет, 100 — как на снимке. Образец на экране
+// … (см. glassPaint): блеск — сила бликового отражения на стекле. Образец на экране
 // рисует сама программа (glassSwatchHtml), файлов нет. Стекло модели
 // (DEFAULT_GLASSES и свои) привязывается к одному из них полем look.
 // Основы для цвета стекла: от них ползунки «Оттенок/Насыщенность/…» ведут цвет.
@@ -2066,12 +2066,14 @@ const GLASS_BASES = [
   ["Светло-серый", "#dde7ea"], ["Белый", "#f1efe9"], ["Чёрный", "#070809"],
   ["Золотой", "#c9a24a"], ["Голубой", "#9fc6df"], ["Зелёный", "#7fb08a"], ["Бронза", "#8a6a45"]
 ];
+// Наибольшая доля «к белому», до которой блик осветляет стекло при блеске 100.
+const GLASS_REFL_MAX = 0.5;
 const GLASS_LOOKS_DEFAULT = [
-  { id: "satin", name: "Сатин матовый", hex: "#dde7ea", gloss: 100 },
+  { id: "satin", name: "Сатин матовый", hex: "#dde7ea", gloss: 0 },
   { id: "black", name: "Чёрное", hex: "#070809", gloss: 0 },
-  { id: "white", name: "Белое", hex: "#f1efe9", gloss: 100 },
-  { id: "mirror", name: "Зеркало", hex: "#c3ccd1", gloss: 100 },
-  { id: "gold", name: "Золото", hex: "#c9a24a", gloss: 100 }
+  { id: "white", name: "Белое", hex: "#f1efe9", gloss: 0 },
+  { id: "mirror", name: "Зеркало", hex: "#c3ccd1", gloss: 45 },
+  { id: "gold", name: "Золото", hex: "#c9a24a", gloss: 30 }
 ];
 
 // Патина — только у моделей «Щитовые» и только при материале «Эмаль» (см.
@@ -3414,7 +3416,12 @@ const DB = {
     const look = glassLookFor(glassId, glassName, modelGlass);
     const gloss = Math.max(0, Math.min(100, Number(look.gloss) || 0));
     const hex = glassLookHex(look);
-    return { fill: hex, deep: hex, gloss: gloss / 100, flat: gloss === 0 };
+    const c = partsRgb(hex);
+    // Тёмное стекло красится ровным цветом, без бликов и отражений со снимка
+    // (чёрное должно быть чёрным — жалоба заказчика); светлое сохраняет рисунок
+    // и блики снимка. refl — сила бликовой полосы поверх (см. paintPartsLeaf).
+    const lum = 0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2];
+    return { fill: hex, deep: hex, gloss: gloss / 100, refl: gloss / 100 * GLASS_REFL_MAX, flat: lum < 45 };
   }
 
   // Панель одного стекла каталога (страница «2D картинка» → «Стекло»): образец,
@@ -3433,7 +3440,7 @@ const DB = {
         <details class="adjust-advanced"><summary>Расширенные настройки (RGB)</summary><div class="adjust-advanced-body">
           ${row("Красный", "cr", 0, 200, v.cr)}${row("Зелёный", "cg", 0, 200, v.cg)}${row("Синий", "cb", 0, 200, v.cb)}
         </div></details>
-        <p class="info-text">Цвет собирается ползунками из основы, как у плёнки. «Блеск»: 0 — ровный цвет, 100 — блики и рисунок стекла со снимка двери.</p>
+        <p class="info-text">Цвет собирается ползунками из основы, как у плёнки. «Блеск» — сила блика: 0 — стекло без блика, 100 — яркая диагональная полоса отражения. Тёмное стекло рисунок снимка не берёт.</p>
         <div class="adjust-actions">
           <button type="button" class="save" data-field="glassSave" data-id="${esc(l.id)}">Сохранить</button>
           <button type="button" data-field="glassEdit" data-id="${esc(l.id)}">Изменить</button>
@@ -3451,7 +3458,7 @@ const DB = {
     const hex = glassLookHex(look);
     const bg = gloss === 0
       ? hex
-      : `linear-gradient(135deg, ${hex} 0%, ${mix(hex, 0.6 * gloss)} 34%, ${hex} 52%, ${mix(hex, 0.28 * gloss)} 100%)`;
+      : `linear-gradient(135deg, ${hex} 0%, ${mix(hex, GLASS_REFL_MAX * gloss)} 34%, ${hex} 52%, ${mix(hex, 0.45 * GLASS_REFL_MAX * gloss)} 100%)`;
     return `<div class="glass-swatch"><div class="glass-swatch-pane" style="background:${bg}"></div></div>`;
   }
 
@@ -4880,7 +4887,7 @@ const DB = {
           // света при этом не меняется — оно со снимка (см. doorShadeK).
           const raw = clampRel(clampRel(lum / ref) * norm);
           const relBase = shadeK === 1 ? raw : clampRel(1 + (raw - 1) * shadeK);
-          const rel = glassPart ? (glass.flat ? 1 : 1 + (relBase - 1) * glass.gloss) : relBase;
+          const rel = glassPart && glass.flat ? 1 : relBase;
           let fr, fg, fb;
           if (glassPart) { fr = glassRgb[0]; fg = glassRgb[1]; fb = glassRgb[2]; }
           else if (tile) {
@@ -4890,6 +4897,13 @@ const DB = {
           d[i] = lift(fr, rel);
           d[i + 1] = lift(fg, rel);
           d[i + 2] = lift(fb, rel);
+          if (glassPart && glass.refl > 0) {
+            // Блик: мягкая диагональная полоса поверх стекла, как на образце
+            // (те же остановки 34 % / 52 % / 100 %), сила — «Блеск».
+            const u = (x + y) / (cw + ch);
+            const tt = (u < 0.34 ? u / 0.34 : u < 0.52 ? 1 - (u - 0.34) / 0.18 : 0.45 * (u - 0.52) / 0.48) * glass.refl;
+            d[i] += (255 - d[i]) * tt; d[i + 1] += (255 - d[i + 1]) * tt; d[i + 2] += (255 - d[i + 2]) * tt;
+          }
           d[i + 3] = 255;
         }
       }
@@ -10455,6 +10469,7 @@ const DB = {
       v: 2,
       modelGroups: DB.modelGroups.map((g) => ({ ...g })),
       glassLooks: DB.glassLooks.map((g) => ({ ...g })),
+      glassLooksV: 2,
       models: DB.models.map((m) => ({
         id: m.id, name: m.name, type: m.type, basePrice: m.basePrice, pvhOnly: !!m.pvhOnly,
         glasses: Array.isArray(m.glasses) ? m.glasses.map((g) => ({ ...g })) : undefined,
@@ -10530,6 +10545,15 @@ const DB = {
     DB.glassLooks = (Array.isArray(s.glassLooks) && s.glassLooks.length)
       ? s.glassLooks.map((g) => ({ ...g }))
       : GLASS_LOOKS_DEFAULT.map((g) => ({ ...g }));
+    // Версия 2: «Блеск» — сила бликовой полосы (раньше — доля рисунка со
+    // снимка, 100 по умолчанию). Старые значения сбрасываем к стартовым,
+    // цвет и ползунки заказчика остаются.
+    if (s.glassLooksV !== 2) {
+      DB.glassLooks.forEach((l) => {
+        const d = GLASS_LOOKS_DEFAULT.find((x) => x.id === l.id);
+        l.gloss = d ? d.gloss : 0;
+      });
+    }
     if (Array.isArray(s.models)) {
       // Снимок мог быть сохранён до появления своего стекла/патины на модель —
       // тогда у моделей нет m.glasses/m.patina, подставляем стартовый каталог
