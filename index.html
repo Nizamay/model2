@@ -5779,6 +5779,26 @@ const DB = {
   // новее заводской и больше не затирается: метка v записана в localStorage.
   // Модели с другим названием (нет совпадения) не трогаются.
   const MODEL_PHOTO_APPLIED_KEY = "doorcalc_model_photos_applied";
+  // Имена моделей сравниваем «по виду»: заказчик правит названия сам, и вместо
+  // кириллической «О» в «ПО» мог встать латинский «O», лишний пробел или «ё».
+  // Глазами такое не отличить, а прежде заводское фото из-за этого не находило
+  // модель вовсе (серый квадрат в «Фото модели»).
+  const LATIN_LOOKALIKE = { A: "А", B: "В", C: "С", E: "Е", H: "Н", K: "К", M: "М", O: "О", P: "Р", T: "Т", X: "Х", Y: "У",
+    a: "а", c: "с", e: "е", o: "о", p: "р", x: "х", y: "у" };
+  function normModelName(name) {
+    return String(name || "").normalize("NFKC")
+      .replace(/[A-Za-z]/g, (ch) => LATIN_LOOKALIKE[ch] || ch)
+      .toLowerCase().replace(/ё/g, "е").replace(/[^0-9a-zа-я]/g, "");
+  }
+  let factoryByNormName = null;
+  function factoryPhotoFor(modelName) {
+    if (!factoryByNormName) {
+      factoryByNormName = new Map();
+      Object.keys(FACTORY_MODEL_PHOTOS).forEach((n) => factoryByNormName.set(normModelName(n), FACTORY_MODEL_PHOTOS[n]));
+    }
+    return factoryByNormName.get(normModelName(modelName)) || null;
+  }
+
   // Подгонка Лувр ПГ пересчитана: токен с ней, чтобы устройство взяло новую.
   function factoryPhotoToken(f) {
     return String(f.v || 1) + ":" + f.source.length + (f.fit && f.fit.cut ? ":cut" + Math.round(f.fit.zx * 1e4) : "");
@@ -5789,7 +5809,8 @@ const DB = {
     try { applied = JSON.parse(localStorage.getItem(MODEL_PHOTO_APPLIED_KEY) || "{}") || {}; } catch (err) { applied = {}; }
     let changed = false;
     for (const name of Object.keys(FACTORY_MODEL_PHOTOS)) {
-      const model = DB.models.find((m) => m.name === name);
+      const nn = normModelName(name);
+      const model = DB.models.find((m) => m.name === name) || DB.models.find((m) => normModelName(m.name) === nn);
       const f = FACTORY_MODEL_PHOTOS[name];
       if (!model || !f || !f.source) continue;
       // «Матрицу не трогаем» (заказчик): у готовых картинок-«Матриц» снимок
@@ -11598,7 +11619,7 @@ const DB = {
   // Вручную вернуть заводское фото модели. Ошибку не прячем: текст покажем, чтобы
   // было видно, почему не встало.
   async function onModelRestoreFactory(modelId) {
-    const m = getModel(modelId), f = m && FACTORY_MODEL_PHOTOS[m.name];
+    const m = getModel(modelId), f = m && factoryPhotoFor(m.name);
     if (!f || !f.source) return;
     try {
       const fit = { ...f.fit };
@@ -11627,7 +11648,7 @@ const DB = {
     // Заказчик убрал фото сам — заводское обратно не возвращаем (до нового
     // заводского снимка этой модели, см. applyFactoryModelPhotos).
     try {
-      const m = getModel(modelId), f = m && FACTORY_MODEL_PHOTOS[m.name];
+      const m = getModel(modelId), f = m && factoryPhotoFor(m.name);
       if (f && f.source) {
         const ap = JSON.parse(localStorage.getItem(MODEL_PHOTO_APPLIED_KEY) || "{}") || {};
         ap[modelId] = "removed:" + factoryPhotoToken(f);
@@ -11763,7 +11784,7 @@ const DB = {
     </label>${sw && sw.custom ? `<button type="button" class="row-add color-upload-remove" data-field="removeModelPhoto" data-model="${esc(m.id)}">✕ Удалить файл</button>` : ""}`;
     // Нет снимка, а заводское есть — кнопка вернуть его вручную (на случай,
     // если само оно не встало, см. applyFactoryModelPhotos).
-    const fac = FACTORY_MODEL_PHOTOS[m.name];
+    const fac = factoryPhotoFor(m.name);
     const restoreBtn = !(sw && sw.image) && fac && fac.source && m.type !== "матрица"
       ? `<button type="button" class="row-add" data-field="restoreFactoryPhoto" data-model="${esc(m.id)}">↺ Вернуть заводское фото</button>` : "";
     return `<div class="choice-head">Фото модели</div>
