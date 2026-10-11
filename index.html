@@ -624,7 +624,7 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
    реальным пропорциям двери с наличником (см. FRAME_MM: 850×2085) —
    иначе object-fit: cover обрезал бы большую часть высоты двери в узкий
    квадратный кадр, как у образца материала. */
-.model-photo-preview { max-width: 200px; aspect-ratio: 4/9; }
+.model-photo-preview { max-width: 200px; aspect-ratio: 850 / 2085; }
 /* Блок «Фото модели» — без своей тон-коррекции (см. modelPhotoRow/отчёт),
    поэтому просто центрированная колонка превью + кнопки, без .adjust-body. */
 .model-photo-block { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 6px 0; }
@@ -5779,6 +5779,11 @@ const DB = {
   // новее заводской и больше не затирается: метка v записана в localStorage.
   // Модели с другим названием (нет совпадения) не трогаются.
   const MODEL_PHOTO_APPLIED_KEY = "doorcalc_model_photos_applied";
+  // Подгонка Лувр ПГ пересчитана: токен с ней, чтобы устройство взяло новую.
+  function factoryPhotoToken(f) {
+    return String(f.v || 1) + ":" + f.source.length + (f.fit && f.fit.cut ? ":cut" + Math.round(f.fit.zx * 1e4) : "");
+  }
+
   async function applyFactoryModelPhotos() {
     let applied = {};
     try { applied = JSON.parse(localStorage.getItem(MODEL_PHOTO_APPLIED_KEY) || "{}") || {}; } catch (err) { applied = {}; }
@@ -5790,9 +5795,14 @@ const DB = {
       // «Матрицу не трогаем» (заказчик): у готовых картинок-«Матриц» снимок
       // показывается как есть, подгонки и разметки там нет.
       if (model.type === "матрица") continue;
-      const token = String(f.v || 1) + ":" + f.source.length + (f.fit && f.fit.cut ? ":cut" + Math.round(f.fit.zx * 1e4) : "");
-      // Подгонка Лувр ПГ пересчитана: токен с ней, чтобы устройство взяло новую.
-      if (applied[model.id] === token) continue;
+      const token = factoryPhotoToken(f);
+      // Уже применено — пропускаем, но только если запись фото на месте. Если
+      // отметка есть, а самого фото нет (запись пропала из хранилища
+      // устройства), заводское фото возвращается: «в программе нет, а в
+      // загруженных есть». Осознанное «Удалить файл» запоминается отдельно.
+      const rec0 = DB.modelSwatches && DB.modelSwatches[model.id];
+      if (applied[model.id] === "removed:" + token) continue;
+      if (applied[model.id] === token && rec0 && rec0.image) continue;
       try {
         const fit = { ...f.fit };
         // Кадр, улучшенный нейросетью (build_models.py: q), несёт свои движки
@@ -11590,6 +11600,16 @@ const DB = {
   function onModelRemovePhoto(modelId) {
     if (DB.modelSwatches) delete DB.modelSwatches[modelId];
     modelPhotosConfirmedInIdb.delete(modelId);
+    // Заказчик убрал фото сам — заводское обратно не возвращаем (до нового
+    // заводского снимка этой модели, см. applyFactoryModelPhotos).
+    try {
+      const m = getModel(modelId), f = m && FACTORY_MODEL_PHOTOS[m.name];
+      if (f && f.source) {
+        const ap = JSON.parse(localStorage.getItem(MODEL_PHOTO_APPLIED_KEY) || "{}") || {};
+        ap[modelId] = "removed:" + factoryPhotoToken(f);
+        localStorage.setItem(MODEL_PHOTO_APPLIED_KEY, JSON.stringify(ap));
+      }
+    } catch (err) { }
     idbDelete(PHOTO_STORE_MODEL, modelId).catch(() => {}).then(() => {
       savePrices();
       renderPriceEditor();
