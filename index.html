@@ -11595,6 +11595,30 @@ const DB = {
       });
   }
 
+  // Вручную вернуть заводское фото модели. Ошибку не прячем: текст покажем, чтобы
+  // было видно, почему не встало.
+  async function onModelRestoreFactory(modelId) {
+    const m = getModel(modelId), f = m && FACTORY_MODEL_PHOTOS[m.name];
+    if (!f || !f.source) return;
+    try {
+      const fit = { ...f.fit };
+      const quality = f.q ? { sharp: f.q.sharp || 0, smooth: f.q.smooth || 0, lines: f.q.lines || 0 } : undefined;
+      const image = await renderModelPhoto(f.source, fit, quality);
+      if (!image) { alert("Не удалось собрать кадр: расчёт прервался. Попробуйте ещё раз."); return; }
+      const rec = { image: image, source: f.source, fit: fit, custom: true };
+      if (quality) rec.quality = quality;
+      await saveModelPhoto(modelId, rec);
+      try {
+        const ap = JSON.parse(localStorage.getItem(MODEL_PHOTO_APPLIED_KEY) || "{}") || {};
+        ap[modelId] = factoryPhotoToken(f);
+        localStorage.setItem(MODEL_PHOTO_APPLIED_KEY, JSON.stringify(ap));
+      } catch (err) { }
+      renderPriceEditor();
+    } catch (err) {
+      alert("Не удалось вернуть фото: " + (err && err.message ? err.message : err));
+    }
+  }
+
   // «Удалить файл» — у моделей нет заводского фото (в отличие от 27
   // встроенных образцов плёнки), поэтому просто убирает запись целиком.
   function onModelRemovePhoto(modelId) {
@@ -11737,10 +11761,15 @@ const DB = {
     const uploadBtn = `<label class="row-add color-upload-btn">📷 Загрузить файл
       <input type="file" accept="image/*" class="model-upload-input sr-only" data-model="${esc(m.id)}">
     </label>${sw && sw.custom ? `<button type="button" class="row-add color-upload-remove" data-field="removeModelPhoto" data-model="${esc(m.id)}">✕ Удалить файл</button>` : ""}`;
+    // Нет снимка, а заводское есть — кнопка вернуть его вручную (на случай,
+    // если само оно не встало, см. applyFactoryModelPhotos).
+    const fac = FACTORY_MODEL_PHOTOS[m.name];
+    const restoreBtn = !(sw && sw.image) && fac && fac.source && m.type !== "матрица"
+      ? `<button type="button" class="row-add" data-field="restoreFactoryPhoto" data-model="${esc(m.id)}">↺ Вернуть заводское фото</button>` : "";
     return `<div class="choice-head">Фото модели</div>
       <div class="model-photo-block">
         ${preview}
-        <div class="adjust-upload-row">${uploadBtn}</div>
+        <div class="adjust-upload-row">${restoreBtn}${uploadBtn}</div>
       </div>`;
   }
 
@@ -12295,6 +12324,8 @@ const DB = {
   }
 
   function onPriceClick(e) {
+    const restoreFactory = e.target.closest('[data-field="restoreFactoryPhoto"]');
+    if (restoreFactory) { onModelRestoreFactory(restoreFactory.dataset.model); return; }
     const removeModelPhoto = e.target.closest('[data-field="removeModelPhoto"]');
     if (removeModelPhoto) {
       armRemoveFileButton(removeModelPhoto, () => onModelRemovePhoto(removeModelPhoto.dataset.model));
