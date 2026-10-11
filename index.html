@@ -598,7 +598,8 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 .parts-kind.k-rv, .parts-kind.k-rh { background: rgba(214,51,132,.16); }
 .parts-kind.k-nv, .parts-kind.k-nh { background: rgba(124,77,255,.16); }
 .menu-version { font-size: 12px; color: var(--muted); padding: 10px 2px 0; }
-.scene-controls { display: flex; flex-direction: column; gap: 14px; margin-top: 16px; }
+.scene-controls { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+.scene-controls .btn-goto { padding: 7px 10px; font-size: 13px; }
 
 /* Панель «Настроить тон стены» — та же вёрстка, что и у тон-коррекции
    плёнки в «Изменение цен» (.adjust-panel ниже), поэтому своих правил
@@ -609,7 +610,7 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 /* Группы панелей на странице «2D картинка»: «Стена» и «Дверь». Заголовок
    крупнее заголовков панелей внутри, чтобы сразу было видно два уровня. */
 .scene-group { border: 1px solid var(--border); border-radius: 12px; background: var(--card-bg); }
-.scene-group > summary { cursor: pointer; padding: 14px 16px; font-size: 17px; font-weight: 700; color: var(--text, inherit);
+.scene-group > summary { cursor: pointer; padding: 9px 14px; font-size: 15px; font-weight: 700; color: var(--text, inherit);
   list-style-position: inside; }
 .scene-group[open] > summary { border-bottom: 1px solid var(--border); }
 .scene-group-body { display: flex; flex-direction: column; gap: 10px; padding: 10px 16px 14px; }
@@ -685,7 +686,7 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 .adjust-body input[type="range"].adj::-moz-range-thumb { width: 24px; height: 24px; border-radius: 50%; background: var(--accent); border: 3px solid #fff; box-shadow: 0 1px 4px rgba(0,0,0,.35); cursor: pointer; }
 
 /* Полноэкранный просмотр двери в «2D картинка» */
-.fs-btn { margin-top: 10px; padding: 10px 14px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font-weight: 600; cursor: pointer; width: 100%; }
+.fs-btn { margin-top: 8px; padding: 7px 12px; font-size: 14px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font-weight: 600; cursor: pointer; width: 100%; }
 .fs-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.92); z-index: 9999; display: flex; align-items: center; justify-content: center; }
 .fs-overlay[hidden] { display: none; }
 .fs-overlay .fs-body { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; box-sizing: border-box; overflow: hidden; }
@@ -1607,6 +1608,15 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
             <p class="parts-hint info-text" id="s_filmInfo">Выберите цвет плёнки — дверь выше переключится на него. «Загрузить файл» кладёт своё фото плёнки, «Удалить последний файл» возвращает прежнее. Ползунки заблокированы, пока не нажмёшь «Изменить»; «Сохранить» применяет тон к двери. <b>Матовость</b> убирает «экранную» яркость: поднимает тёмное, притушает светлое и смягчает цвет — плёнка в руках матовее, чем на экране.</p>
             <label class="field film-color-field"><span>Цвет плёнки</span><select id="s_filmColor"></select></label>
             <div id="s_filmBody"></div>
+          </div>
+        </details>
+        <!-- «Стекло» — цвет и блеск стёкол каталога (DB.glassLooks): основа и
+             ползунки как у плёнки. Содержимое строит renderGlassPanel. -->
+        <details class="scene-group" id="s_groupGlass">
+          <summary>Стекло</summary>
+          <div class="scene-group-body">
+            <label class="field film-color-field"><span>Стекло</span><select id="s_glassLook"></select></label>
+            <div id="s_glassBody"></div>
           </div>
         </details>
         <button type="button" id="sceneBackBtn" class="btn-goto">← Возврат на страницу расчёта</button>
@@ -3405,6 +3415,29 @@ const DB = {
     const gloss = Math.max(0, Math.min(100, Number(look.gloss) || 0));
     const hex = glassLookHex(look);
     return { fill: hex, deep: hex, gloss: gloss / 100, flat: gloss === 0 };
+  }
+
+  // Панель одного стекла каталога (страница «2D картинка» → «Стекло»): образец,
+  // основа и ползунки как у плёнки, блеск, «Изменить» / «Сохранить».
+  function glassLookBodyHtml(l) {
+      const v = { ...ADJ_NEUTRAL, ...(l.adj || {}) };
+      const row = (label, k, min, max, val) => `<div class="arow"><span>${label}</span><input type="range" class="adj glass-adj" data-kind="glassLook" data-id="${esc(l.id)}" data-k="${k}" min="${min}" max="${max}" step="1" value="${val}" disabled></div>`;
+      const baseCur = GLASS_BASES.some((b) => b[1].toLowerCase() === String(l.hex).toLowerCase());
+      const baseSel = `<label class="arow glass-base-row"><span>Основа</span><select class="glass-base" data-kind="glassLook" data-id="${esc(l.id)}" data-k="base" disabled>`
+        + GLASS_BASES.map((b) => `<option value="${b[1]}"${b[1].toLowerCase() === String(l.hex).toLowerCase() ? " selected" : ""}>${b[0]}</option>`).join("")
+        + (baseCur ? "" : `<option value="${esc(l.hex)}" selected>Текущая</option>`) + `</select></label>`;
+    return `<div class="adjust-body glass-look-body">${glassSwatchHtml(l)}
+        ${baseSel}
+        ${row("Оттенок", "h", -90, 90, v.h)}${row("Насыщенность", "s", 0, 300, v.s)}${row("Яркость", "b", 30, 200, v.b)}${row("Контраст", "c", 30, 200, v.c)}${row("Матовость", "m", 0, 100, v.m)}
+        ${row("Блеск", "gloss", 0, 100, Math.round(l.gloss))}
+        <details class="adjust-advanced"><summary>Расширенные настройки (RGB)</summary><div class="adjust-advanced-body">
+          ${row("Красный", "cr", 0, 200, v.cr)}${row("Зелёный", "cg", 0, 200, v.cg)}${row("Синий", "cb", 0, 200, v.cb)}
+        </div></details>
+        <p class="info-text">Цвет собирается ползунками из основы, как у плёнки. «Блеск»: 0 — ровный цвет, 100 — блики и рисунок стекла со снимка двери.</p>
+        <div class="adjust-actions">
+          <button type="button" class="save" data-field="glassSave" data-id="${esc(l.id)}">Сохранить</button>
+          <button type="button" data-field="glassEdit" data-id="${esc(l.id)}">Изменить</button>
+        </div></div>`;
   }
 
   // Образец стекла: рамка 200x150 мм, цвет и блик по настройкам. Рисуется
@@ -6943,7 +6976,7 @@ const DB = {
   function initSceneGroups() {
     let saved = {};
     try { saved = JSON.parse(localStorage.getItem(SCENE_GROUPS_KEY) || "{}") || {}; } catch (err) { }
-    [["s_groupWall", "wall"], ["s_groupDoor", "door"], ["s_groupFilm", "film"]].forEach(([id, key]) => {
+    [["s_groupWall", "wall"], ["s_groupDoor", "door"], ["s_groupFilm", "film"], ["s_groupGlass", "glass"]].forEach(([id, key]) => {
       const g = document.getElementById(id);
       if (!g) return;
       if (saved[key]) g.open = true;
@@ -7745,7 +7778,7 @@ const DB = {
     updateSizeUI();
     // Превью плёнки и двери в калькуляторе убраны; картинку в разделе
     // «2D картинка» перерисовываем, только когда он открыт.
-    if (el.viewScene && !el.viewScene.hidden) { drawDoor(sceneCtx, true); renderFilmPanel(false); }
+    if (el.viewScene && !el.viewScene.hidden) { drawDoor(sceneCtx, true); renderFilmPanel(false); renderGlassPanel(false); }
 
     el.breakdown.innerHTML = o.rows.map((r) => `<div class="breakdown-row">${r}</div>`).join("");
     el.total.textContent = o.noPrice ? "нет цены" : o.total.toLocaleString("ru-RU") + " ₽";
@@ -10044,6 +10077,7 @@ const DB = {
     initSceneGroups();
     initInfoButtons();
     initFilmPanel();
+    initGlassPanel();
     // Подгонка блока за углы (см. updateFrameEditor): тянут ручку в углу
     // рамки, отпустили — сохранилось.
     const framePanel = document.getElementById("s_framePanel");
@@ -10323,7 +10357,7 @@ const DB = {
     );
     if (view === "calc") syncCalcWithModels();
     if (view === "prices") renderPriceEditor();
-    if (view === "scene") { drawDoor(sceneCtx, true); renderFilmPanel(true); }
+    if (view === "scene") { drawDoor(sceneCtx, true); renderFilmPanel(true); renderGlassPanel(true); }
     if (view === "room3d" && window.initRoom3D) window.initRoom3D();
     if (view === "order") renderOrderPage();
     if (view === "history") renderSpecHistoryPage();
@@ -12026,24 +12060,8 @@ const DB = {
     // рисуется программой (glassSwatchHtml). Стекло модели выбирает «Вид».
     let glassRows = (DB.glassLooks || []).map((l) => {
       const a = dataAttrs("glassLook", { id: l.id });
-      const v = { ...ADJ_NEUTRAL, ...(l.adj || {}) };
-      const row = (label, k, min, max, val) => `<div class="arow"><span>${label}</span><input type="range" class="adj glass-adj" data-kind="glassLook" data-id="${esc(l.id)}" data-k="${k}" min="${min}" max="${max}" step="1" value="${val}" disabled></div>`;
-      const baseCur = GLASS_BASES.some((b) => b[1].toLowerCase() === String(l.hex).toLowerCase());
-      const baseSel = `<label class="arow glass-base-row"><span>Основа</span><select class="glass-base" data-kind="glassLook" data-id="${esc(l.id)}" data-k="base" disabled>`
-        + GLASS_BASES.map((b) => `<option value="${b[1]}"${b[1].toLowerCase() === String(l.hex).toLowerCase() ? " selected" : ""}>${b[0]}</option>`).join("")
-        + (baseCur ? "" : `<option value="${esc(l.hex)}" selected>Текущая</option>`) + `</select></label>`;
-      const body = `<div class="adjust-body glass-look-body">${glassSwatchHtml(l)}
-        ${baseSel}
-        ${row("Оттенок", "h", -90, 90, v.h)}${row("Насыщенность", "s", 0, 300, v.s)}${row("Яркость", "b", 30, 200, v.b)}${row("Контраст", "c", 30, 200, v.c)}${row("Матовость", "m", 0, 100, v.m)}
-        ${row("Блеск", "gloss", 0, 100, Math.round(l.gloss))}
-        <details class="adjust-advanced"><summary>Расширенные настройки (RGB)</summary><div class="adjust-advanced-body">
-          ${row("Красный", "cr", 0, 200, v.cr)}${row("Зелёный", "cg", 0, 200, v.cg)}${row("Синий", "cb", 0, 200, v.cb)}
-        </div></details>
-        <p class="info-text">Цвет собирается ползунками из основы, как у плёнки. «Блеск»: 0 — ровный цвет, 100 — блики и рисунок стекла со снимка двери.</p>
-        <div class="adjust-actions">
-          <button type="button" class="save" data-field="glassSave" data-id="${esc(l.id)}">Сохранить</button>
-          <button type="button" data-field="glassEdit" data-id="${esc(l.id)}">Изменить</button>
-        </div></div>`;
+      const body = `<div class="glass-look-body">${glassSwatchHtml(l)}
+        <p class="info-text">Цвет и блеск настраиваются на странице «2D картинка» → «Стекло».</p></div>`;
       return editItem("glassLook", { id: l.id }, l.name, 0, { noPrice: true, extraBody: body, isOpen });
     }).join("");
     glassRows += addBtn("glassLook", {}, "Добавить стекло в каталог");
@@ -12265,14 +12283,6 @@ const DB = {
     const field = d.field;
     // Каталог стёкол: цвет и блеск (образец перерисовывается на месте), «Вид»
     // у стекла модели.
-    if (d.kind === "glassLook" && d.k) {
-      // Живой просмотр образца; в каталог попадёт по «Сохранить».
-      const l = (DB.glassLooks || []).find((x) => x.id === d.id); if (!l) return;
-      const body = input.closest(".glass-look-body");
-      const sw = body && body.querySelector(".glass-swatch");
-      if (sw) sw.outerHTML = glassSwatchHtml(readGlassPanel(body, l));
-      return;
-    }
     if (d.kind === "modelGlass" && field === "look") {
       const m = DB.models.find((x) => x.id === d.model); if (!m) return;
       const g = (m.glasses || []).find((x) => x.id === d.id); if (!g) return;
@@ -12429,6 +12439,47 @@ const DB = {
 
   // Клик по «удалить»/«добавить» — меняет структуру → перерисовываем редактор
   // Считать значения ползунков тон-коррекции из панели.
+  // Живой просмотр образца при движении ползунков; в каталог — по «Сохранить».
+  function onGlassPanelInput(e) {
+    const inp = e.target;
+    if (!inp.dataset || inp.dataset.kind !== "glassLook" || !inp.dataset.k) return;
+    const l = (DB.glassLooks || []).find((x) => x.id === inp.dataset.id); if (!l) return;
+    const body = inp.closest(".glass-look-body");
+    const sw = body && body.querySelector(".glass-swatch");
+    if (sw) sw.outerHTML = glassSwatchHtml(readGlassPanel(body, l));
+  }
+
+  // --- Панель «Стекло» на «2D картинке» ---------------------------------
+  let glassPanelLookId = null;
+  function renderGlassPanel(force) {
+    const g = document.getElementById("s_groupGlass");
+    const body = document.getElementById("s_glassBody");
+    const sel = document.getElementById("s_glassLook");
+    if (!g || !body || !sel) return;
+    const model = getModel(state.modelId);
+    const looks = DB.glassLooks || [];
+    // «Матрица» и простые типы — готовая картинка, стекло в ней не красится.
+    g.hidden = !looks.length || !model || model.type === "матрица" || isSimpleModelSection(state.section);
+    if (g.hidden) return;
+    if (!force && body.querySelector(".glass-adj:not(:disabled)")) return;
+    if (!looks.some((l) => l.id === glassPanelLookId)) {
+      const mg = modelGlasses(model).find((x) => x.id === state.glassId);
+      glassPanelLookId = (mg ? glassLookFor(mg.id, mg.name, mg) : looks[0]).id;
+    }
+    sel.innerHTML = looks.map((l) => `<option value="${esc(l.id)}">${esc(l.name)}</option>`).join("");
+    sel.value = glassPanelLookId;
+    body.innerHTML = glassLookBodyHtml(looks.find((l) => l.id === glassPanelLookId));
+  }
+  function initGlassPanel() {
+    const g = document.getElementById("s_groupGlass");
+    if (!g) return;
+    g.addEventListener("click", onGlassPanelClick);
+    g.addEventListener("input", onGlassPanelInput);
+    g.addEventListener("change", (e) => {
+      if (e.target && e.target.id === "s_glassLook") { glassPanelLookId = e.target.value; renderGlassPanel(true); }
+    });
+  }
+
   // Значения панели стекла каталога: основа, поправка цвета, блеск.
   function readGlassPanel(body, l) {
     const g = (k, def) => { const e = body.querySelector(`[data-k="${k}"]`); return e ? Number(e.value) : def; };
@@ -12487,15 +12538,15 @@ const DB = {
     onConfirm();
   }
 
-  function onPriceClick(e) {
-    // Стекло каталога: «Изменить» разблокирует ползунки, «Сохранить» кладёт
-    // значения в каталог и блокирует снова (как у плёнки, от случайных касаний).
+  // Панель стекла: «Изменить» разблокирует ползунки, «Сохранить» кладёт значения
+  // в каталог и блокирует снова (как у плёнки, от случайных касаний).
+  function onGlassPanelClick(e) {
     const gEdit = e.target.closest('[data-field="glassEdit"]');
     if (gEdit) {
       const body = gEdit.closest(".glass-look-body");
       if (body) body.querySelectorAll(".glass-adj, .glass-base").forEach((r) => { r.disabled = false; });
       gEdit.textContent = "Можно менять ✓"; gEdit.disabled = true;
-      return;
+      return true;
     }
     const gSave = e.target.closest('[data-field="glassSave"]');
     if (gSave) {
@@ -12510,8 +12561,12 @@ const DB = {
         gSave.textContent = "Сохранено ✓";
         savePrices(); schedulePartsRedraw();
       }
-      return;
+      return true;
     }
+    return false;
+  }
+
+  function onPriceClick(e) {
     const restoreFactory = e.target.closest('[data-field="restoreFactoryPhoto"]');
     if (restoreFactory) { onModelRestoreFactory(restoreFactory.dataset.model); return; }
     const removeModelPhoto = e.target.closest('[data-field="removeModelPhoto"]');
