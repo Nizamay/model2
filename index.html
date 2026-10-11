@@ -630,6 +630,7 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 .glass-swatch-pane { width: 100%; height: 100%; border-radius: 2px; box-shadow: inset 0 0 0 1px rgba(0,0,0,.25); }
 .glass-look-body { display: flex; flex-direction: column; gap: 8px; padding: 6px 0; }
 .glass-look-body input[type="color"] { width: 56px; height: 34px; padding: 0; border: 1px solid var(--border); border-radius: 6px; background: none; }
+.glass-base-row select { flex: 1; min-width: 0; padding: 4px; }
 .glass-look-row { display: flex; align-items: center; gap: 8px; font-size: 12px; margin: 4px 0; }
 .glass-look-select { flex: 1; min-width: 0; padding: 4px; }
 /* Блок «Фото модели» — без своей тон-коррекции (см. modelPhotoRow/отчёт),
@@ -2050,6 +2051,11 @@ const DEFAULT_GLASSES = [
 // остаётся на стекле: 0 — ровный цвет, 100 — как на снимке. Образец на экране
 // рисует сама программа (glassSwatchHtml), файлов нет. Стекло модели
 // (DEFAULT_GLASSES и свои) привязывается к одному из них полем look.
+// Основы для цвета стекла: от них ползунки «Оттенок/Насыщенность/…» ведут цвет.
+const GLASS_BASES = [
+  ["Светло-серый", "#dde7ea"], ["Белый", "#f1efe9"], ["Чёрный", "#070809"],
+  ["Золотой", "#c9a24a"], ["Голубой", "#9fc6df"], ["Зелёный", "#7fb08a"], ["Бронза", "#8a6a45"]
+];
 const GLASS_LOOKS_DEFAULT = [
   { id: "satin", name: "Сатин матовый", hex: "#dde7ea", gloss: 100 },
   { id: "black", name: "Чёрное", hex: "#070809", gloss: 0 },
@@ -3382,13 +3388,23 @@ const DB = {
     return byId(id) || looks[0] || GLASS_LOOKS_DEFAULT[0];
   }
 
+  // Итоговый цвет стекла каталога: основа (hex) с поправкой «Оттенок /
+  // Насыщенность / Яркость / Контраст / Матовость / RGB» — тот же расчёт, что
+  // у плёнки (adjustFilmRgb). Цвет так «создаётся» ползунками, а не палитрой.
+  function glassLookHex(look) {
+    const a = { ...ADJ_NEUTRAL, ...(look.adj || {}) };
+    const c = adjustFilmRgb(partsRgb(look.hex), a);
+    return "#" + c.map((v) => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, "0")).join("");
+  }
+
   // Краска стекла для перекраски двери: цвет и блеск из каталога. gloss = 0 —
   // ровный цвет без бликов со снимка (чёрное стекло должно быть чёрным, жалоба
   // заказчика), иначе блики и гравировка со снимка видны на gloss процентов.
   function glassPaint(glassId, glassName, modelGlass) {
     const look = glassLookFor(glassId, glassName, modelGlass);
     const gloss = Math.max(0, Math.min(100, Number(look.gloss) || 0));
-    return { fill: look.hex, deep: look.hex, gloss: gloss / 100, flat: gloss === 0 };
+    const hex = glassLookHex(look);
+    return { fill: hex, deep: hex, gloss: gloss / 100, flat: gloss === 0 };
   }
 
   // Образец стекла: рамка 200x150 мм, цвет и блик по настройкам. Рисуется
@@ -3399,9 +3415,10 @@ const DB = {
       const c = partsRgb(hex);
       return "rgb(" + c.map((v) => Math.round(v + (255 - v) * t)).join(",") + ")";
     };
+    const hex = glassLookHex(look);
     const bg = gloss === 0
-      ? look.hex
-      : `linear-gradient(135deg, ${look.hex} 0%, ${mix(look.hex, 0.6 * gloss)} 34%, ${look.hex} 52%, ${mix(look.hex, 0.28 * gloss)} 100%)`;
+      ? hex
+      : `linear-gradient(135deg, ${hex} 0%, ${mix(hex, 0.6 * gloss)} 34%, ${hex} 52%, ${mix(hex, 0.28 * gloss)} 100%)`;
     return `<div class="glass-swatch"><div class="glass-swatch-pane" style="background:${bg}"></div></div>`;
   }
 
@@ -12009,10 +12026,24 @@ const DB = {
     // рисуется программой (glassSwatchHtml). Стекло модели выбирает «Вид».
     let glassRows = (DB.glassLooks || []).map((l) => {
       const a = dataAttrs("glassLook", { id: l.id });
-      const body = `<div class="glass-look-body">${glassSwatchHtml(l)}
-        <label class="pitem-field"><span>Цвет</span><input type="color" class="glass-hex" value="${esc(l.hex)}" data-field="hex" ${a}></label>
-        <label class="pitem-field"><span>Блеск</span><input type="range" class="adj glass-gloss" min="0" max="100" step="1" value="${Math.round(l.gloss)}" data-field="gloss" ${a}></label>
-        <p class="info-text">Блеск: 0 — ровный цвет, 100 — блики и рисунок стекла со снимка двери.</p></div>`;
+      const v = { ...ADJ_NEUTRAL, ...(l.adj || {}) };
+      const row = (label, k, min, max, val) => `<div class="arow"><span>${label}</span><input type="range" class="adj glass-adj" data-kind="glassLook" data-id="${esc(l.id)}" data-k="${k}" min="${min}" max="${max}" step="1" value="${val}" disabled></div>`;
+      const baseCur = GLASS_BASES.some((b) => b[1].toLowerCase() === String(l.hex).toLowerCase());
+      const baseSel = `<label class="arow glass-base-row"><span>Основа</span><select class="glass-base" data-kind="glassLook" data-id="${esc(l.id)}" data-k="base" disabled>`
+        + GLASS_BASES.map((b) => `<option value="${b[1]}"${b[1].toLowerCase() === String(l.hex).toLowerCase() ? " selected" : ""}>${b[0]}</option>`).join("")
+        + (baseCur ? "" : `<option value="${esc(l.hex)}" selected>Текущая</option>`) + `</select></label>`;
+      const body = `<div class="adjust-body glass-look-body">${glassSwatchHtml(l)}
+        ${baseSel}
+        ${row("Оттенок", "h", -90, 90, v.h)}${row("Насыщенность", "s", 0, 300, v.s)}${row("Яркость", "b", 30, 200, v.b)}${row("Контраст", "c", 30, 200, v.c)}${row("Матовость", "m", 0, 100, v.m)}
+        ${row("Блеск", "gloss", 0, 100, Math.round(l.gloss))}
+        <details class="adjust-advanced"><summary>Расширенные настройки (RGB)</summary><div class="adjust-advanced-body">
+          ${row("Красный", "cr", 0, 200, v.cr)}${row("Зелёный", "cg", 0, 200, v.cg)}${row("Синий", "cb", 0, 200, v.cb)}
+        </div></details>
+        <p class="info-text">Цвет собирается ползунками из основы, как у плёнки. «Блеск»: 0 — ровный цвет, 100 — блики и рисунок стекла со снимка двери.</p>
+        <div class="adjust-actions">
+          <button type="button" class="save" data-field="glassSave" data-id="${esc(l.id)}">Сохранить</button>
+          <button type="button" data-field="glassEdit" data-id="${esc(l.id)}">Изменить</button>
+        </div></div>`;
       return editItem("glassLook", { id: l.id }, l.name, 0, { noPrice: true, extraBody: body, isOpen });
     }).join("");
     glassRows += addBtn("glassLook", {}, "Добавить стекло в каталог");
@@ -12234,13 +12265,12 @@ const DB = {
     const field = d.field;
     // Каталог стёкол: цвет и блеск (образец перерисовывается на месте), «Вид»
     // у стекла модели.
-    if (d.kind === "glassLook" && (field === "hex" || field === "gloss")) {
+    if (d.kind === "glassLook" && d.k) {
+      // Живой просмотр образца; в каталог попадёт по «Сохранить».
       const l = (DB.glassLooks || []).find((x) => x.id === d.id); if (!l) return;
-      if (field === "hex") l.hex = input.value; else l.gloss = Math.max(0, Math.min(100, Number(input.value) || 0));
       const body = input.closest(".glass-look-body");
       const sw = body && body.querySelector(".glass-swatch");
-      if (sw) sw.outerHTML = glassSwatchHtml(l);
-      savePrices(); schedulePartsRedraw();
+      if (sw) sw.outerHTML = glassSwatchHtml(readGlassPanel(body, l));
       return;
     }
     if (d.kind === "modelGlass" && field === "look") {
@@ -12399,6 +12429,21 @@ const DB = {
 
   // Клик по «удалить»/«добавить» — меняет структуру → перерисовываем редактор
   // Считать значения ползунков тон-коррекции из панели.
+  // Значения панели стекла каталога: основа, поправка цвета, блеск.
+  function readGlassPanel(body, l) {
+    const g = (k, def) => { const e = body.querySelector(`[data-k="${k}"]`); return e ? Number(e.value) : def; };
+    const base = body.querySelector('select[data-k="base"]');
+    return {
+      ...l,
+      hex: base ? base.value : l.hex,
+      gloss: Math.max(0, Math.min(100, g("gloss", l.gloss))),
+      adj: {
+        h: g("h", 0), s: g("s", 100), b: g("b", 100), c: g("c", 100), m: g("m", 0),
+        cr: g("cr", 100), cg: g("cg", 100), cb: g("cb", 100)
+      }
+    };
+  }
+
   function readAdjustPanel(panel) {
     const g = (k, def) => { const el = panel.querySelector(`.adj[data-k="${k}"]`); return el ? Number(el.value) : def; };
     return {
@@ -12443,6 +12488,30 @@ const DB = {
   }
 
   function onPriceClick(e) {
+    // Стекло каталога: «Изменить» разблокирует ползунки, «Сохранить» кладёт
+    // значения в каталог и блокирует снова (как у плёнки, от случайных касаний).
+    const gEdit = e.target.closest('[data-field="glassEdit"]');
+    if (gEdit) {
+      const body = gEdit.closest(".glass-look-body");
+      if (body) body.querySelectorAll(".glass-adj, .glass-base").forEach((r) => { r.disabled = false; });
+      gEdit.textContent = "Можно менять ✓"; gEdit.disabled = true;
+      return;
+    }
+    const gSave = e.target.closest('[data-field="glassSave"]');
+    if (gSave) {
+      const body = gSave.closest(".glass-look-body");
+      const l = (DB.glassLooks || []).find((x) => x.id === gSave.dataset.id);
+      if (body && l) {
+        const v = readGlassPanel(body, l);
+        l.hex = v.hex; l.gloss = v.gloss; l.adj = v.adj;
+        body.querySelectorAll(".glass-adj, .glass-base").forEach((r) => { r.disabled = true; });
+        const eb = body.querySelector('[data-field="glassEdit"]');
+        if (eb) { eb.disabled = false; eb.textContent = "Изменить"; }
+        gSave.textContent = "Сохранено ✓";
+        savePrices(); schedulePartsRedraw();
+      }
+      return;
+    }
     const restoreFactory = e.target.closest('[data-field="restoreFactoryPhoto"]');
     if (restoreFactory) { onModelRestoreFactory(restoreFactory.dataset.model); return; }
     const removeModelPhoto = e.target.closest('[data-field="removeModelPhoto"]');
