@@ -625,6 +625,13 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
    иначе object-fit: cover обрезал бы большую часть высоты двери в узкий
    квадратный кадр, как у образца материала. */
 .model-photo-preview { max-width: 200px; aspect-ratio: 850 / 2085; }
+/* Образец стекла: рамка 200x150 мм, цвет и блик рисует программа. */
+.glass-swatch { width: 120px; aspect-ratio: 4 / 3; padding: 7px; box-sizing: border-box; background: #9a9da0; border-radius: 4px; border: 1px solid var(--border); }
+.glass-swatch-pane { width: 100%; height: 100%; border-radius: 2px; box-shadow: inset 0 0 0 1px rgba(0,0,0,.25); }
+.glass-look-body { display: flex; flex-direction: column; gap: 8px; padding: 6px 0; }
+.glass-look-body input[type="color"] { width: 56px; height: 34px; padding: 0; border: 1px solid var(--border); border-radius: 6px; background: none; }
+.glass-look-row { display: flex; align-items: center; gap: 8px; font-size: 12px; margin: 4px 0; }
+.glass-look-select { flex: 1; min-width: 0; padding: 4px; }
 /* Блок «Фото модели» — без своей тон-коррекции (см. modelPhotoRow/отчёт),
    поэтому просто центрированная колонка превью + кнопки, без .adjust-body. */
 .model-photo-block { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 6px 0; }
@@ -2038,6 +2045,19 @@ const DEFAULT_GLASSES = [
   { id: "sumgait", name: "Сумгаит", price: 0 }
 ];
 
+// Каталог стёкол — общий для всех моделей (см. DB.glassLooks): у каждого
+// стекла цвет и блеск. Блеск — сколько от бликов и гравировки со снимка двери
+// остаётся на стекле: 0 — ровный цвет, 100 — как на снимке. Образец на экране
+// рисует сама программа (glassSwatchHtml), файлов нет. Стекло модели
+// (DEFAULT_GLASSES и свои) привязывается к одному из них полем look.
+const GLASS_LOOKS_DEFAULT = [
+  { id: "satin", name: "Сатин матовый", hex: "#dde7ea", gloss: 100 },
+  { id: "black", name: "Чёрное", hex: "#070809", gloss: 0 },
+  { id: "white", name: "Белое", hex: "#f1efe9", gloss: 100 },
+  { id: "mirror", name: "Зеркало", hex: "#c3ccd1", gloss: 100 },
+  { id: "gold", name: "Золото", hex: "#c9a24a", gloss: 100 }
+];
+
 // Патина — только у моделей «Щитовые» и только при материале «Эмаль» (см.
 // applySectionUI/populatePatina); ровно два фиксированных цвета (не
 // открытый каталог, как стекло) — «Добавить» не нужен, только цена и
@@ -2119,6 +2139,7 @@ const DB = {
   // группу «Модели»), сам MODEL_GROUPS остаётся неизменным стартовым
   // набором (в т.ч. для восстановления при сбросе, см. applyPrices).
   modelGroups: MODEL_GROUPS.map((g) => ({ ...g })),
+  glassLooks: GLASS_LOOKS_DEFAULT.map((g) => ({ ...g })),
   models: [
     "LX2", "Модерн LX2 ПО", "L-1", "Модерн 13 ПО", "Линия ПГ", "Соренто 2 ПГ", "Соренто 1 ПГ",
     "Урбан ПО", "Галант 1 ПО", "Лувр ПГ", "Рим 3 ПГ", "Неоклассика 4 ПГ", "Сидней 2 ПГ", "Галант 2 ПО",
@@ -3346,16 +3367,42 @@ const DB = {
   // Цвет стекла по выбранной позиции «Стекло». Декоративные стёкла
   // (гравировка «Рим», «Венеция» и т.п.) пока показываем как матовые —
   // рисунок гравировки это отдельная задача.
-  function glassPaint(glassId, glassName) {
+  // Какому стеклу каталога (DB.glassLooks) соответствует стекло модели: сперва
+  // выбранное заказчиком (look), иначе по id/названию, иначе сатин.
+  function glassLookFor(glassId, glassName, modelGlass) {
+    const looks = DB.glassLooks || [];
+    const byId = (id) => looks.find((l) => l.id === id);
+    if (modelGlass && modelGlass.look && byId(modelGlass.look)) return byId(modelGlass.look);
     const n = (glassName || "").toLowerCase();
-    // flat — на фотографии стекло красится ровным цветом deep, без бликов и
-    // отражений со снимка: чёрное стекло должно быть чёрным (жалоба заказчика:
-    // «стекло недокрашивается в чисто чёрный», по краям выделения и в местах
-    // бликов оставались серые полосы).
-    if (glassId === "black" || /чёрн|черн|лакобель ч/.test(n)) return { fill: "#111317", light: 0.10, flat: true, deep: "#070809" };
-    if (glassId === "white" || /бел/.test(n)) return { fill: "#f1efe9", light: 0.22 };
-    if (glassId === "mirror" || /зеркал/.test(n)) return { fill: "#c3ccd1", light: 0.42 };
-    return { fill: "#dde7ea", light: 0.26 }; // сатин/матовое и декоративные
+    let id = "satin";
+    if (glassId === "black" || /чёрн|черн|лакобель ч/.test(n)) id = "black";
+    else if (glassId === "white" || /бел/.test(n)) id = "white";
+    else if (glassId === "mirror" || /зеркал/.test(n)) id = "mirror";
+    else if (/золот/.test(n)) id = "gold";
+    return byId(id) || looks[0] || GLASS_LOOKS_DEFAULT[0];
+  }
+
+  // Краска стекла для перекраски двери: цвет и блеск из каталога. gloss = 0 —
+  // ровный цвет без бликов со снимка (чёрное стекло должно быть чёрным, жалоба
+  // заказчика), иначе блики и гравировка со снимка видны на gloss процентов.
+  function glassPaint(glassId, glassName, modelGlass) {
+    const look = glassLookFor(glassId, glassName, modelGlass);
+    const gloss = Math.max(0, Math.min(100, Number(look.gloss) || 0));
+    return { fill: look.hex, deep: look.hex, gloss: gloss / 100, flat: gloss === 0 };
+  }
+
+  // Образец стекла: рамка 200x150 мм, цвет и блик по настройкам. Рисуется
+  // стилем, без файлов.
+  function glassSwatchHtml(look) {
+    const gloss = Math.max(0, Math.min(100, Number(look.gloss) || 0)) / 100;
+    const mix = (hex, t) => {
+      const c = partsRgb(hex);
+      return "rgb(" + c.map((v) => Math.round(v + (255 - v) * t)).join(",") + ")";
+    };
+    const bg = gloss === 0
+      ? look.hex
+      : `linear-gradient(135deg, ${look.hex} 0%, ${mix(look.hex, 0.6 * gloss)} 34%, ${look.hex} 52%, ${mix(look.hex, 0.28 * gloss)} 100%)`;
+    return `<div class="glass-swatch"><div class="glass-swatch-pane" style="background:${bg}"></div></div>`;
   }
 
   // Две заливки одной и той же плёнкой: вертикально — образец как снят
@@ -4782,7 +4829,8 @@ const DB = {
           // сводит рельеф к единице, то есть к ровной плёнке. Направление
           // света при этом не меняется — оно со снимка (см. doorShadeK).
           const raw = clampRel(clampRel(lum / ref) * norm);
-          const rel = glassPart && glass.flat ? 1 : shadeK === 1 ? raw : clampRel(1 + (raw - 1) * shadeK);
+          const relBase = shadeK === 1 ? raw : clampRel(1 + (raw - 1) * shadeK);
+          const rel = glassPart ? (glass.flat ? 1 : 1 + (relBase - 1) * glass.gloss) : relBase;
           let fr, fg, fb;
           if (glassPart) { fr = glassRgb[0]; fg = glassRgb[1]; fb = glassRgb[2]; }
           else if (tile) {
@@ -4835,7 +4883,7 @@ const DB = {
     const filmHref = swatch ? (swatch.tileImage || swatch.image || "") : "";
     const filmHex = (swatch && swatch.hex) || EMAL_COLOR_HEX[state.color] || "#c9cbcd";
     const glassName = (modelGlasses(model).find((gl) => gl.id === state.glassId) || {}).name;
-    const glass = glassPaint(state.glassId, glassName);
+    const glass = glassPaint(state.glassId, glassName, modelGlasses(model).find((gl) => gl.id === state.glassId));
     const widthMm = Math.max(300, Number(state.width) || 800);
     const heightMm = Math.max(1000, Number(state.height) || 2000);
     // Поправка цвета входит в ключ: подвинули ползунок — нужна новая картинка,
@@ -4850,7 +4898,7 @@ const DB = {
       Math.round(widthMm / 25), Math.round(heightMm / 25),
       adj.h, adj.s, adj.b, adj.c, adj.cr, adj.cg, adj.cb, adj.m,
       Math.round(doorShadeK() * 100), String(photo.image || "").length,
-      qual.sharp, qual.smooth, qual.lines];
+      qual.sharp, qual.smooth, qual.lines, glass.fill, glass.gloss];
     const key = [model.id, doc.rev || 1].concat(rest).join("|");
     // То же сочетание, но без номера правки разметки: пока считается картинка
     // по новой разметке, в сцене остаётся прежняя, а не голый снимок — иначе
@@ -10355,6 +10403,7 @@ const DB = {
     return {
       v: 2,
       modelGroups: DB.modelGroups.map((g) => ({ ...g })),
+      glassLooks: DB.glassLooks.map((g) => ({ ...g })),
       models: DB.models.map((m) => ({
         id: m.id, name: m.name, type: m.type, basePrice: m.basePrice, pvhOnly: !!m.pvhOnly,
         glasses: Array.isArray(m.glasses) ? m.glasses.map((g) => ({ ...g })) : undefined,
@@ -10425,6 +10474,11 @@ const DB = {
     DB.modelGroups = (Array.isArray(s.modelGroups) && s.modelGroups.length)
       ? s.modelGroups.map((g) => ({ ...g }))
       : MODEL_GROUPS.map((g) => ({ ...g }));
+    // Каталог стёкол: в старом снимке его нет — остаётся стартовый. Золото и
+    // другие новые стартовые позиции дописываются, если их в снимке ещё нет.
+    DB.glassLooks = (Array.isArray(s.glassLooks) && s.glassLooks.length)
+      ? s.glassLooks.map((g) => ({ ...g }))
+      : GLASS_LOOKS_DEFAULT.map((g) => ({ ...g }));
     if (Array.isArray(s.models)) {
       // Снимок мог быть сохранён до появления своего стекла/патины на модель —
       // тогда у моделей нет m.glasses/m.patina, подставляем стартовый каталог
@@ -11760,8 +11814,13 @@ const DB = {
 
   function modelGlassRow(modelId, g) {
     const a = dataAttrs("modelGlass", { model: modelId, id: g.id });
+    const cur = glassLookFor(g.id, g.name, g).id;
+    const lookSel = `<select class="glass-look-select" data-field="look" ${a} aria-label="Вид стекла">`
+      + (DB.glassLooks || []).map((l) => `<option value="${esc(l.id)}"${l.id === cur ? " selected" : ""}>${esc(l.name)}</option>`).join("")
+      + `</select>`;
     return `<div class="choice-row">
       <input type="text" class="edit-name" value="${esc(g.name)}" data-field="name" ${a}>
+      <label class="glass-look-row"><span>Вид</span>${lookSel}</label>
       <span class="price-input-wrap"><input type="text" inputmode="decimal" class="pricenum" enterkeyhint="enter" value="${g.price}" data-field="price" ${a}></span>
       <div class="pitem-del">
         <label class="switch"><input type="checkbox" class="arm-del"><span class="switch-track"></span></label>
@@ -11945,6 +12004,21 @@ const DB = {
     parts.push(`<details class="price-group" data-key="color"${isOpen("color", false) ? " open" : ""}>
       <summary>Пленка ПВХ и эмаль (категории и наценки)</summary>
       <div class="price-body">${colorRows}</div></details>`);
+
+    // Каталог стёкол — общий для всех моделей: у каждого цвет и блеск, образец
+    // рисуется программой (glassSwatchHtml). Стекло модели выбирает «Вид».
+    let glassRows = (DB.glassLooks || []).map((l) => {
+      const a = dataAttrs("glassLook", { id: l.id });
+      const body = `<div class="glass-look-body">${glassSwatchHtml(l)}
+        <label class="pitem-field"><span>Цвет</span><input type="color" class="glass-hex" value="${esc(l.hex)}" data-field="hex" ${a}></label>
+        <label class="pitem-field"><span>Блеск</span><input type="range" class="adj glass-gloss" min="0" max="100" step="1" value="${Math.round(l.gloss)}" data-field="gloss" ${a}></label>
+        <p class="info-text">Блеск: 0 — ровный цвет, 100 — блики и рисунок стекла со снимка двери.</p></div>`;
+      return editItem("glassLook", { id: l.id }, l.name, 0, { noPrice: true, extraBody: body, isOpen });
+    }).join("");
+    glassRows += addBtn("glassLook", {}, "Добавить стекло в каталог");
+    parts.push(`<details class="price-group" data-key="glassCat"${isOpen("glassCat", false) ? " open" : ""}>
+      <summary>Стёкла (каталог цвета и блеска)</summary>
+      <div class="price-body">${glassRows}</div></details>`);
 
     // Опции — та же логика материала, что и у цветов (см. выше), только
     // ключ editItem другой (materialGroupOpt), чтобы состояние открыт/
@@ -12158,6 +12232,24 @@ const DB = {
 
     const d = input.dataset;
     const field = d.field;
+    // Каталог стёкол: цвет и блеск (образец перерисовывается на месте), «Вид»
+    // у стекла модели.
+    if (d.kind === "glassLook" && (field === "hex" || field === "gloss")) {
+      const l = (DB.glassLooks || []).find((x) => x.id === d.id); if (!l) return;
+      if (field === "hex") l.hex = input.value; else l.gloss = Math.max(0, Math.min(100, Number(input.value) || 0));
+      const body = input.closest(".glass-look-body");
+      const sw = body && body.querySelector(".glass-swatch");
+      if (sw) sw.outerHTML = glassSwatchHtml(l);
+      savePrices(); schedulePartsRedraw();
+      return;
+    }
+    if (d.kind === "modelGlass" && field === "look") {
+      const m = DB.models.find((x) => x.id === d.model); if (!m) return;
+      const g = (m.glasses || []).find((x) => x.id === d.id); if (!g) return;
+      g.look = input.value;
+      savePrices(); schedulePartsRedraw();
+      return;
+    }
     if (field !== "name" && field !== "price") return;
     const isName = field === "name";
     const val = isName ? input.value : Number(input.value);
@@ -12214,6 +12306,11 @@ const DB = {
         const g = (m.glasses || []).find((x) => x.id === d.id); if (!g) break;
         if (isName) g.name = val; else g.price = val;
         refresh = populateGlass; break;
+      }
+      case "glassLook": {
+        const l = (DB.glassLooks || []).find((x) => x.id === d.id); if (!l) break;
+        if (isName) l.name = val;
+        break;
       }
       case "modelPatina": {
         const m = DB.models.find((x) => x.id === d.model); if (!m) break;
@@ -12392,6 +12489,10 @@ const DB = {
           if (m && Array.isArray(m.glasses)) m.glasses = m.glasses.filter((g) => g.id !== d.id);
           populateGlass(); break;
         }
+        case "glassLook":
+          // Каталог не должен остаться пустым: на него опирается краска стекла.
+          if ((DB.glassLooks || []).length > 1) DB.glassLooks = DB.glassLooks.filter((l) => l.id !== d.id);
+          schedulePartsRedraw(); break;
         case "modelPatina": {
           const m = DB.models.find((x) => x.id === d.model);
           if (m && Array.isArray(m.patina)) m.patina = m.patina.filter((p) => p.id !== d.id);
@@ -12499,6 +12600,9 @@ const DB = {
           if (m) (m.glasses = m.glasses || []).push({ id: uid("g"), name: "Новое стекло", price: 0 });
           populateGlass(); break;
         }
+        case "glassLook":
+          (DB.glassLooks = DB.glassLooks || []).push({ id: uid("gl"), name: "Новое стекло", hex: "#dde7ea", gloss: 100 });
+          break;
         case "modelPatina": {
           const m = DB.models.find((x) => x.id === d.model);
           if (m) (m.patina = m.patina || []).push({ id: uid("p"), name: "Новая патина", price: 0 });
