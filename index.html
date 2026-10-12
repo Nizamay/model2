@@ -4994,6 +4994,9 @@ const DB = {
         // Раз в несколько строк отдаём страницу касаниям.
         if ((y & 15) === 0 && await pause()) return null;
         const rrow = ((y * rsy) | 0) * rw;
+        // Только стёкла, до которых от этой строки не дальше зоны: так проход
+        // по зоне не множится на число стёкол (на телефоне это были секунды).
+        const rowHalo = haloPad && haloPad.length ? haloPad.filter((g) => y >= g.y0 - haloPy * 1.4 && y <= g.y1 + haloPy * 1.4) : null;
         for (let x = x0; x < x1; x++) {
           const i = (y * cw + x) * 4;
           // У стекла рельеф берём резкий, без размытия: гравировка и блики
@@ -5014,10 +5017,10 @@ const DB = {
             const e = Math.min(x - x0, x1 - 1 - x, (y - y0) * glassKX, (y1 - 1 - y) * glassKX);
             if (e < glassFeather) { const t = e / glassFeather, w = t * t * (3 - 2 * t); relBase = 1 + (relBase - 1) * w; }
           }
-          if (haloPad && haloPad.length) {
+          if (rowHalo && rowHalo.length) {
             let hf = 1;
-            for (let q = 0; q < haloPad.length; q++) {
-              const g = haloPad[q];
+            for (let q = 0; q < rowHalo.length; q++) {
+              const g = rowHalo[q];
               const ddx = x < g.x0 ? g.x0 - x : x > g.x1 ? x - g.x1 : 0;
               const ddy = y < g.y0 ? g.y0 - y : y > g.y1 ? y - g.y1 : 0;
               const dn = Math.max(ddx / haloPx, ddy / haloPy);
@@ -6296,7 +6299,7 @@ const DB = {
   // PARTS_REDRAW_DELAY_MS после того, как палец отпущен: угол обычно подгоняют
   // подряд несколько раз, а картинка в это время вверху, вне экрана. Начнёшь тянуть снова — отложенная
   // перекраска ждёт дальше (см. onPartsPointerDown).
-  const PARTS_REDRAW_DELAY_MS = 900;
+  const PARTS_REDRAW_DELAY_MS = 2500;
   let partsRedrawTimer = null;
   function schedulePartsRedraw() {
     clearTimeout(partsRedrawTimer);
