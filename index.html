@@ -4840,7 +4840,7 @@ const DB = {
       if (!lineV) return null;
       const lineH = await boxBlurAxis(dev, rw, rh, lineR, false);
       if (!lineH) return null;
-      const cLo = 0.02 * wideMean, cHi = 0.045 * wideMean;
+      const cLo = 0.03 * wideMean, cHi = 0.07 * wideMean;
       for (let i = 0; i < n; i++) {
         const v = lineV[i], h = lineH[i];
         const c = Math.abs(v) >= Math.abs(h) ? v : h;
@@ -4924,6 +4924,11 @@ const DB = {
     // rAt, только быстрее).
     const colMap = new Int32Array(cw);
     for (let x = 0; x < cw; x++) colMap[x] = (x * rsx) | 0;
+    const HALO_X_MM = 30, HALO_Y_MM = 12;
+    const haloRects = glassRects.map((g) => ({
+      x0: g.x * cw, x1: (g.x + g.w) * cw, y0: g.y * ch, y1: (g.y + g.h) * ch,
+    }));
+    const haloPx = HALO_X_MM * pxPerMmX, haloPy = HALO_Y_MM * pxPerMmY;
     for (const part of ordered) {
       if (!PART_KINDS[part.k] || PART_KINDS[part.k].ref) continue;
       const x0 = Math.max(0, Math.min(cw, Math.round(part.x * cw)));
@@ -4964,6 +4969,11 @@ const DB = {
       const norm = meanRel > 0.05 ? 1 / meanRel : 1;
       const glassPart = part.k === "g";
       const glassFeather = Math.max(2, 6 * pxPerMmX), glassKX = pxPerMmX / pxPerMmY;
+      // Ореол у концов стекла: на снимке там торцы планок и тени, и на
+      // плёнке они давали светлые «звёздочки» (жалоба заказчика). Рядом со
+      // стеклом (30 мм по бокам, 12 мм сверху и снизу) рельеф сводим к
+      // единице — плёнка там ровная, на девять пикселей-десятков не меняется.
+      const haloPad = glassPart ? null : haloRects;
       const tile = glassPart || !tiles ? null : (PART_KINDS[part.k].grain === "h" ? tiles.h : tiles.v);
       for (let y = y0; y < y1; y++) {
         // Раз в несколько строк отдаём страницу касаниям.
@@ -4988,6 +4998,17 @@ const DB = {
           if (glassPart) {
             const e = Math.min(x - x0, x1 - 1 - x, (y - y0) * glassKX, (y1 - 1 - y) * glassKX);
             if (e < glassFeather) { const t = e / glassFeather, w = t * t * (3 - 2 * t); relBase = 1 + (relBase - 1) * w; }
+          }
+          if (haloPad && haloPad.length) {
+            let hf = 1;
+            for (let q = 0; q < haloPad.length; q++) {
+              const g = haloPad[q];
+              const ddx = x < g.x0 ? g.x0 - x : x > g.x1 ? x - g.x1 : 0;
+              const ddy = y < g.y0 ? g.y0 - y : y > g.y1 ? y - g.y1 : 0;
+              const dn = Math.max(ddx / haloPx, ddy / haloPy);
+              if (dn < 1.4) { const t = dn <= 1 ? 0 : (dn - 1) / 0.4; const f = t * t * (3 - 2 * t); if (f < hf) hf = f; }
+            }
+            if (hf < 1) relBase = 1 + (relBase - 1) * hf;
           }
           const rel = glassPart && glass.flat ? 1 : relBase;
           let fr, fg, fb;
