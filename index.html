@@ -594,6 +594,9 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 .part.k-t { background: rgba(0,0,0,.18); }
 .part.k-t > span { background: rgba(40,40,40,.85); }
 .parts-kind.k-t { background: rgba(0,0,0,.14); }
+.parts-tools button:active { transform: scale(.95); filter: brightness(.92); }
+.parts-refresh.is-busy { background: #ffe9a8 !important; }
+.parts-refresh.is-done { background: #bff0c8 !important; }
 .parts-shade { display: flex; align-items: center; gap: 8px; width: 100%; font-size: 12px; }
 .parts-shade input { flex: 1; }
 .parts-kind.k-s { background: rgba(41,121,255,.18); }
@@ -5165,6 +5168,7 @@ const DB = {
     const hit = partsImageCache.get(key);
     if (hit !== undefined) return hit === "pending" || !hit ? (partsLastReady.get(baseKey) || null) : hit;
     partsImageCache.set(key, "pending");
+    partsPending++;
     partsLatestKey.set(model.id, key);
     // Пока палец ведёт деталь, считать картинку незачем: она сразу устареет,
     // а страница занята и не отвечает на касания (жалоба заказчика: «при
@@ -5176,14 +5180,16 @@ const DB = {
         // Устарело: разметку успели изменить, этот результат никому не нужен.
         // Запись убираем, а не помечаем «не вышло» — иначе к этому сочетанию
         // картинка больше никогда бы не считалась.
-        if (url === null) { partsImageCache.delete(key); return; }
+        partsPending = Math.max(0, partsPending - 1);
+        if (url === null) { partsImageCache.delete(key); partsRefreshCheck(); return; }
         partsImageCache.set(key, url);
         partsLastReady.set(baseKey, url);
         if (partsLastReady.size > PARTS_CACHE_MAX) partsLastReady.delete(partsLastReady.keys().next().value);
         if (partsImageCache.size > PARTS_CACHE_MAX) partsImageCache.delete(partsImageCache.keys().next().value);
         if (el.viewScene && !el.viewScene.hidden) drawDoor(sceneCtx, true);
+        partsRefreshCheck();
       })
-      .catch(() => { partsImageCache.set(key, ""); });
+      .catch(() => { partsPending = Math.max(0, partsPending - 1); partsImageCache.set(key, ""); partsRefreshCheck(); });
     return partsLastReady.get(baseKey) || null;
   }
 
@@ -5198,6 +5204,17 @@ const DB = {
   // включён, двигается только полотно, а по «Сохранить» каркас встаёт по нему.
   let leafEdit = null;
   let partsDrag = null;
+  let partsPending = 0;          // сколько перекрасок сейчас считается
+  let partsRefresh = "idle";     // кнопка «Обновить картинку»: idle | busy | done
+  let partsRefreshTimer = null;
+  // Кнопка показывает, идёт ли пересчёт: «Считаю…» → «✓ Готово» (3 с) → обычная.
+  function partsRefreshCheck() {
+    if (partsRefresh !== "busy" || partsPending > 0) return;
+    partsRefresh = "done";
+    clearTimeout(partsRefreshTimer);
+    partsRefreshTimer = setTimeout(() => { partsRefresh = "idle"; updatePartsEditor(); }, 3000);
+    updatePartsEditor();
+  }
   let partsForceOnce = false;   // «Обновить картинку»: посчитать, даже пока открыта панель разметки
 
   function partsEditorCtx() {
@@ -6440,7 +6457,7 @@ const DB = {
       }
       const selT = partsSel !== null && parts[partsSel] && parts[partsSel].k === "t" ? parts[partsSel] : null;
       const shadeVal = selT ? (selT.a == null ? 40 : selT.a) : 0;
-      tools.innerHTML = `<button type="button" data-act="refresh">⟳ Обновить картинку</button>` + (selT
+      tools.innerHTML = `<button type="button" data-act="refresh" class="parts-refresh is-${partsRefresh}">${partsRefresh === "busy" ? "⏳ Считаю…" : partsRefresh === "done" ? "✓ Картинка обновлена" : "⟳ Обновить картинку"}</button>` + (selT
         ? `<label class="parts-shade"><span>Сила тени <b>${shadeVal}</b></span>`
           + `<input type="range" min="0" max="100" step="1" value="${shadeVal}" data-shade></label>` : "")
         + `<button type="button" data-act="frame">+ Каркас</button>`
@@ -6780,8 +6797,10 @@ const DB = {
     } else if (act === "refresh") {
       clearTimeout(partsRedrawTimer); partsRedrawTimer = null;
       partsForceOnce = true;
+      partsRefresh = "busy";
+      clearTimeout(partsRefreshTimer);
       try { drawDoor(sceneCtx, true); } finally { partsForceOnce = false; }
-      partsNote = "Картинка пересчитывается — через несколько секунд дверь выше обновится.";
+      partsRefreshCheck();
     } else if (act === "leafEdit") {
       partsLeafEditStart(ctx, doc);
     } else if (act === "leafSave" || act === "leafCancel") {
