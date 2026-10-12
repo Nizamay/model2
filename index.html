@@ -5142,6 +5142,12 @@ const DB = {
     // по новой разметке, в сцене остаётся прежняя, а не голый снимок — иначе
     // после каждого движения угла дверь на секунды «раздевалась» бы.
     const baseKey = [model.id].concat(rest).join("|");
+    // Пока открыта панель «Детали модели», картинку двери не пересчитываем:
+    // на телефоне пересчёт — секунды, и после каждого касания разметки он
+    // замораживал страницу. Новая картинка считается, когда панель закрыли
+    // (см. обработчик toggle у s_partsPanel).
+    const editPanel = document.getElementById("s_partsPanel");
+    if (editPanel && editPanel.open && partsImageCache.get(key) === undefined) return partsLastReady.get(baseKey) || null;
     const hit = partsImageCache.get(key);
     if (hit !== undefined) return hit === "pending" || !hit ? (partsLastReady.get(baseKey) || null) : hit;
     partsImageCache.set(key, "pending");
@@ -10482,6 +10488,10 @@ const DB = {
     }
     const partsKinds = document.getElementById("s_partsKinds");
     const partsTools = document.getElementById("s_partsTools");
+    const partsPanelEl = document.getElementById("s_partsPanel");
+    if (partsPanelEl) partsPanelEl.addEventListener("toggle", () => {
+      if (!partsPanelEl.open) { clearTimeout(partsRedrawTimer); partsRedrawTimer = null; drawDoor(sceneCtx, true); }
+    });
     if (partsKinds) partsKinds.addEventListener("click", onPartsToolClick);
     if (partsTools) partsTools.addEventListener("click", onPartsToolClick);
     // Ползунок силы тени: правим только поле, панель не перерисовываем —
