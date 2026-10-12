@@ -6533,6 +6533,28 @@ const DB = {
       }
       return;
     }
+    // Метка детали (буква в её середине): нажал — деталь активна и сразу
+    // едет за пальцем, не отпуская. Так можно взять любую деталь, в том числе
+    // лежащую под другими (тень под стойкой), и не терять размеры.
+    {
+      let best = null;
+      doc.parts.forEach((p, i) => {
+        if (p.k === "d") return;
+        const dx = fx * box.width - (p.x + p.w / 2) * box.width, dy = fy * box.height - (p.y + p.h / 2) * box.height;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist <= PARTS_BADGE_REACH && (!best || dist <= best.dist)) best = { i: i, dist: dist };
+      });
+      if (best) {
+        const p = doc.parts[best.i];
+        partsSel = best.i;
+        updatePartsEditor();
+        if (framePartRect(p.k) && !partsResizable(p.k)) { e.preventDefault(); return; }
+        partsDragStart({ mode: "move", i: best.i, dx: fx - p.x, dy: fy - p.y, modelId: ctx.model.id, moved: false }, doc, els, box);
+        els.stage.setPointerCapture(e.pointerId);
+        e.preventDefault();
+        return;
+      }
+    }
     // Деталь берётся в два касания: первое делает её активной, и только
     // после этого она двигается. Иначе любое касание фотографии сдвигало
     // деталь под пальцем, и поставленную на место было не удержать.
@@ -6559,6 +6581,7 @@ const DB = {
   }
 
   // Радиус захвата угла, точек, — от центра квадратика. Квадратик 22 точки.
+  const PARTS_BADGE_REACH = 22;   // радиус захвата метки детали, точек
   const PARTS_HANDLE_PX = 22;
   const PARTS_CORNER_REACH = 32;
 
