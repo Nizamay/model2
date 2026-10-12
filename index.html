@@ -4462,7 +4462,8 @@ const DB = {
     }
   }
 
-  async function paintPartsLeaf(photo, filmImg, filmHex, doc, glass, doorWidthMm, doorHeightMm, adj, isStale, reliefMm) {
+  const partsReliefCache = new Map();
+  async function paintPartsLeaf(photo, filmImg, filmHex, doc, glass, doorWidthMm, doorHeightMm, adj, isStale, reliefMm, reliefKey) {
     let sliceAt = performance.now();
     // true — расчёт устарел, бросаем.
     const pause = async () => {
@@ -4617,19 +4618,12 @@ const DB = {
     // миллиметр, и они терялись ещё до размытия.
     const rw = Math.min(cw, 1000);
     const rh = Math.max(8, Math.round(ch * rw / cw));
-    const rcv = document.createElement("canvas");
-    rcv.width = rw; rcv.height = rh;
-    const rcx = rcv.getContext("2d");
-    rcx.imageSmoothingEnabled = true;
-    rcx.imageSmoothingQuality = "high";
-    rcx.drawImage(shrinkImage(photo, rw, rh), 0, 0, rw, rh);
-    // Читаем полосами, как и большой кадр выше: один вызов на два с лишним
-    // миллиона точек держит страницу заметно дольше порции.
-    const rdata = new Uint8ClampedArray(rw * rh * 4);
-    for (let sy = 0; sy < rh; sy += 192) {
-      rdata.set(rcx.getImageData(0, sy, rw, Math.min(192, rh - sy)).data, sy * rw * 4);
-      if (await pause()) return null;
-    }
+    // Светотень (sharp и relief) зависит только от снимка, разметки, ширины двери
+    // и движков качества — но не от плёнки и стекла. Её запоминаем: смена плёнки
+    // или стекла тогда только красит (доли секунды), а не считает светотень заново.
+    let sharp = null, relief = null;
+    const reliefHit = reliefKey ? partsReliefCache.get(reliefKey) : null;
+    if (reliefHit) { sharp = reliefHit.sharp; relief = reliefHit.relief; }
     // Точка большого кадра → точка маленького.
     const rsx = rw / cw, rsy = rh / ch;
     const rAt = (x, y) => ((y * rsy) | 0) * rw + ((x * rsx) | 0);
@@ -4653,13 +4647,28 @@ const DB = {
     // вместе с ним и тонкие канавки по краям филёнок; меньше — канавки
     // остаются, а с ними и тиснение.
     const reliefR = Math.max(1, Math.round((reliefMm > 0 ? reliefMm : 5) * reliefPxPerMm));
+    const glassRects = doc.parts.filter((p) => p.k === "g");
+    if (!reliefHit) {
+    const rcv = document.createElement("canvas");
+    rcv.width = rw; rcv.height = rh;
+    const rcx = rcv.getContext("2d");
+    rcx.imageSmoothingEnabled = true;
+    rcx.imageSmoothingQuality = "high";
+    rcx.drawImage(shrinkImage(photo, rw, rh), 0, 0, rw, rh);
+    // Читаем полосами, как и большой кадр выше: один вызов на два с лишним
+    // миллиона точек держит страницу заметно дольше порции.
+    const rdata = new Uint8ClampedArray(rw * rh * 4);
+    for (let sy = 0; sy < rh; sy += 192) {
+      rdata.set(rcx.getImageData(0, sy, rw, Math.min(192, rh - sy)).data, sy * rw * 4);
+      if (await pause()) return null;
+    }
     // Та же яркость, но резкая, без размытия, — снятая со снимка ДО того, как
     // по нему пошла перекраска. Нужна стеклу: у него рельеф свой, гравировка
     // и блики, размывать их нельзя. Раньше стекло читало яркость прямо из
     // перекрашиваемой картинки, а филёнка под ним к тому времени уже была
     // закрашена плёнкой, — и стекло темнело или светлело вслед за цветом
     // плёнки, хотя к плёнке никакого отношения не имеет.
-    const sharp = new Float32Array(rw * rh);
+    sharp = new Float32Array(rw * rh);
     for (let y = 0; y < rh; y++) {
       for (let i = y * rw * 4, p = y * rw, e = p + rw; p < e; i += 4, p++) {
         sharp[p] = 0.299 * rdata[i] + 0.587 * rdata[i + 1] + 0.114 * rdata[i + 2];
@@ -4734,7 +4743,6 @@ const DB = {
     // «тёмный прямоугольник», будто филёнка фрезерованная (жалоба заказчика).
     // Замер на ровной филёнке между планками: у планки 209, в середине 195;
     // без этой поправки — 195 по всей филёнке.
-    const glassRects = doc.parts.filter((p) => p.k === "g");
     if (glassRects.length) {
       if (!avgMask) avgMask = new Float32Array(rw * rh).fill(1);
       const pad = Math.max(1, Math.round(1.5 * reliefPxPerMm));
@@ -4807,7 +4815,7 @@ const DB = {
     let wideMean = 0;
     for (let i = 0; i < wide.length; i++) wideMean += wide[i];
     wideMean = wideMean / Math.max(1, wide.length) || 1;
-    const relief = new Float32Array(relief0.length);
+    relief = new Float32Array(relief0.length);
     for (let i = 0; i < relief.length; i++) {
       const b = wide[i] > 1 ? wide[i] : 1;
       relief[i] = relief0[i] / b * wideMean;
@@ -4892,6 +4900,12 @@ const DB = {
         relief[i] = mid[i] + line[i] + keep;
         if ((i & 0x3ffff) === 0x3ffff && await pause()) return null;
       }
+    }
+    if (reliefKey) {
+      partsReliefCache.delete(reliefKey);
+      partsReliefCache.set(reliefKey, { sharp: sharp, relief: relief });
+      while (partsReliefCache.size > 2) partsReliefCache.delete(partsReliefCache.keys().next().value);
+    }
     }
     // Ровный цвет (эмаль, плёнка без образца) настраивается тем же правилом.
     // Стекло — нет: у него свой цвет из позиции «Стекло», к плёнке он
@@ -5157,7 +5171,7 @@ const DB = {
     // строительстве деталей торможение и зависание»).
     const isStale = () => partsLatestKey.get(model.id) !== key || !!partsDrag;
     Promise.all([loadImageAsync(photo.image), filmHref ? loadImageAsync(filmHref) : Promise.resolve(null)])
-      .then(([ph, film]) => paintPartsLeaf(ph, film, filmHex, doc, glass, widthMm, heightMm, adj, isStale, qualityReliefMm(qual)))
+      .then(([ph, film]) => paintPartsLeaf(ph, film, filmHex, doc, glass, widthMm, heightMm, adj, isStale, qualityReliefMm(qual), [model.id, doc.rev || 1, String(photo.image || "").length, qualityReliefMm(qual), widthMm, heightMm].join("|")))
       .then((url) => {
         // Устарело: разметку успели изменить, этот результат никому не нужен.
         // Запись убираем, а не помечаем «не вышло» — иначе к этому сочетанию
