@@ -5147,7 +5147,7 @@ const DB = {
     // замораживал страницу. Новая картинка считается, когда панель закрыли
     // (см. обработчик toggle у s_partsPanel).
     const editPanel = document.getElementById("s_partsPanel");
-    if (editPanel && editPanel.open && partsImageCache.get(key) === undefined) return partsLastReady.get(baseKey) || null;
+    if (editPanel && editPanel.open && !partsForceOnce && partsImageCache.get(key) === undefined) return partsLastReady.get(baseKey) || null;
     const hit = partsImageCache.get(key);
     if (hit !== undefined) return hit === "pending" || !hit ? (partsLastReady.get(baseKey) || null) : hit;
     partsImageCache.set(key, "pending");
@@ -5184,6 +5184,7 @@ const DB = {
   // включён, двигается только полотно, а по «Сохранить» каркас встаёт по нему.
   let leafEdit = null;
   let partsDrag = null;
+  let partsForceOnce = false;   // «Обновить картинку»: посчитать, даже пока открыта панель разметки
 
   function partsEditorCtx() {
     const m = getModel(state.modelId);
@@ -6425,7 +6426,7 @@ const DB = {
       }
       const selT = partsSel !== null && parts[partsSel] && parts[partsSel].k === "t" ? parts[partsSel] : null;
       const shadeVal = selT ? (selT.a == null ? 40 : selT.a) : 0;
-      tools.innerHTML = (selT
+      tools.innerHTML = `<button type="button" data-act="refresh">⟳ Обновить картинку</button>` + (selT
         ? `<label class="parts-shade"><span>Сила тени <b>${shadeVal}</b></span>`
           + `<input type="range" min="0" max="100" step="1" value="${shadeVal}" data-shade></label>` : "")
         + `<button type="button" data-act="frame">+ Каркас</button>`
@@ -6739,6 +6740,11 @@ const DB = {
       // Перекраску откладываем (см. schedulePartsRedraw): деталь сразу
       // начинают двигать, а считать картинку под пальцем нельзя.
       savePartsDoc(doc, ctx.model.id, true);
+    } else if (act === "refresh") {
+      clearTimeout(partsRedrawTimer); partsRedrawTimer = null;
+      partsForceOnce = true;
+      try { drawDoor(sceneCtx, true); } finally { partsForceOnce = false; }
+      partsNote = "Картинка пересчитывается — через несколько секунд дверь выше обновится.";
     } else if (act === "leafEdit") {
       partsLeafEditStart(ctx, doc);
     } else if (act === "leafSave" || act === "leafCancel") {
