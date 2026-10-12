@@ -4924,7 +4924,7 @@ const DB = {
     // rAt, только быстрее).
     const colMap = new Int32Array(cw);
     for (let x = 0; x < cw; x++) colMap[x] = (x * rsx) | 0;
-    const HALO_X_MM = 30, HALO_Y_MM = 12;
+    const HALO_X_MM = 45, HALO_Y_MM = 45;
     // Только для узких стёкол-планок (до 80 мм высотой): у высоких стёкол
     // зона вдоль стойки давала «вмятины» на стыках раскладки (Британия ПО).
     const haloRects = glassRects.filter((g) => g.h * ch / pxPerMmY < 80).map((g) => ({
