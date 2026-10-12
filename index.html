@@ -591,6 +591,11 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 .parts-kinds, .parts-tools { display: flex; flex-wrap: wrap; gap: 4px; justify-content: center; align-items: center; }
 .parts-lead { font-size: 12px; color: var(--muted); }
 .parts-kinds button, .parts-tools button { padding: 6px 8px; font-size: 12px; border-radius: 6px; border: 1px solid var(--line); background: #fff; }
+.part.k-t { background: rgba(0,0,0,.18); }
+.part.k-t > span { background: rgba(40,40,40,.85); }
+.parts-kind.k-t { background: rgba(0,0,0,.14); }
+.parts-shade { display: flex; align-items: center; gap: 8px; width: 100%; font-size: 12px; }
+.parts-shade input { flex: 1; }
 .parts-kind.k-s { background: rgba(41,121,255,.18); }
 .parts-kind.k-p { background: rgba(0,150,90,.18); }
 .parts-kind.k-f { background: rgba(240,150,20,.18); }
@@ -3691,7 +3696,11 @@ const DB = {
     rv: { name: "Раскл. ↕", short: "Р↕", grain: "v" },
     rh: { name: "Раскл. ↔", short: "Р↔", grain: "h" },
     nv: { name: "Нал. ↕", short: "Н↕", grain: "v", casing: true },
-    nh: { name: "Нал. ↔", short: "Н↔", grain: "h", casing: true }
+    nh: { name: "Нал. ↔", short: "Н↔", grain: "h", casing: true },
+    // «Тень» — не деталь: полоса, которая затемняет то, что лежит под ней
+    // (тень от стойки на филёнке, от царги внизу). Сила — ползунок 0–100,
+    // у детали поле `a`. Мягкая по короткой стороне, как настоящая тень.
+    t: { name: "Тень", short: "Т", shade: true }
   };
 
   // Наличник на снимке: если он обведён, коробку на сцене не рисуем своей
@@ -3849,7 +3858,8 @@ const DB = {
     // Наличник в рамке стоит от пола до верха кадра, верхний лежит поперёк
     // во всю ширину рамки — так он и стоит на настоящей двери.
     nv: { w: CASING_MM, h: FRAME_MM.h - CASING_MM, fix: true },
-    nh: { w: FRAME_MM.w, h: CASING_MM, fix: true }
+    nh: { w: FRAME_MM.w, h: CASING_MM, fix: true },
+    t: { w: 40, h: 1800, free: true }
   };
 
   // Точное место детали в рамке, в долях кадра. Всё, что задано правилами,
@@ -4680,7 +4690,7 @@ const DB = {
     // на весь кадр — самая тяжёлая часть, одним куском они «замораживали» страницу.
     const hw = Math.max(2, rw >> 1), hh = Math.max(2, rh >> 1);
     {
-      const painted = doc.parts.filter((p) => PART_KINDS[p.k] && !PART_KINDS[p.k].ref && p.k !== "g");
+      const painted = doc.parts.filter((p) => PART_KINDS[p.k] && !PART_KINDS[p.k].ref && !PART_KINDS[p.k].shade && p.k !== "g");
       const samp = [];
       painted.forEach((p) => {
         const sx0 = Math.max(0, Math.round(p.x * rw)), sy0 = Math.max(0, Math.round(p.y * rh));
@@ -4875,6 +4885,10 @@ const DB = {
             keep = dv * (k * k * (3 - 2 * k));
           }
         }
+        // Пятна и крапины со снимка (тёмные «проявления» дерева сквозь
+        // плёнку) короткие и не длинные линии: их размах ограничиваем 4 %.
+        const cap = 0.04 * wideMean;
+        if (keep > cap) keep = cap; else if (keep < -cap) keep = -cap;
         relief[i] = mid[i] + line[i] + keep;
         if ((i & 0x3ffff) === 0x3ffff && await pause()) return null;
       }
@@ -4925,7 +4939,7 @@ const DB = {
     const colMap = new Int32Array(cw);
     for (let x = 0; x < cw; x++) colMap[x] = (x * rsx) | 0;
     for (const part of ordered) {
-      if (!PART_KINDS[part.k] || PART_KINDS[part.k].ref) continue;
+      if (!PART_KINDS[part.k] || PART_KINDS[part.k].ref || PART_KINDS[part.k].shade) continue;
       const x0 = Math.max(0, Math.min(cw, Math.round(part.x * cw)));
       const y0 = Math.max(0, Math.min(ch, Math.round(part.y * ch)));
       const x1 = Math.max(0, Math.min(cw, Math.round((part.x + part.w) * cw)));
@@ -5014,6 +5028,29 @@ const DB = {
             d[i] += (255 - d[i]) * tt; d[i + 1] += (255 - d[i + 1]) * tt; d[i + 2] += (255 - d[i + 2]) * tt;
           }
           d[i + 3] = 255;
+        }
+      }
+    }
+    // Тени: полоса затемняет уже закрашенное. Профиль — колокол по короткой
+    // стороне, по длинной края гаснут на ширину полосы.
+    for (const part of doc.parts) {
+      if (part.k !== "t") continue;
+      const k = Math.max(0, Math.min(100, part.a == null ? 40 : part.a)) / 100 * 0.8;
+      if (k <= 0) continue;
+      const x0 = Math.max(0, Math.round(part.x * cw)), x1 = Math.min(cw, Math.round((part.x + part.w) * cw));
+      const y0 = Math.max(0, Math.round(part.y * ch)), y1 = Math.min(ch, Math.round((part.y + part.h) * ch));
+      const bw = x1 - x0, bh = y1 - y0;
+      if (bw < 2 || bh < 2) continue;
+      const vert = bh >= bw, short = Math.min(bw, bh);
+      for (let y = y0; y < y1; y++) {
+        if ((y & 15) === 0 && await pause()) return null;
+        for (let x = x0; x < x1; x++) {
+          const across = vert ? (x - x0 + 0.5) / bw : (y - y0 + 0.5) / bh;
+          const along = vert ? Math.min(y - y0, y1 - 1 - y) : Math.min(x - x0, x1 - 1 - x);
+          const wa = Math.sin(Math.PI * across), we = Math.min(1, along / Math.max(1, short));
+          const m = 1 - k * wa * we * (3 - 2 * we);
+          const i = (y * cw + x) * 4;
+          d[i] *= m; d[i + 1] *= m; d[i + 2] *= m;
         }
       }
     }
@@ -6352,7 +6389,12 @@ const DB = {
           + `<button type="button" data-act="leafCancel">Отмена</button>`;
         return;
       }
-      tools.innerHTML = `<button type="button" data-act="frame">+ Каркас</button>`
+      const selT = partsSel !== null && parts[partsSel] && parts[partsSel].k === "t" ? parts[partsSel] : null;
+      const shadeVal = selT ? (selT.a == null ? 40 : selT.a) : 0;
+      tools.innerHTML = (selT
+        ? `<label class="parts-shade"><span>Сила тени <b>${shadeVal}</b></span>`
+          + `<input type="range" min="0" max="100" step="1" value="${shadeVal}" data-shade></label>` : "")
+        + `<button type="button" data-act="frame">+ Каркас</button>`
         + `<button type="button" data-act="leafEdit">Подогнать полотно</button>`
         + (partsSel === null ? "" :
         `<button type="button" data-act="copy">Копия</button>`
@@ -6680,7 +6722,9 @@ const DB = {
       savePartsDoc(doc, ctx.model.id, true);
     } else if (act === "copy" && partsSel !== null && doc.parts[partsSel]) {
       const p = doc.parts[partsSel];
-      doc.parts.push({ x: Math.min(0.98 - p.w, p.x + 0.05), y: Math.min(0.98 - p.h, p.y + 0.05), w: p.w, h: p.h, k: p.k });
+      const cp = { x: Math.min(0.98 - p.w, p.x + 0.05), y: Math.min(0.98 - p.h, p.y + 0.05), w: p.w, h: p.h, k: p.k };
+      if (p.a != null) cp.a = p.a;
+      doc.parts.push(cp);
       partsSel = doc.parts.length - 1;
       savePartsDoc(doc, ctx.model.id, true);
     } else if (act === "del" && partsSel !== null) {
@@ -10408,6 +10452,18 @@ const DB = {
     const partsTools = document.getElementById("s_partsTools");
     if (partsKinds) partsKinds.addEventListener("click", onPartsToolClick);
     if (partsTools) partsTools.addEventListener("click", onPartsToolClick);
+    // Ползунок силы тени: правим только поле, панель не перерисовываем —
+    // иначе ползунок пересоздаётся под пальцем и перестаёт тянуться.
+    if (partsTools) partsTools.addEventListener("input", (e) => {
+      const r = e.target.closest("input[data-shade]");
+      if (!r) return;
+      const ctx = partsEditorCtx();
+      const doc = ctx && partsOf(ctx.model.id);
+      if (!doc || partsSel === null || !doc.parts[partsSel] || doc.parts[partsSel].k !== "t") return;
+      doc.parts[partsSel].a = Number(r.value);
+      const b = r.parentNode.querySelector("b"); if (b) b.textContent = r.value;
+      savePartsDoc(doc, ctx.model.id, true);
+    });
 
     // Переходы «Расчёт ⇄ 2D картинка»: на 2D дверь рисуется с текущими
     // параметрами калькулятора, отдельно ничего выбирать не нужно.
