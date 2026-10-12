@@ -4994,6 +4994,9 @@ const DB = {
         // Раз в несколько строк отдаём страницу касаниям.
         if ((y & 15) === 0 && await pause()) return null;
         const rrow = ((y * rsy) | 0) * rw;
+        // Только стёкла, до которых от этой строки не дальше зоны: так проход
+        // по зоне не множится на число стёкол (на телефоне это были секунды).
+        const rowHalo = haloPad && haloPad.length ? haloPad.filter((g) => y >= g.y0 - haloPy * 1.4 && y <= g.y1 + haloPy * 1.4) : null;
         for (let x = x0; x < x1; x++) {
           const i = (y * cw + x) * 4;
           // У стекла рельеф берём резкий, без размытия: гравировка и блики
@@ -5014,10 +5017,10 @@ const DB = {
             const e = Math.min(x - x0, x1 - 1 - x, (y - y0) * glassKX, (y1 - 1 - y) * glassKX);
             if (e < glassFeather) { const t = e / glassFeather, w = t * t * (3 - 2 * t); relBase = 1 + (relBase - 1) * w; }
           }
-          if (haloPad && haloPad.length) {
+          if (rowHalo && rowHalo.length) {
             let hf = 1;
-            for (let q = 0; q < haloPad.length; q++) {
-              const g = haloPad[q];
+            for (let q = 0; q < rowHalo.length; q++) {
+              const g = rowHalo[q];
               const ddx = x < g.x0 ? g.x0 - x : x > g.x1 ? x - g.x1 : 0;
               const ddy = y < g.y0 ? g.y0 - y : y > g.y1 ? y - g.y1 : 0;
               const dn = Math.max(ddx / haloPx, ddy / haloPy);
@@ -5139,6 +5142,12 @@ const DB = {
     // по новой разметке, в сцене остаётся прежняя, а не голый снимок — иначе
     // после каждого движения угла дверь на секунды «раздевалась» бы.
     const baseKey = [model.id].concat(rest).join("|");
+    // Пока открыта панель «Детали модели», картинку двери не пересчитываем:
+    // на телефоне пересчёт — секунды, и после каждого касания разметки он
+    // замораживал страницу. Новая картинка считается, когда панель закрыли
+    // (см. обработчик toggle у s_partsPanel).
+    const editPanel = document.getElementById("s_partsPanel");
+    if (editPanel && editPanel.open && !partsForceOnce && partsImageCache.get(key) === undefined) return partsLastReady.get(baseKey) || null;
     const hit = partsImageCache.get(key);
     if (hit !== undefined) return hit === "pending" || !hit ? (partsLastReady.get(baseKey) || null) : hit;
     partsImageCache.set(key, "pending");
@@ -5175,6 +5184,7 @@ const DB = {
   // включён, двигается только полотно, а по «Сохранить» каркас встаёт по нему.
   let leafEdit = null;
   let partsDrag = null;
+  let partsForceOnce = false;   // «Обновить картинку»: посчитать, даже пока открыта панель разметки
 
   function partsEditorCtx() {
     const m = getModel(state.modelId);
@@ -6296,7 +6306,7 @@ const DB = {
   // PARTS_REDRAW_DELAY_MS после того, как палец отпущен: угол обычно подгоняют
   // подряд несколько раз, а картинка в это время вверху, вне экрана. Начнёшь тянуть снова — отложенная
   // перекраска ждёт дальше (см. onPartsPointerDown).
-  const PARTS_REDRAW_DELAY_MS = 900;
+  const PARTS_REDRAW_DELAY_MS = 2500;
   let partsRedrawTimer = null;
   function schedulePartsRedraw() {
     clearTimeout(partsRedrawTimer);
@@ -6416,7 +6426,7 @@ const DB = {
       }
       const selT = partsSel !== null && parts[partsSel] && parts[partsSel].k === "t" ? parts[partsSel] : null;
       const shadeVal = selT ? (selT.a == null ? 40 : selT.a) : 0;
-      tools.innerHTML = (selT
+      tools.innerHTML = `<button type="button" data-act="refresh">⟳ Обновить картинку</button>` + (selT
         ? `<label class="parts-shade"><span>Сила тени <b>${shadeVal}</b></span>`
           + `<input type="range" min="0" max="100" step="1" value="${shadeVal}" data-shade></label>` : "")
         + `<button type="button" data-act="frame">+ Каркас</button>`
@@ -6730,6 +6740,11 @@ const DB = {
       // Перекраску откладываем (см. schedulePartsRedraw): деталь сразу
       // начинают двигать, а считать картинку под пальцем нельзя.
       savePartsDoc(doc, ctx.model.id, true);
+    } else if (act === "refresh") {
+      clearTimeout(partsRedrawTimer); partsRedrawTimer = null;
+      partsForceOnce = true;
+      try { drawDoor(sceneCtx, true); } finally { partsForceOnce = false; }
+      partsNote = "Картинка пересчитывается — через несколько секунд дверь выше обновится.";
     } else if (act === "leafEdit") {
       partsLeafEditStart(ctx, doc);
     } else if (act === "leafSave" || act === "leafCancel") {
@@ -10479,6 +10494,10 @@ const DB = {
     }
     const partsKinds = document.getElementById("s_partsKinds");
     const partsTools = document.getElementById("s_partsTools");
+    const partsPanelEl = document.getElementById("s_partsPanel");
+    if (partsPanelEl) partsPanelEl.addEventListener("toggle", () => {
+      if (!partsPanelEl.open) { clearTimeout(partsRedrawTimer); partsRedrawTimer = null; drawDoor(sceneCtx, true); }
+    });
     if (partsKinds) partsKinds.addEventListener("click", onPartsToolClick);
     if (partsTools) partsTools.addEventListener("click", onPartsToolClick);
     // Ползунок силы тени: правим только поле, панель не перерисовываем —
