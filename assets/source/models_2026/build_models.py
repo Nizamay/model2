@@ -41,8 +41,9 @@ for name in sorted(fits):
     b64 = base64.b64encode(buf.getvalue()).decode()
     fit = fits[name]
     cut = ', cut: true' if fit.get('cut') else ''
-    rows.append('    %s: { v: 3, fit: { zx: %r, zy: %r, dx: %r, dy: %r%s }, source: "data:image/webp;base64,%s" }'
-                % (json.dumps(name, ensure_ascii=False), fit['zx'], fit['zy'], fit['dx'], fit['dy'], cut, b64))
+    la = ', la: 1' if fit.get('la') else ''   # полотно стоит ровно по FRAME_LEAF: разметку деталей на устройстве подравнять под него
+    rows.append('    %s: { v: 3, fit: { zx: %r, zy: %r, dx: %r, dy: %r%s }%s, source: "data:image/webp;base64,%s" }'
+                % (json.dumps(name, ensure_ascii=False), fit['zx'], fit['zy'], fit['dx'], fit['dy'], cut, la, b64))
 block = '  // FACTORY_MODEL_PHOTOS_BEGIN (собирается build_models.py из assets/source/models_2026)\n' \
         '  const FACTORY_MODEL_PHOTOS = {\n' + ',\n'.join(rows) + '\n  };\n' \
         '  // FACTORY_MODEL_PHOTOS_END'
