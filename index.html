@@ -700,7 +700,7 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 .fs-overlay[hidden] { display: none; }
 .fs-overlay .fs-body { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; box-sizing: border-box; overflow: hidden; }
 .fs-overlay .fs-body svg { height: 100%; width: auto; max-width: none; max-height: none; }
-.fs-close { position: absolute; top: 14px; right: 16px; width: 46px; height: 46px; border-radius: 50%; border: none; background: rgba(255,255,255,.92); font-size: 22px; line-height: 1; cursor: pointer; }
+.fs-close { position: fixed; z-index: 10000; top: max(14px, env(safe-area-inset-top)); right: 16px; width: 46px; height: 46px; border-radius: 50%; border: none; background: rgba(255,255,255,.92); font-size: 22px; line-height: 1; cursor: pointer; }
 #viewScene .door-preview { padding: 0; border: none; background: transparent; }
 
 .color-preview {
@@ -1469,45 +1469,6 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
         <!-- Две группы, обе свёрнуты: «Стена» — комната вокруг двери, «Дверь» —
              сама дверь и её снимок. Раньше семь панелей шли одним списком, и
              нужную приходилось искать глазами. -->
-        <details class="scene-group" id="s_groupWall">
-          <summary>Стена</summary>
-          <div class="scene-group-body">
-        <details class="adjust-panel" id="s_wallColorPanel">
-          <summary>Цвет стены</summary>
-          <div class="adjust-body">
-            <div class="wall-swatches" id="s_wallSwatches"></div>
-          </div>
-        </details>
-        <details class="adjust-panel" id="s_wallTexturePanel">
-          <summary>Текстура стены</summary>
-          <div class="adjust-body">
-            <div class="wall-textures" id="s_wallTextures"></div>
-          </div>
-        </details>
-        <!-- Тон стены — те же ползунки, что и у плёнки в «Изменение цен»
-             (см. colorRow/filterCss): готовых образцов цвета всегда мало,
-             а так любой из них подгоняется под реальную стену. Нативный
-             выбор цвета (<input type="color">) убран по просьбе заказчика
-             — системное окно «Тон/Насыщенность/Значение» ему не подошло.
-             Каналов R/G/B здесь нет: стену подгоняют на глаз четырьмя
-             ползунками, а разбор цвета по каналам на телефоне только занимал
-             место (у плёнки в «Изменение цен» он остался). Сами поля
-             state.wallAdjust.cr/cg/cb сохранены — они нужны фильтру и
-             остаются нейтральными. -->
-        <details class="adjust-panel wall-adjust-panel" id="s_wallAdjustPanel">
-          <summary>Настроить тон стены</summary>
-          <div class="adjust-body">
-            <div class="arow"><span>Оттенок</span><input type="range" class="adj wall-adj" data-k="h" min="-90" max="90" step="1" value="0"></div>
-            <div class="arow"><span>Насыщенность</span><input type="range" class="adj wall-adj" data-k="s" min="0" max="300" step="1" value="100"></div>
-            <div class="arow"><span>Яркость</span><input type="range" class="adj wall-adj" data-k="b" min="30" max="200" step="1" value="100"></div>
-            <div class="arow"><span>Контраст</span><input type="range" class="adj wall-adj" data-k="c" min="30" max="200" step="1" value="100"></div>
-            <div class="adjust-actions">
-              <button type="button" id="s_wallAdjustReset">Сбросить тон</button>
-            </div>
-          </div>
-        </details>
-          </div>
-        </details>
         <details class="scene-group" id="s_groupDoor">
           <summary>Дверь <button type="button" class="info-btn" id="s_doorInfoBtn" hidden data-info="s_doorNoPhoto" aria-label="Почему нет настроек" aria-expanded="false">i</button></summary>
           <div class="scene-group-body">
@@ -1515,27 +1476,18 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
              нечего. Чтобы не гадать, куда они делись, вместо них — эта строка
              (см. updateSceneGroups). -->
         <p class="parts-hint scene-nophoto info-text" id="s_doorNoPhoto" hidden>У этой модели нет фото, поэтому подгонки, чёткости и деталей здесь нет. Загрузите фото: «Изменение цен» → модель → «Загрузить файл» — и настройки появятся.</p>
-        <!-- Светотень двери. Программа не выдумывает свет: фаски, фрезеровку
-             и тени она берёт со снимка модели, поэтому и направление света —
-             то, что на фотографии. Ползунок только усиливает или ослабляет
-             эту светотень, направление от него не меняется (см.
-             paintPartsLeaf и docs/2d-spec.md, п. 10). -->
-        <details class="adjust-panel wall-adjust-panel">
-          <summary>Светотень двери <button type="button" class="info-btn" data-info="s_shadeInfo" aria-label="Пояснение" aria-expanded="false">i</button></summary>
+        <!-- Разметка деталей модели по её фотографии (см. PART_KINDS,
+             updatePartsEditor). Открывается только когда у модели есть фото. -->
+        <details class="adjust-panel parts-panel" id="s_partsPanel" hidden>
+          <summary>Детали модели <button type="button" class="info-btn" data-info="s_partsHint" aria-label="Пояснение" aria-expanded="false">i</button></summary>
           <div class="adjust-body">
-            <p class="parts-hint info-text" id="s_shadeInfo">Свет на двери — со снимка модели, вместе с его направлением. Ползунок делает фаски и фрезеровку глубже или мягче. 100 % — как на фотографии.</p>
-            <div class="arow"><span>Глубина</span><input type="range" id="s_doorShade" min="0" max="200" step="5" value="100">
-              <!-- Шкала под ползунком: без неё непонятно, где сейчас ручка и
-                   куда её тянуть, чтобы получить ровно 100 % (как на
-                   фотографии) — просьба заказчика. -->
-              <div class="range-scale" aria-hidden="true"><span>0</span><span>50</span><span>100</span><span>150</span><span>200</span></div>
-            </div>
-            <div class="adjust-actions">
-              <button type="button" id="s_doorShadeReset">Сбросить</button>
-            </div>
+            <p class="parts-hint info-text" id="s_partsHint"></p>
+            <div class="parts-stage" id="s_partsStage"></div>
+            <div class="parts-kinds" id="s_partsKinds"></div>
+            <div class="parts-tools" id="s_partsTools"></div>
           </div>
         </details>
-        <!-- Подгонка снимка модели под единую рамку 850x2085 мм (см. FRAME_MM):
+<!-- Подгонка снимка модели под единую рамку 850x2085 мм (см. FRAME_MM):
              весь блок — полотно, наличники, зазоры и щель до пола. Снимок стоит
              на месте, рамку блока тянут за углы (см. updateFrameEditor). -->
         <details class="adjust-panel frame-panel" id="s_framePanel" hidden>
@@ -1593,15 +1545,72 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
             </div>
           </div>
         </details>
-        <!-- Разметка деталей модели по её фотографии (см. PART_KINDS,
-             updatePartsEditor). Открывается только когда у модели есть фото. -->
-        <details class="adjust-panel parts-panel" id="s_partsPanel" hidden>
-          <summary>Детали модели <button type="button" class="info-btn" data-info="s_partsHint" aria-label="Пояснение" aria-expanded="false">i</button></summary>
+        <!-- Светотень двери. Программа не выдумывает свет: фаски, фрезеровку
+             и тени она берёт со снимка модели, поэтому и направление света —
+             то, что на фотографии. Ползунок только усиливает или ослабляет
+             эту светотень, направление от него не меняется (см.
+             paintPartsLeaf и docs/2d-spec.md, п. 10). -->
+        <details class="adjust-panel wall-adjust-panel">
+          <summary>Светотень двери <button type="button" class="info-btn" data-info="s_shadeInfo" aria-label="Пояснение" aria-expanded="false">i</button></summary>
           <div class="adjust-body">
-            <p class="parts-hint info-text" id="s_partsHint"></p>
-            <div class="parts-stage" id="s_partsStage"></div>
-            <div class="parts-kinds" id="s_partsKinds"></div>
-            <div class="parts-tools" id="s_partsTools"></div>
+            <p class="parts-hint info-text" id="s_shadeInfo">Свет на двери — со снимка модели, вместе с его направлением. Ползунок делает фаски и фрезеровку глубже или мягче. 100 % — как на фотографии.</p>
+            <div class="arow"><span>Глубина</span><input type="range" id="s_doorShade" min="0" max="200" step="5" value="100">
+              <!-- Шкала под ползунком: без неё непонятно, где сейчас ручка и
+                   куда её тянуть, чтобы получить ровно 100 % (как на
+                   фотографии) — просьба заказчика. -->
+              <div class="range-scale" aria-hidden="true"><span>0</span><span>50</span><span>100</span><span>150</span><span>200</span></div>
+            </div>
+            <div class="adjust-actions">
+              <button type="button" id="s_doorShadeReset">Сбросить</button>
+            </div>
+          </div>
+        </details>
+                  </div>
+        </details>
+        <!-- «Стекло» — цвет и блеск стёкол каталога (DB.glassLooks): основа и
+             ползунки как у плёнки. Содержимое строит renderGlassPanel. -->
+        <details class="scene-group" id="s_groupGlass">
+          <summary>Стекло</summary>
+          <div class="scene-group-body">
+            <label class="field film-color-field"><span>Стекло</span><select id="s_glassLook"></select></label>
+            <div id="s_glassBody"></div>
+          </div>
+        </details>
+        <details class="scene-group" id="s_groupWall">
+          <summary>Стена</summary>
+          <div class="scene-group-body">
+        <details class="adjust-panel" id="s_wallColorPanel">
+          <summary>Цвет стены</summary>
+          <div class="adjust-body">
+            <div class="wall-swatches" id="s_wallSwatches"></div>
+          </div>
+        </details>
+        <details class="adjust-panel" id="s_wallTexturePanel">
+          <summary>Текстура стены</summary>
+          <div class="adjust-body">
+            <div class="wall-textures" id="s_wallTextures"></div>
+          </div>
+        </details>
+        <!-- Тон стены — те же ползунки, что и у плёнки в «Изменение цен»
+             (см. colorRow/filterCss): готовых образцов цвета всегда мало,
+             а так любой из них подгоняется под реальную стену. Нативный
+             выбор цвета (<input type="color">) убран по просьбе заказчика
+             — системное окно «Тон/Насыщенность/Значение» ему не подошло.
+             Каналов R/G/B здесь нет: стену подгоняют на глаз четырьмя
+             ползунками, а разбор цвета по каналам на телефоне только занимал
+             место (у плёнки в «Изменение цен» он остался). Сами поля
+             state.wallAdjust.cr/cg/cb сохранены — они нужны фильтру и
+             остаются нейтральными. -->
+        <details class="adjust-panel wall-adjust-panel" id="s_wallAdjustPanel">
+          <summary>Настроить тон стены</summary>
+          <div class="adjust-body">
+            <div class="arow"><span>Оттенок</span><input type="range" class="adj wall-adj" data-k="h" min="-90" max="90" step="1" value="0"></div>
+            <div class="arow"><span>Насыщенность</span><input type="range" class="adj wall-adj" data-k="s" min="0" max="300" step="1" value="100"></div>
+            <div class="arow"><span>Яркость</span><input type="range" class="adj wall-adj" data-k="b" min="30" max="200" step="1" value="100"></div>
+            <div class="arow"><span>Контраст</span><input type="range" class="adj wall-adj" data-k="c" min="30" max="200" step="1" value="100"></div>
+            <div class="adjust-actions">
+              <button type="button" id="s_wallAdjustReset">Сбросить тон</button>
+            </div>
           </div>
         </details>
           </div>
@@ -1617,15 +1626,6 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
             <p class="parts-hint info-text" id="s_filmInfo">Выберите цвет плёнки — дверь выше переключится на него. «Загрузить файл» кладёт своё фото плёнки, «Удалить последний файл» возвращает прежнее. Ползунки заблокированы, пока не нажмёшь «Изменить»; «Сохранить» применяет тон к двери. <b>Матовость</b> убирает «экранную» яркость: поднимает тёмное, притушает светлое и смягчает цвет — плёнка в руках матовее, чем на экране.</p>
             <label class="field film-color-field"><span>Цвет плёнки</span><select id="s_filmColor"></select></label>
             <div id="s_filmBody"></div>
-          </div>
-        </details>
-        <!-- «Стекло» — цвет и блеск стёкол каталога (DB.glassLooks): основа и
-             ползунки как у плёнки. Содержимое строит renderGlassPanel. -->
-        <details class="scene-group" id="s_groupGlass">
-          <summary>Стекло</summary>
-          <div class="scene-group-body">
-            <label class="field film-color-field"><span>Стекло</span><select id="s_glassLook"></select></label>
-            <div id="s_glassBody"></div>
           </div>
         </details>
         <button type="button" id="sceneBackBtn" class="btn-goto">← Возврат на страницу расчёта</button>
@@ -6564,7 +6564,7 @@ const DB = {
     // их края вплотную, и выставить зазор было нельзя (жалоба заказчика).
     // У полотна его тоже нет: его края должны лечь на край двери на снимке, а
     // не на край случайной детали рядом. Остальные детали прилипают, как раньше.
-    const snap = p.k === "p" || p.k === "d" ? (v) => v : partsSnap;
+    const snap = p.k === "p" || p.k === "d" || p.k === "t" ? (v) => v : partsSnap;
     if (partsDrag.mode === "move") {
       let nx = Math.max(0, Math.min(1 - p.w, fx - partsDrag.dx));
       let ny = Math.max(0, Math.min(1 - p.h, fy - partsDrag.dy));
@@ -6693,7 +6693,11 @@ const DB = {
         updatePartsEditor();
         return;
       }
-      if (partsSel !== null && doc.parts[partsSel] && !refActive && kind !== "d") doc.parts[partsSel].k = kind;
+      // «Тень» не превращает выбранную деталь в тень (и тень не превращается в
+      // другую): она всегда добавляется новой (жалоба заказчика: тень тащила
+      // за собой наличник и стойку).
+      const selIsShade = partsSel !== null && doc.parts[partsSel] && doc.parts[partsSel].k === "t";
+      if (partsSel !== null && doc.parts[partsSel] && !refActive && kind !== "d" && kind !== "t" && !selIsShade) doc.parts[partsSel].k = kind;
       else {
         doc.parts.push(newPart(kind, doc.parts));
         partsSel = doc.parts.length - 1;
