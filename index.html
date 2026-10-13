@@ -5038,8 +5038,17 @@ const DB = {
       const glassPart = part.k === "g";
       // Плёнка непрозрачна (правило заказчика): под ней со снимка не видно
       // ничего — ни штрихов, ни хвостов, ни полос, ни крапин. От снимка берём
-      // ничего, — а стыки деталей рисуем сами: светлая фаска сверху и слева,
+      // только общий свет по детали — поле, размытое на 40 мм и ограниченное
+      // ±3 %, — а стыки деталей рисуем сами: светлая фаска сверху и слева,
       // тень снизу и справа, 4 мм. Тени — деталью «Тень».
+      let softRef = 1;
+      if (!glassPart) {
+        const ss = new Float32Array(Math.ceil((x1 - x0) / 4) * Math.ceil((y1 - y0) / 4));
+        let sk = 0;
+        for (let y = y0; y < y1; y += 4) for (let x = x0; x < x1; x += 4) ss[sk++] = softField[rAt(x, y)];
+        const ssv = ss.subarray(0, sk); ssv.sort();
+        softRef = ssv[ssv.length >> 1] || 1;
+      }
       const bevX = Math.max(1, 4 * pxPerMmX), bevY = Math.max(1, 4 * pxPerMmY);
       const haloPad = glassPart ? null : haloRects;
       const glassFeather = Math.max(2, 6 * pxPerMmX), glassKX = pxPerMmX / pxPerMmY;
@@ -5057,9 +5066,8 @@ const DB = {
           // — это его собственный рисунок, терять их нельзя.
           const ri = rrow + colMap[x];
           if (!glassPart) {
-            // Свет со снимка не берём совсем: даже размытый на 40 мм он давал
-            // на белой эмали тёмные пятна («акварель поверх старой краски»).
-            let r2 = 1;
+            let r2 = softField[ri] / softRef;
+            r2 = r2 < 0.97 ? 0.97 : r2 > 1.03 ? 1.03 : r2;
             const dt = (y - y0) / bevY, db = (y1 - 1 - y) / bevY, dl = (x - x0) / bevX, dr = (x1 - 1 - x) / bevX;
             if (dt < 1) r2 *= 1 + 0.08 * (1 - dt);
             if (dl < 1) r2 *= 1 + 0.06 * (1 - dl);
