@@ -4423,26 +4423,28 @@ const DB = {
     cx.fillRect(wx + ww / 2 - 3, wy, 6, wh); cx.fillRect(wx, wy + wh / 2 - 3, ww, 6);
     cx.fillRect(wx - 10, wy + wh + 5, ww + 20, 7);
     cx.fillStyle = "rgba(60,50,40,0.45)"; cx.fillRect(wx - 10, wy + wh + 12, ww + 20, 2);        // тень подоконника
-    // Противоположная стена: плинтус и пол В ПЕРСПЕКТИВЕ — те же ряды досок и
-    // цвета, что у пола сцены (sceneDefs/buildScene): ряды выше к низу, швы в
-    // шахматном порядке. Ваза с калой стоит у этой стены, далеко от зеркала.
+    // Пол в зеркале — перспектива НАОБОРОТ к полу сцены (просьба заказчика):
+    // у двери (внизу зеркала) доски узкие, короткие и светлые, к зрителю
+    // (вверх, к стене) — шире, длиннее и темнее. Цвета те же, что у пола сцены
+    // (#d7b57d → #a2703f), ряды и шахматные швы — те же.
     cx.fillStyle = "rgb(214,208,196)"; cx.fillRect(0, h * 0.7, w, h * 0.014);
     const fy0 = h * 0.714, fh = h - fy0;
     const fl = cx.createLinearGradient(0, fy0, 0, h);
-    fl.addColorStop(0, "#d7b57d"); fl.addColorStop(1, "#a2703f");
+    fl.addColorStop(0, "#a2703f"); fl.addColorStop(1, "#d7b57d");
     cx.fillStyle = fl; cx.fillRect(0, fy0, w, fh);
+    const rowK = [0.12 + 0.16 * 3, 0.12 + 0.16 * 2, 0.12 + 0.16, 0.12], rowSum = rowK.reduce((x, y) => x + y, 0);
     let py = fy0;
     for (let r = 0; r < 4; r++) {
-      const y1 = Math.min(h, py + fh * (0.12 + 0.16 * r));
+      const y1 = Math.min(h, py + fh * rowK[r] / rowSum);
       cx.fillStyle = "rgba(60,38,18,0.35)"; cx.fillRect(0, y1, w, 1.2);
       cx.fillStyle = "rgba(255,232,190,0.18)"; cx.fillRect(0, y1 + 1.2, w, 0.8);
-      const step = w * (0.2 + 0.045 * r), off = (r % 2) * (step / 2);
+      const step = w * (0.2 + 0.045 * (3 - r)), off = (r % 2) * (step / 2);
       cx.fillStyle = "rgba(60,38,18,0.28)";
       for (let x = off; x < w; x += step) cx.fillRect(x, py, 1, y1 - py);
       py = y1;
     }
     // ваза (высокая, узкая, стекло) с одной каллой
-    const vx = w * 0.32, vy = h * 0.8;
+    const vx = w * 0.32, vy = h * 0.735;
     cx.fillStyle = "rgba(40,24,10,0.32)"; cx.beginPath(); cx.ellipse(vx, vy + 2, 13, 3, 0, 0, Math.PI * 2); cx.fill();
     const vg = cx.createLinearGradient(vx - 9, 0, vx + 9, 0);
     vg.addColorStop(0, "rgb(120,152,176)"); vg.addColorStop(0.45, "rgb(206,226,238)"); vg.addColorStop(1, "rgb(96,128,152)");
