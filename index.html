@@ -3429,12 +3429,15 @@ const DB = {
     const gloss = Math.max(0, Math.min(100, Number(look.gloss) || 0));
     const hex = glassLookHex(look);
     const c = partsRgb(hex);
-    // Тёмное стекло красится ровным цветом, без бликов и отражений со снимка
-    // (чёрное должно быть чёрным — жалоба заказчика); светлое сохраняет рисунок
-    // и блики снимка. refl — сила бликовой полосы поверх (см. paintPartsLeaf).
+    // Стекло без отражения комнаты (сатин, чёрное, белое и свои с «Отражение
+    // комнаты» = 0) и тёмное красится ровным цветом, без бликов и отражений со
+    // снимка: что отражалось на фото, на двери быть не должно, а ползунки цвета
+    // должны быть видны (раньше светлый цвет с рельефом снимка уходил в белое, и
+    // сатин «почти не менялся» — жалоба заказчика). Зеркало и золото сохраняют
+    // рисунок снимка. refl — сила бликовой полосы поверх (см. paintPartsLeaf).
     const lum = 0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2];
     const room = Math.max(0, Math.min(100, Number(look.room) || 0));
-    return { fill: hex, deep: hex, gloss: gloss / 100, refl: gloss / 100 * GLASS_REFL_MAX, flat: lum < 45,
+    return { fill: hex, deep: hex, gloss: gloss / 100, refl: gloss / 100 * GLASS_REFL_MAX, flat: lum < 45 || room <= 0,
       room: room / 100, wall: state.wallColor || "#e8e2d5" };
   }
 
@@ -4411,7 +4414,7 @@ const DB = {
     g.addColorStop(1, mix(wall, 0.08, [0, 0, 0]));
     cx.fillStyle = g; cx.fillRect(0, 0, w, h * 0.7);
     // окно: чёткая рама, переплёт, подоконник
-    const wx = w * 0.32, wy = h * 0.13, ww = w * 0.36, wh = h * 0.4;
+    const wx = w * 0.36, wy = h * 0.17, ww = w * 0.28, wh = h * 0.3;
     cx.fillStyle = "rgb(250,249,244)"; cx.fillRect(wx - 5, wy - 5, ww + 10, wh + 10);
     const sky = cx.createLinearGradient(0, wy, 0, wy + wh);
     sky.addColorStop(0, "rgb(190,218,244)"); sky.addColorStop(0.6, "rgb(235,244,252)"); sky.addColorStop(1, "rgb(255,255,250)");
@@ -4420,38 +4423,30 @@ const DB = {
     cx.fillRect(wx + ww / 2 - 3, wy, 6, wh); cx.fillRect(wx, wy + wh / 2 - 3, ww, 6);
     cx.fillRect(wx - 10, wy + wh + 5, ww + 20, 7);
     cx.fillStyle = "rgba(60,50,40,0.45)"; cx.fillRect(wx - 10, wy + wh + 12, ww + 20, 2);        // тень подоконника
-    // шторы «живые»: складки волнами, подхват посередине, снизу расходятся
-    const tie = h * 0.4, top = h * 0.085, bot = h * 0.68;
-    const curtain = (xa, dir) => {
-      for (let y = Math.round(top); y < bot; y++) {
-        const f = (y - top) / (bot - top);
-        const pinch = 1 - 0.22 * Math.exp(-Math.pow((y - tie) / (h * 0.07), 2));
-        const flare = 1 + 0.3 * Math.max(0, f - 0.5);
-        const width = w * 0.19 * pinch * flare;
-        const sway = 2.2 * Math.sin(y * 0.03) + 1.1 * Math.sin(y * 0.085 + 1);
-        const x0 = xa + dir * sway;
-        const xs = dir > 0 ? x0 : x0 - width, xe = dir > 0 ? x0 + width : x0;
-        for (let x = Math.round(xs); x < xe; x++) {
-          const t = (x - xs) / Math.max(1, width);
-          const fold = 0.5 + 0.5 * Math.sin(t * 15 + Math.sin(y * 0.03) * 1.8 + f * 2);
-          const edge = Math.min(1, Math.min(t, 1 - t) * 8);
-          const k = 0.15 + 0.85 * fold * (0.55 + 0.45 * edge);
-          cx.fillStyle = "rgb(" + [Math.round(138 + 78 * k), Math.round(112 + 68 * k), Math.round(86 + 56 * k)].join(",") + ")";
-          cx.fillRect(x, y, 1, 1);
-        }
-      }
-    };
-    curtain(w * 0.095, 1); curtain(w * 0.905, -1);
-    cx.fillStyle = "rgb(84,62,44)"; cx.fillRect(w * 0.06, top - 7, w * 0.88, 5);                       // карниз
-    cx.fillStyle = "rgb(70,50,34)"; cx.fillRect(w * 0.05, top - 9, 6, 9); cx.fillRect(w * 0.95 - 6, top - 9, 6, 9);
-    // плинтус (тонкий, без яркой полосы) и пол с досками
+    // карниз и шторы убраны: рисунок занимал слишком много места на зеркале
+    // (жалоба заказчика). Остались стена, небольшое окно, плинтус, пол цвета
+    // пола сцены и ваза с цветком на полу.
     cx.fillStyle = "rgb(214,208,196)"; cx.fillRect(0, h * 0.7, w, h * 0.014);
     const fl = cx.createLinearGradient(0, h * 0.714, 0, h);
-    fl.addColorStop(0, "rgb(176,136,92)"); fl.addColorStop(1, "rgb(120,86,52)");
+    fl.addColorStop(0, "#d7b57d"); fl.addColorStop(1, "#a2703f");          // как пол сцены (sceneDefs)
     cx.fillStyle = fl; cx.fillRect(0, h * 0.714, w, h * 0.286);
-    cx.fillStyle = "rgba(60,40,22,0.5)";
-    for (let y = h * 0.78; y < h; y += h * 0.07) cx.fillRect(0, y, w, 1.5);
-    for (let k = 0; k < 7; k++) cx.fillRect(w * (0.08 + 0.15 * k), h * (0.73 + 0.07 * (k % 3)), 1.5, h * 0.07);
+    cx.fillStyle = "rgba(60,38,18,0.35)";
+    for (let y = h * 0.78; y < h; y += h * 0.07) cx.fillRect(0, y, w, 1.2);
+    for (let k = 0; k < 7; k++) cx.fillRect(w * (0.08 + 0.15 * k), h * (0.73 + 0.07 * (k % 3)), 1.2, h * 0.07);
+    // ваза с цветком на полу
+    const vx = w * 0.3, vy = h * 0.9;
+    cx.fillStyle = "rgba(40,24,10,0.35)"; cx.beginPath(); cx.ellipse(vx, vy + 3, 17, 4, 0, 0, Math.PI * 2); cx.fill();
+    cx.fillStyle = "rgb(94,126,160)"; cx.beginPath();
+    cx.moveTo(vx - 7, vy - 36); cx.quadraticCurveTo(vx - 17, vy - 14, vx - 11, vy); cx.lineTo(vx + 11, vy);
+    cx.quadraticCurveTo(vx + 17, vy - 14, vx + 7, vy - 36); cx.closePath(); cx.fill();
+    cx.fillStyle = "rgba(255,255,255,0.35)"; cx.fillRect(vx - 5, vy - 30, 3, 26);
+    const blooms = [[-10, -54, "rgb(214,64,92)"], [0, -70, "rgb(240,176,48)"], [11, -50, "rgb(214,64,92)"]];
+    cx.strokeStyle = "rgb(60,120,60)"; cx.lineWidth = 2.2;
+    blooms.forEach(([dx, dy]) => { cx.beginPath(); cx.moveTo(vx, vy - 34); cx.quadraticCurveTo(vx + dx * 0.3, vy - 52, vx + dx, vy + dy - 16); cx.stroke(); });
+    blooms.forEach(([dx, dy, col]) => {
+      cx.fillStyle = col; cx.beginPath(); cx.arc(vx + dx, vy + dy - 16, 6.5, 0, Math.PI * 2); cx.fill();
+      cx.fillStyle = "rgb(250,230,150)"; cx.beginPath(); cx.arc(vx + dx, vy + dy - 16, 2.2, 0, Math.PI * 2); cx.fill();
+    });
     return { w: w, h: h, data: cx.getImageData(0, 0, w, h).data };
   }
 
@@ -4917,6 +4912,7 @@ const DB = {
     const glassRgb = partsRgb(glass.flat && glass.deep ? glass.deep : glass.fill);
     const roomRefl = glass.room > 0 ? glassRoomReflection(glass.wall) : null;
     const reflPx = [0, 0, 0];
+    const reflTint = glassRgb.map((v) => Math.min(1, v / 230));
     // Свет. Затемнение и подсветку до четверти считаем умножением: так цвет
     // плёнки остаётся собой, и деталь садится ровно в тот цвет, что выбран в
     // расчёте. Раньше любое превышение уводило к белому, и филёнка — а она
@@ -5061,7 +5057,9 @@ const DB = {
           if (glassPart && roomRefl) {
             glassReflAt(roomRefl, x / cw, y / ch, reflPx);
             const tr = glass.room * 0.92;
-            d[i] += (reflPx[0] - d[i]) * tr; d[i + 1] += (reflPx[1] - d[i + 1]) * tr; d[i + 2] += (reflPx[2] - d[i + 2]) * tr;
+            // Отражение окрашено цветом стекла (золото — золотое, зеркало —
+            // светлое): иначе ползунки цвета на зеркале не были бы видны.
+            d[i] += (reflPx[0] * reflTint[0] - d[i]) * tr; d[i + 1] += (reflPx[1] * reflTint[1] - d[i + 1]) * tr; d[i + 2] += (reflPx[2] * reflTint[2] - d[i + 2]) * tr;
           }
           if (glassPart && glass.refl > 0) {
             // Блик: мягкая диагональная полоса поверх стекла, как на образце
