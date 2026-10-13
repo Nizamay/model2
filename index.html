@@ -3932,9 +3932,12 @@ const DB = {
     rv: { w: CASING_MM, h: LEAF_MM.h - PROFILE_MM * 2, free: true },
     rh: { w: INNER_MM, h: CASING_MM, free: true },
     // Наличник в рамке стоит от пола до верха кадра, верхний лежит поперёк
-    // во всю ширину рамки — так он и стоит на настоящей двери.
-    nv: { w: CASING_MM, h: FRAME_MM.h - CASING_MM, fix: true },
-    nh: { w: FRAME_MM.w, h: CASING_MM, fix: true },
+    // во всю ширину рамки — так он и стоит на настоящей двери. «+ Каркас»
+    // ставит его по правилам, дальше его двигают и тянут за углы, как стойки:
+    // на снимках наличник не всегда там, где по правилам (жалоба заказчика:
+    // сверху оставалась щель, а поправить было нельзя).
+    nv: { w: CASING_MM, h: FRAME_MM.h - CASING_MM, free: true },
+    nh: { w: FRAME_MM.w, h: CASING_MM, free: true },
     t: { w: 40, h: 1800, free: true },
     z: { w: 220, h: 400, free: true }
   };
@@ -7001,7 +7004,7 @@ const DB = {
     // их края вплотную, и выставить зазор было нельзя (жалоба заказчика).
     // У полотна его тоже нет: его края должны лечь на край двери на снимке, а
     // не на край случайной детали рядом. Остальные детали прилипают, как раньше.
-    const snap = p.k === "p" || p.k === "s" || p.k === "d" || p.k === "t" || p.k === "z" ? (v) => v : partsSnap;
+    const snap = ["p", "s", "d", "t", "z", "nv", "nh"].includes(p.k) ? (v) => v : partsSnap;
     if (partsDrag.mode === "inner") {
       const W = p.w * FRAME_MM.w, H = p.h * FRAME_MM.h;
       const ins = zoneInsets(p).slice();
