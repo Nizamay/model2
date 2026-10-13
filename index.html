@@ -596,6 +596,15 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 .part.k-t { background: rgba(0,0,0,.18); }
 .part.k-z { background: rgba(255,120,0,.14); border-style: dashed; }
 .part .zin { position: absolute; border: 1px dashed rgba(160,60,0,.95); pointer-events: none; }
+/* Углы внутреннего края фрезеровки: квадратики стоят ВНУТРИ, касаясь угла. */
+.part .zin .phi-nw { left: 0; top: 0; }
+.part .zin .phi-ne { right: 0; top: 0; }
+.part .zin .phi-sw { left: 0; bottom: 0; }
+.part .zin .phi-se { right: 0; bottom: 0; }
+/* Каркас под «Рельефом и тенями» — тонкий пунктир, только ориентир. */
+.part-guide { position: absolute; box-sizing: border-box; border: 1px dashed rgba(0,0,0,.55); pointer-events: none; }
+.parts-zvar { display: flex; flex-wrap: wrap; gap: 4px; justify-content: center; width: 100%; }
+.parts-zvar button.on { background: rgba(255,120,0,.22); border-color: rgba(210,90,0,.8); font-weight: 600; }
 .part.k-z > span { background: rgba(210,90,0,.9); }
 .parts-kind.k-z { background: rgba(255,120,0,.16); }
 .part.k-t > span { background: rgba(40,40,40,.85); }
@@ -3924,7 +3933,7 @@ const DB = {
     nv: { w: CASING_MM, h: FRAME_MM.h - CASING_MM, fix: true },
     nh: { w: FRAME_MM.w, h: CASING_MM, fix: true },
     t: { w: 40, h: 1800, free: true },
-    z: { w: 60, h: 600, free: true }
+    z: { w: 220, h: 400, free: true }
   };
 
   // Точное место детали в рамке, в долях кадра. Всё, что задано правилами,
@@ -4000,6 +4009,22 @@ const DB = {
   // вообще. Второй экземпляр (правая стойка, нижняя царга) ставится напротив
   // первого. Филёнка, стекло и раскладка — свои у каждой модели, поэтому
   // появляются в поле между стойками и царгами и дальше ставятся руками.
+  // Отступы внутреннего края фрезеровки, мм: [слева, сверху, справа, снизу].
+  // Ползунок «Ширина рамки» задаёт все четыре (b), жёлтые углы внутри — по два
+  // (bi). Вид v: "ring" — рамка «квадрат в квадрате», "full" — сплошная зона.
+  function zoneInsets(p) {
+    if (Array.isArray(p.bi) && p.bi.length === 4) return p.bi;
+    const b = p.b == null ? 25 : p.b;
+    return [b, b, b, b];
+  }
+  function zoneInnerPct(p) {
+    if (p.v === "full") return null;
+    const [l, t, r, b] = zoneInsets(p);
+    const W = Math.max(1e-6, p.w) * FRAME_MM.w, H = Math.max(1e-6, p.h) * FRAME_MM.h;
+    if (l + r >= W - 2 || t + b >= H - 2) return null;
+    return { l: l / W * 100, t: t / H * 100, r: r / W * 100, b: b / H * 100 };
+  }
+
   function newPart(kind, parts) {
     const L = leafOfParts(parts);
     const sc = partsScale(L);
@@ -5055,11 +5080,11 @@ const DB = {
     // детали, внутренний — отступ b мм (по умолчанию 25). Рельеф снимка — только
     // в полосе между ними; если b не меньше половины стороны — во всей зоне.
     const reliefZones = doc.parts.filter((p) => p.k === "z").map((p) => {
-      const bmm = p.b == null ? 25 : p.b;
+      const [bl, bt, br, bb] = zoneInsets(p);
       const x0 = p.x * cw, x1 = (p.x + p.w) * cw, y0 = p.y * ch, y1 = (p.y + p.h) * ch;
-      const bx = bmm * pxPerMmX, by = bmm * pxPerMmY;
-      const hasIn = x1 - x0 > 2 * bx + 2 && y1 - y0 > 2 * by + 2;
-      return { x0, x1, y0, y1, hasIn, ix0: x0 + bx, ix1: x1 - bx, iy0: y0 + by, iy1: y1 - by };
+      const ix0 = x0 + bl * pxPerMmX, ix1 = x1 - br * pxPerMmX, iy0 = y0 + bt * pxPerMmY, iy1 = y1 - bb * pxPerMmY;
+      const hasIn = p.v !== "full" && ix1 - ix0 > 2 && iy1 - iy0 > 2;
+      return { x0, x1, y0, y1, hasIn, ix0, ix1, iy0, iy1 };
     });
     const zoneFeather = Math.max(1, 3 * pxPerMmX);
     const haloRects = glassRects.filter((g) => g.h * ch / pxPerMmY < 80).map((g) => ({
@@ -6602,16 +6627,19 @@ const DB = {
     const pct = (v) => (v * 100).toFixed(3) + "%";
     if (els) {
       els.layer.innerHTML = parts.map((p, i) => {
-        if (!partsVisible(p)) return "";
+        // В «Рельефе и тенях» собранный каркас виден тонким пунктиром, без
+        // букв и заливки, и пальцем не берётся — по нему ставят фрезеровку и тени.
+        if (!partsVisible(p)) return partsMode === "relief" && PART_KINDS[p.k] && !PART_KINDS[p.k].overlay
+          ? `<div class="part-guide" style="left:${pct(p.x)};top:${pct(p.y)};width:${pct(p.w)};height:${pct(p.h)}"></div>` : "";
         const sel = i === partsSel;
         const handles = sel && partsResizable(p.k)
           ? ["nw", "ne", "sw", "se"].map((c) => `<i class="ph ph-${c}"></i>`).join("") : "";
         return `<div class="part k-${p.k}${sel ? " sel" : ""}" data-i="${i}"`
           + ` style="left:${pct(p.x)};top:${pct(p.y)};width:${pct(p.w)};height:${pct(p.h)}">`
           + (p.k === "z" ? (() => {
-            const bmm = p.b == null ? 25 : p.b;
-            const ix = Math.min(50, bmm / FRAME_MM.w / Math.max(1e-6, p.w) * 100), iy = Math.min(50, bmm / FRAME_MM.h / Math.max(1e-6, p.h) * 100);
-            return ix >= 50 || iy >= 50 ? "" : `<i class="zin" style="left:${ix}%;right:${ix}%;top:${iy}%;bottom:${iy}%"></i>`;
+            const z = zoneInnerPct(p);
+            const ih = sel ? ["nw", "ne", "sw", "se"].map((c) => `<i class="ph phi-${c}"></i>`).join("") : "";
+            return z ? `<i class="zin" style="left:${z.l}%;right:${z.r}%;top:${z.t}%;bottom:${z.b}%">${ih}</i>` : "";
           })() : "")
           + `<span>${PART_KINDS[p.k].short}</span>${handles}</div>`;
       }).join("");
@@ -6622,8 +6650,14 @@ const DB = {
       // переделывают рамку — подпись должна говорить именно это.
       const refActive = partsSel !== null && parts[partsSel] && parts[partsSel].k === "d";
       const lead = partsSel === null || refActive || partsMode === "relief" ? "Добавить:" : "Сделать:";
-      kinds.innerHTML = `<span class="parts-lead">${lead}</span>` + Object.keys(PART_KINDS).filter((k) => partsVisible({ k: k })).map((k) =>
-        `<button type="button" class="parts-kind k-${k}" data-kind="${k}">${PART_KINDS[k].name}</button>`).join("");
+      // В «Рельефе и тенях» вместо одной «Тени» — готовые полосы разной
+      // толщины (вдоль и поперёк); дальше их тянут за углы, как любую деталь.
+      kinds.innerHTML = `<span class="parts-lead">${lead}</span>` + (partsMode === "relief"
+        ? `<button type="button" class="parts-kind k-z" data-kind="z">Фрезеровка</button>`
+          + [["v", 8], ["v", 20], ["v", 50], ["h", 8], ["h", 20], ["h", 50]].map(([d, w]) =>
+            `<button type="button" class="parts-kind k-t" data-kind="t" data-dir="${d}" data-tw="${w}">Тень ${d === "v" ? "↕" : "↔"} ${w}</button>`).join("")
+        : Object.keys(PART_KINDS).filter((k) => partsVisible({ k: k })).map((k) =>
+          `<button type="button" class="parts-kind k-${k}" data-kind="${k}">${PART_KINDS[k].name}</button>`).join(""));
     }
     const sliders = document.getElementById("s_partsSliders");
     if (sliders) {
@@ -6635,7 +6669,12 @@ const DB = {
       sliders.innerHTML = leafEdit
         ? `<button type="button" data-act="leafSave">✓ Сохранить полотно</button><button type="button" data-act="leafCancel">Отмена</button>`
         : (sT ? `<label class="parts-shade"><span>Сила тени <b>${tv}</b></span><input type="range" min="0" max="100" step="1" value="${tv}" data-shade></label>` : "")
-          + (sZ ? `<label class="parts-shade"><span>Ширина рамки, мм <b>${zv}</b></span><input type="range" min="3" max="200" step="1" value="${zv}" data-zw></label>` : "");
+          + (sZ ? `<div class="parts-zvar">`
+            + [["ring", "Рамка"], ["full", "Сплошная"], ["groove", "Канавка 6 мм"]].map(([v, n]) => {
+              const cur = sZ.v === "full" ? "full" : "ring";
+              return `<button type="button" data-act="zvar" data-v="${v}" class="${v === cur ? "on" : ""}">${n}</button>`;
+            }).join("") + `</div>`
+            + (sZ.v === "full" ? "" : `<label class="parts-shade"><span>Ширина рамки, мм <b>${zv}</b></span><input type="range" min="3" max="200" step="1" value="${zv}" data-zw></label>`) : "");
     }
     partsFabSync();
     if (tools) {
@@ -6712,6 +6751,14 @@ const DB = {
       // оси (см. .ph в CSS): целимся в него, а не в сам угол.
       const H2 = PARTS_HANDLE_PX / 2;
       const corners = [["nw", p.x, p.y, -1, -1], ["ne", p.x + p.w, p.y, 1, -1], ["sw", p.x, p.y + p.h, -1, 1], ["se", p.x + p.w, p.y + p.h, 1, 1]];
+      // У фрезеровки-рамки — ещё четыре угла внутреннего края, квадратики внутрь.
+      if (p.k === "z") {
+        const z = zoneInnerPct(p);
+        if (z) {
+          const ix0 = p.x + p.w * z.l / 100, ix1 = p.x + p.w * (1 - z.r / 100), iy0 = p.y + p.h * z.t / 100, iy1 = p.y + p.h * (1 - z.b / 100);
+          corners.push(["i-nw", ix0, iy0, 1, 1], ["i-ne", ix1, iy0, -1, 1], ["i-sw", ix0, iy1, 1, -1], ["i-se", ix1, iy1, -1, -1]);
+        }
+      }
       let near = null;
       corners.forEach(([name, cx2, cy2, sx, sy]) => {
         const dx = fx * box.width - (cx2 * box.width + sx * H2), dy = fy * box.height - (cy2 * box.height + sy * H2);
@@ -6726,7 +6773,7 @@ const DB = {
         // Палец лежит на квадратике снаружи угла: запоминаем, насколько он
         // отстоит от самого угла, и ведём угол на столько же позади пальца —
         // иначе при первом движении угол прыгнул бы под палец.
-        partsDragStart({ mode: "resize", i: partsSel, corner: near.name, modelId: ctx.model.id, moved: false,
+        partsDragStart({ mode: near.name.startsWith("i-") ? "inner" : "resize", i: partsSel, corner: near.name.replace("i-", ""), modelId: ctx.model.id, moved: false,
           offX: near.cx - fx, offY: near.cy - fy }, doc, els, box);
         els.stage.setPointerCapture(e.pointerId);
         e.preventDefault();
@@ -6932,6 +6979,20 @@ const DB = {
     // У полотна его тоже нет: его края должны лечь на край двери на снимке, а
     // не на край случайной детали рядом. Остальные детали прилипают, как раньше.
     const snap = p.k === "p" || p.k === "s" || p.k === "d" || p.k === "t" || p.k === "z" ? (v) => v : partsSnap;
+    if (partsDrag.mode === "inner") {
+      const W = p.w * FRAME_MM.w, H = p.h * FRAME_MM.h;
+      const ins = zoneInsets(p).slice();
+      const mmX = (fx - p.x) * FRAME_MM.w, mmY = (fy - p.y) * FRAME_MM.h;
+      const c = partsDrag.corner;
+      if (c === "nw" || c === "sw") ins[0] = Math.max(1, Math.min(W - ins[2] - 6, mmX));
+      else ins[2] = Math.max(1, Math.min(W - ins[0] - 6, W - mmX));
+      if (c === "nw" || c === "ne") ins[1] = Math.max(1, Math.min(H - ins[3] - 6, mmY));
+      else ins[3] = Math.max(1, Math.min(H - ins[1] - 6, H - mmY));
+      p.bi = ins.map((v) => Math.round(v * 10) / 10);
+      drag.moved = true;
+      partsZinApply(p, drag.el && drag.el.querySelector(".zin"));
+      return;
+    }
     if (partsDrag.mode === "move") {
       let nx = Math.max(0, Math.min(1 - p.w, fx - partsDrag.dx));
       let ny = Math.max(0, Math.min(1 - p.h, fy - partsDrag.dy));
@@ -6969,7 +7030,15 @@ const DB = {
       box2.style.top = (p.y * 100).toFixed(3) + "%";
       box2.style.width = (p.w * 100).toFixed(3) + "%";
       box2.style.height = (p.h * 100).toFixed(3) + "%";
+      if (p.k === "z") partsZinApply(p, box2.querySelector(".zin"));
     }
+  }
+
+  function partsZinApply(p, zin) {
+    if (!zin) return;
+    const z = zoneInnerPct(p);
+    zin.style.display = z ? "" : "none";
+    if (z) { zin.style.left = z.l + "%"; zin.style.right = z.r + "%"; zin.style.top = z.t + "%"; zin.style.bottom = z.b + "%"; }
   }
 
   function onPartsPointerUp(e) {
@@ -7077,7 +7146,16 @@ const DB = {
       const selIsShade = partsSel !== null && doc.parts[partsSel] && PART_KINDS[doc.parts[partsSel].k] && PART_KINDS[doc.parts[partsSel].k].overlay;
       if (partsSel !== null && doc.parts[partsSel] && !refActive && kind !== "d" && !PART_KINDS[kind].overlay && !selIsShade) doc.parts[partsSel].k = kind;
       else {
-        doc.parts.push(newPart(kind, doc.parts));
+        const np = newPart(kind, doc.parts);
+        if (kind === "t" && btn.dataset.tw) {
+          const sc = partsScale(leafOfParts(doc.parts)), tw = Number(btn.dataset.tw);
+          const cx = np.x + np.w / 2, cy = np.y + np.h / 2;
+          if (btn.dataset.dir === "h") { np.w = Math.min(1, INNER_MM * sc.x); np.h = Math.max(0.002, tw * sc.y); }
+          else { np.w = Math.max(0.002, tw * sc.x); np.h = Math.min(1, (LEAF_MM.h - PROFILE_MM * 2) * sc.y); }
+          np.x = Math.max(0, Math.min(1 - np.w, cx - np.w / 2));
+          np.y = Math.max(0, Math.min(1 - np.h, cy - np.h / 2));
+        }
+        doc.parts.push(np);
         partsSel = doc.parts.length - 1;
       }
       // Перекраску откладываем (см. schedulePartsRedraw): деталь сразу
@@ -7109,11 +7187,18 @@ const DB = {
       });
       partsSel = null;
       savePartsDoc(doc, ctx.model.id, true);
+    } else if (act === "zvar" && partsSel !== null && doc.parts[partsSel] && doc.parts[partsSel].k === "z") {
+      const p = doc.parts[partsSel], v = btn.dataset.v;
+      if (v === "full") p.v = "full";
+      else { delete p.v; if (v === "groove") { p.b = 6; delete p.bi; } }
+      savePartsDoc(doc, ctx.model.id, true);
     } else if (act === "copy" && partsSel !== null && doc.parts[partsSel]) {
       const p = doc.parts[partsSel];
       const cp = { x: Math.min(0.98 - p.w, p.x + 0.05), y: Math.min(0.98 - p.h, p.y + 0.05), w: p.w, h: p.h, k: p.k };
       if (p.a != null) cp.a = p.a;
       if (p.b != null) cp.b = p.b;
+      if (p.v) cp.v = p.v;
+      if (Array.isArray(p.bi)) cp.bi = p.bi.slice();
       doc.parts.push(cp);
       partsSel = doc.parts.length - 1;
       savePartsDoc(doc, ctx.model.id, true);
@@ -10891,13 +10976,9 @@ const DB = {
         const doc = ctx && partsOf(ctx.model.id);
         if (!doc || partsSel === null || !doc.parts[partsSel] || doc.parts[partsSel].k !== "z") return;
         doc.parts[partsSel].b = Number(rz.value);
+        delete doc.parts[partsSel].bi;
         const bb = rz.parentNode.querySelector("b"); if (bb) bb.textContent = rz.value;
-        const p = doc.parts[partsSel], zin = document.querySelector('.parts-layer .part[data-i="' + partsSel + '"] .zin');
-        if (zin) {
-          const ix = Math.min(50, p.b / FRAME_MM.w / p.w * 100), iy = Math.min(50, p.b / FRAME_MM.h / p.h * 100);
-          zin.style.left = zin.style.right = ix + "%"; zin.style.top = zin.style.bottom = iy + "%";
-          zin.style.display = ix >= 50 || iy >= 50 ? "none" : "";
-        }
+        partsZinApply(doc.parts[partsSel], document.querySelector('.parts-layer .part[data-i="' + partsSel + '"] .zin'));
         savePartsDoc(doc, ctx.model.id, true);
         return;
       }
