@@ -4423,30 +4423,45 @@ const DB = {
     cx.fillRect(wx + ww / 2 - 3, wy, 6, wh); cx.fillRect(wx, wy + wh / 2 - 3, ww, 6);
     cx.fillRect(wx - 10, wy + wh + 5, ww + 20, 7);
     cx.fillStyle = "rgba(60,50,40,0.45)"; cx.fillRect(wx - 10, wy + wh + 12, ww + 20, 2);        // тень подоконника
-    // карниз и шторы убраны: рисунок занимал слишком много места на зеркале
-    // (жалоба заказчика). Остались стена, небольшое окно, плинтус, пол цвета
-    // пола сцены и ваза с цветком на полу.
+    // Противоположная стена: плинтус и пол В ПЕРСПЕКТИВЕ — те же ряды досок и
+    // цвета, что у пола сцены (sceneDefs/buildScene): ряды выше к низу, швы в
+    // шахматном порядке. Ваза с калой стоит у этой стены, далеко от зеркала.
     cx.fillStyle = "rgb(214,208,196)"; cx.fillRect(0, h * 0.7, w, h * 0.014);
-    const fl = cx.createLinearGradient(0, h * 0.714, 0, h);
-    fl.addColorStop(0, "#d7b57d"); fl.addColorStop(1, "#a2703f");          // как пол сцены (sceneDefs)
-    cx.fillStyle = fl; cx.fillRect(0, h * 0.714, w, h * 0.286);
-    cx.fillStyle = "rgba(60,38,18,0.35)";
-    for (let y = h * 0.78; y < h; y += h * 0.07) cx.fillRect(0, y, w, 1.2);
-    for (let k = 0; k < 7; k++) cx.fillRect(w * (0.08 + 0.15 * k), h * (0.73 + 0.07 * (k % 3)), 1.2, h * 0.07);
-    // ваза с цветком на полу
-    const vx = w * 0.3, vy = h * 0.9;
-    cx.fillStyle = "rgba(40,24,10,0.35)"; cx.beginPath(); cx.ellipse(vx, vy + 3, 17, 4, 0, 0, Math.PI * 2); cx.fill();
-    cx.fillStyle = "rgb(94,126,160)"; cx.beginPath();
-    cx.moveTo(vx - 7, vy - 36); cx.quadraticCurveTo(vx - 17, vy - 14, vx - 11, vy); cx.lineTo(vx + 11, vy);
-    cx.quadraticCurveTo(vx + 17, vy - 14, vx + 7, vy - 36); cx.closePath(); cx.fill();
-    cx.fillStyle = "rgba(255,255,255,0.35)"; cx.fillRect(vx - 5, vy - 30, 3, 26);
-    const blooms = [[-10, -54, "rgb(214,64,92)"], [0, -70, "rgb(240,176,48)"], [11, -50, "rgb(214,64,92)"]];
-    cx.strokeStyle = "rgb(60,120,60)"; cx.lineWidth = 2.2;
-    blooms.forEach(([dx, dy]) => { cx.beginPath(); cx.moveTo(vx, vy - 34); cx.quadraticCurveTo(vx + dx * 0.3, vy - 52, vx + dx, vy + dy - 16); cx.stroke(); });
-    blooms.forEach(([dx, dy, col]) => {
-      cx.fillStyle = col; cx.beginPath(); cx.arc(vx + dx, vy + dy - 16, 6.5, 0, Math.PI * 2); cx.fill();
-      cx.fillStyle = "rgb(250,230,150)"; cx.beginPath(); cx.arc(vx + dx, vy + dy - 16, 2.2, 0, Math.PI * 2); cx.fill();
-    });
+    const fy0 = h * 0.714, fh = h - fy0;
+    const fl = cx.createLinearGradient(0, fy0, 0, h);
+    fl.addColorStop(0, "#d7b57d"); fl.addColorStop(1, "#a2703f");
+    cx.fillStyle = fl; cx.fillRect(0, fy0, w, fh);
+    let py = fy0;
+    for (let r = 0; r < 4; r++) {
+      const y1 = Math.min(h, py + fh * (0.12 + 0.16 * r));
+      cx.fillStyle = "rgba(60,38,18,0.35)"; cx.fillRect(0, y1, w, 1.2);
+      cx.fillStyle = "rgba(255,232,190,0.18)"; cx.fillRect(0, y1 + 1.2, w, 0.8);
+      const step = w * (0.2 + 0.045 * r), off = (r % 2) * (step / 2);
+      cx.fillStyle = "rgba(60,38,18,0.28)";
+      for (let x = off; x < w; x += step) cx.fillRect(x, py, 1, y1 - py);
+      py = y1;
+    }
+    // ваза (высокая, узкая, стекло) с одной каллой
+    const vx = w * 0.32, vy = h * 0.8;
+    cx.fillStyle = "rgba(40,24,10,0.32)"; cx.beginPath(); cx.ellipse(vx, vy + 2, 13, 3, 0, 0, Math.PI * 2); cx.fill();
+    const vg = cx.createLinearGradient(vx - 9, 0, vx + 9, 0);
+    vg.addColorStop(0, "rgb(120,152,176)"); vg.addColorStop(0.45, "rgb(206,226,238)"); vg.addColorStop(1, "rgb(96,128,152)");
+    cx.fillStyle = vg; cx.beginPath();
+    cx.moveTo(vx - 8, vy - 78); cx.lineTo(vx - 10, vy); cx.lineTo(vx + 10, vy); cx.lineTo(vx + 8, vy - 78); cx.closePath(); cx.fill();
+    // стебель
+    cx.strokeStyle = "rgb(76,128,64)"; cx.lineWidth = 2.4;
+    cx.beginPath(); cx.moveTo(vx, vy - 6); cx.quadraticCurveTo(vx - 4, vy - 70, vx + 3, vy - 118); cx.stroke();
+    // калла: белая воронка и жёлтый початок
+    const fx = vx + 3, fyy = vy - 118;
+    cx.fillStyle = "rgb(252,250,244)"; cx.beginPath();
+    cx.moveTo(fx - 3, fyy + 2); cx.quadraticCurveTo(fx - 14, fyy - 14, fx - 8, fyy - 36);
+    cx.quadraticCurveTo(fx + 2, fyy - 26, fx + 11, fyy - 34); cx.quadraticCurveTo(fx + 15, fyy - 8, fx + 4, fyy + 2);
+    cx.closePath(); cx.fill();
+    cx.strokeStyle = "rgba(150,150,140,0.45)"; cx.lineWidth = 1; cx.stroke();
+    cx.fillStyle = "rgb(240,196,48)"; cx.beginPath(); cx.ellipse(fx - 1, fyy - 16, 2.4, 9, 0.1, 0, Math.PI * 2); cx.fill();
+    // лист у основания
+    cx.fillStyle = "rgb(76,128,64)"; cx.beginPath();
+    cx.moveTo(vx - 1, vy - 40); cx.quadraticCurveTo(vx - 20, vy - 56, vx - 14, vy - 82); cx.quadraticCurveTo(vx - 6, vy - 62, vx - 1, vy - 40); cx.fill();
     return { w: w, h: h, data: cx.getImageData(0, 0, w, h).data };
   }
 
