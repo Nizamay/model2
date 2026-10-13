@@ -11378,10 +11378,48 @@ const DB = {
     }
     return id;
   }
+  // Контраст стены выше 100 % — мягкая S-кривая вместо множителя вокруг
+  // середины: множитель выбивал светлое пятно стены в белое («солнце»), кривая
+  // оставляет чёрное и белое на местах. Наклон в середине равен выбранному
+  // контрасту, как и у обычного.
+  function ensureContrastFilterDef(c) {
+    const id = `adjcon-${c}`;
+    if (!document.getElementById(id)) {
+      const defs = document.getElementById("colorAdjustDefs");
+      if (!defs) return null;
+      const k = c / 100;
+      // steepness a: (a/4)/tanh(a/4) = k
+      let lo = 0.0001, hi = 60;
+      for (let i = 0; i < 60; i++) {
+        const mid = (lo + hi) / 2, t = mid / 4;
+        if (t / Math.tanh(t) < k) lo = mid; else hi = mid;
+      }
+      const a = (lo + hi) / 2;
+      const sig = (x) => 1 / (1 + Math.exp(-a * (x - 0.5)));
+      const s0 = sig(0), s1 = sig(1);
+      const vals = [];
+      for (let i = 0; i <= 32; i++) vals.push(((sig(i / 32) - s0) / (s1 - s0)).toFixed(4));
+      const ns = "http://www.w3.org/2000/svg";
+      const filterEl = document.createElementNS(ns, "filter");
+      filterEl.setAttribute("id", id);
+      filterEl.setAttribute("color-interpolation-filters", "sRGB");
+      const tr = document.createElementNS(ns, "feComponentTransfer");
+      ["feFuncR", "feFuncG", "feFuncB"].forEach((n) => {
+        const f = document.createElementNS(ns, n);
+        f.setAttribute("type", "table"); f.setAttribute("tableValues", vals.join(" "));
+        tr.appendChild(f);
+      });
+      filterEl.appendChild(tr);
+      defs.appendChild(filterEl);
+    }
+    return id;
+  }
   function filterCss(v, softBright) {
     let bright = `brightness(${v.b}%)`;
     if (softBright && Number(v.b) !== 100) { const gid = ensureGammaFilterDef(Number(v.b)); if (gid) bright = `url(#${gid})`; }
-    let base = `hue-rotate(${v.h}deg) saturate(${v.s}%) ${bright} contrast(${v.c}%)`;
+    let contrast = `contrast(${v.c}%)`;
+    if (softBright && Number(v.c) > 100) { const cid = ensureContrastFilterDef(Math.round(Number(v.c))); if (cid) contrast = `url(#${cid})`; }
+    let base = `hue-rotate(${v.h}deg) saturate(${v.s}%) ${bright} ${contrast}`;
     if (v.m > 0) { const mid = ensureMatteFilterDef(v.m); if (mid) base += ` url(#${mid})`; }
     const cr = v.cr == null ? 100 : v.cr, cg = v.cg == null ? 100 : v.cg, cb = v.cb == null ? 100 : v.cb;
     if (cr === 100 && cg === 100 && cb === 100) return base;
