@@ -4655,7 +4655,8 @@ const DB = {
     // или стекла тогда только красит (доли секунды), а не считает светотень заново.
     let sharp = null, relief = null;
     const reliefHit = reliefKey ? partsReliefCache.get(reliefKey) : null;
-    if (reliefHit) { sharp = reliefHit.sharp; relief = reliefHit.relief; }
+    let softField = null;
+    if (reliefHit) { sharp = reliefHit.sharp; relief = reliefHit.relief; softField = reliefHit.soft; }
     // Точка большого кадра → точка маленького.
     const rsx = rw / cw, rsy = rh / ch;
     const rAt = (x, y) => ((y * rsy) | 0) * rw + ((x * rsx) | 0);
@@ -4844,6 +4845,7 @@ const DB = {
       if (!wide) return null;
     }
     if (await pause()) return null;
+    softField = wide;
     let wideMean = 0;
     for (let i = 0; i < wide.length; i++) wideMean += wide[i];
     wideMean = wideMean / Math.max(1, wide.length) || 1;
@@ -4935,7 +4937,7 @@ const DB = {
     }
     if (reliefKey) {
       partsReliefCache.delete(reliefKey);
-      partsReliefCache.set(reliefKey, { sharp: sharp, relief: relief });
+      partsReliefCache.set(reliefKey, { sharp: sharp, relief: relief, soft: softField });
       while (partsReliefCache.size > 2) partsReliefCache.delete(partsReliefCache.keys().next().value);
     }
     }
@@ -5034,6 +5036,20 @@ const DB = {
       meanRel = meanRel / (hi - lo);
       const norm = meanRel > 0.05 ? 1 / meanRel : 1;
       const glassPart = part.k === "g";
+      // Плёнка непрозрачна (правило заказчика): под ней со снимка не видно
+      // ничего — ни штрихов, ни хвостов, ни полос, ни крапин. От снимка берём
+      // только общий свет по детали — поле, размытое на 40 мм и ограниченное
+      // ±3 %, — а стыки деталей рисуем сами: светлая фаска сверху и слева,
+      // тень снизу и справа, 4 мм. Тени — деталью «Тень».
+      let softRef = 1;
+      if (!glassPart) {
+        const ss = new Float32Array(Math.ceil((x1 - x0) / 4) * Math.ceil((y1 - y0) / 4));
+        let sk = 0;
+        for (let y = y0; y < y1; y += 4) for (let x = x0; x < x1; x += 4) ss[sk++] = softField[rAt(x, y)];
+        const ssv = ss.subarray(0, sk); ssv.sort();
+        softRef = ssv[ssv.length >> 1] || 1;
+      }
+      const bevX = Math.max(1, 4 * pxPerMmX), bevY = Math.max(1, 4 * pxPerMmY);
       const haloPad = glassPart ? null : haloRects;
       const glassFeather = Math.max(2, 6 * pxPerMmX), glassKX = pxPerMmX / pxPerMmY;
       const tile = glassPart || !tiles ? null : (PART_KINDS[part.k].grain === "h" ? tiles.h : tiles.v);
@@ -5049,7 +5065,24 @@ const DB = {
           // У стекла рельеф берём резкий, без размытия: гравировка и блики
           // — это его собственный рисунок, терять их нельзя.
           const ri = rrow + colMap[x];
-          const lum = glassPart ? sharp[ri] : relief[ri];
+          if (!glassPart) {
+            let r2 = softField[ri] / softRef;
+            r2 = r2 < 0.97 ? 0.97 : r2 > 1.03 ? 1.03 : r2;
+            const dt = (y - y0) / bevY, db = (y1 - 1 - y) / bevY, dl = (x - x0) / bevX, dr = (x1 - 1 - x) / bevX;
+            if (dt < 1) r2 *= 1 + 0.08 * (1 - dt);
+            if (dl < 1) r2 *= 1 + 0.06 * (1 - dl);
+            if (db < 1) r2 *= 1 - 0.16 * (1 - db);
+            if (dr < 1) r2 *= 1 - 0.12 * (1 - dr);
+            const relF = shadeK === 1 ? r2 : 1 + (r2 - 1) * shadeK;
+            let fr, fg, fb;
+            if (tile) {
+              const j = ((y % tile.h) * tile.w + (x % tile.w)) * 4;
+              fr = tile.data[j]; fg = tile.data[j + 1]; fb = tile.data[j + 2];
+            } else { fr = flat[0]; fg = flat[1]; fb = flat[2]; }
+            d[i] = lift(fr, relF); d[i + 1] = lift(fg, relF); d[i + 2] = lift(fb, relF); d[i + 3] = 255;
+            continue;
+          }
+          const lum = sharp[ri];
           // Глубина светотени: ползунок «Светотень двери» разводит или
           // сводит рельеф к единице, то есть к ровной плёнке. Направление
           // света при этом не меняется — оно со снимка (см. doorShadeK).
