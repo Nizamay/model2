@@ -4423,6 +4423,23 @@ const DB = {
     cx.fillRect(wx + ww / 2 - 3, wy, 6, wh); cx.fillRect(wx, wy + wh / 2 - 3, ww, 6);
     cx.fillRect(wx - 10, wy + wh + 5, ww + 20, 7);
     cx.fillStyle = "rgba(60,50,40,0.45)"; cx.fillRect(wx - 10, wy + wh + 12, ww + 20, 2);        // тень подоконника
+    // Солнечный блик от окна на уровне глаз (просьба заказчика): мягкий ореол
+    // вокруг окна, яркое ядро и «зайчик» на стене рядом. Умеренно — чтобы
+    // не засвечивать зеркало.
+    {
+      const gx = wx + ww * 0.5, gy = wy + wh * 0.62;
+      const halo = cx.createRadialGradient(gx, gy, 0, gx, gy, w * 0.42);
+      halo.addColorStop(0, "rgba(255,250,225,0.55)"); halo.addColorStop(0.35, "rgba(255,246,214,0.22)"); halo.addColorStop(1, "rgba(255,246,214,0)");
+      cx.fillStyle = halo; cx.fillRect(0, 0, w, h * 0.7);
+      const core = cx.createRadialGradient(gx, gy, 0, gx, gy, w * 0.13);
+      core.addColorStop(0, "rgba(255,255,245,0.8)"); core.addColorStop(1, "rgba(255,255,245,0)");
+      cx.fillStyle = core; cx.fillRect(0, 0, w, h * 0.7);
+      // зайчик на стене: вытянутое мягкое пятно света слева-ниже окна
+      cx.save(); cx.translate(w * 0.2, h * 0.5); cx.rotate(-0.25); cx.scale(1, 0.42);
+      const sp = cx.createRadialGradient(0, 0, 0, 0, 0, w * 0.16);
+      sp.addColorStop(0, "rgba(255,244,205,0.6)"); sp.addColorStop(1, "rgba(255,244,205,0)");
+      cx.fillStyle = sp; cx.beginPath(); cx.arc(0, 0, w * 0.16, 0, Math.PI * 2); cx.fill(); cx.restore();
+    }
     // Пол в зеркале — перспектива НАОБОРОТ к полу сцены (просьба заказчика):
     // у двери (внизу зеркала) доски узкие, короткие и светлые, к зрителю
     // (вверх, к стене) — шире, длиннее и темнее. Цвета те же, что у пола сцены
