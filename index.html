@@ -603,6 +603,9 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 .part .zin .phi-se { right: 0; bottom: 0; }
 /* Каркас под «Рельефом и тенями» — тонкий пунктир, только ориентир. */
 .part-guide { position: absolute; box-sizing: border-box; border: 1px dashed rgba(0,0,0,.55); pointer-events: none; }
+.parts-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; width: 100%; }
+.parts-col { display: flex; flex-direction: column; gap: 4px; }
+.parts-col button { width: 100%; text-align: left; }
 .parts-zvar { display: flex; flex-wrap: wrap; gap: 4px; justify-content: center; width: 100%; }
 .parts-zvar button.on { background: rgba(255,120,0,.22); border-color: rgba(210,90,0,.8); font-weight: 600; }
 .part.k-z > span { background: rgba(210,90,0,.9); }
@@ -6653,9 +6656,14 @@ const DB = {
       // В «Рельефе и тенях» вместо одной «Тени» — готовые полосы разной
       // толщины (вдоль и поперёк); дальше их тянут за углы, как любую деталь.
       kinds.innerHTML = `<span class="parts-lead">${lead}</span>` + (partsMode === "relief"
-        ? `<button type="button" class="parts-kind k-z" data-kind="z">Фрезеровка</button>`
+        // Две колонки: слева виды фрезеровки, справа готовые тени.
+        ? `<div class="parts-cols"><div class="parts-col"><div class="parts-menu-h">Фрезеровка</div>`
+          + [["ring", "Рамка"], ["full", "Сплошная"], ["groove", "Канавка 6 мм"]].map(([v, n]) =>
+            `<button type="button" class="parts-kind k-z" data-kind="z" data-zv="${v}">${n}</button>`).join("")
+          + `</div><div class="parts-col"><div class="parts-menu-h">Тень</div>`
           + [["v", 8], ["v", 20], ["v", 50], ["h", 8], ["h", 20], ["h", 50]].map(([d, w]) =>
-            `<button type="button" class="parts-kind k-t" data-kind="t" data-dir="${d}" data-tw="${w}">Тень ${d === "v" ? "↕" : "↔"} ${w}</button>`).join("")
+            `<button type="button" class="parts-kind k-t" data-kind="t" data-dir="${d}" data-tw="${w}">${d === "v" ? "↕" : "↔"} ${w} мм</button>`).join("")
+          + `</div></div>`
         : Object.keys(PART_KINDS).filter((k) => partsVisible({ k: k })).map((k) =>
           `<button type="button" class="parts-kind k-${k}" data-kind="${k}">${PART_KINDS[k].name}</button>`).join(""));
     }
@@ -6674,7 +6682,9 @@ const DB = {
               const cur = sZ.v === "full" ? "full" : "ring";
               return `<button type="button" data-act="zvar" data-v="${v}" class="${v === cur ? "on" : ""}">${n}</button>`;
             }).join("") + `</div>`
-            + (sZ.v === "full" ? "" : `<label class="parts-shade"><span>Ширина рамки, мм <b>${zv}</b></span><input type="range" min="3" max="200" step="1" value="${zv}" data-zw></label>`) : "");
+            + (sZ.v === "full" ? "" : `<label class="parts-shade"><span>Ширина рамки, мм <b>${zv}</b></span><input type="range" min="3" max="200" step="1" value="${zv}" data-zw></label>`) : "")
+          // «Удалить» — под ползунками, рядом с выбранной деталью (просьба заказчика).
+          + (partsSel !== null && parts[partsSel] ? `<button type="button" data-act="del">✕ Удалить</button>` : "");
     }
     partsFabSync();
     if (tools) {
@@ -6686,7 +6696,6 @@ const DB = {
       if (partsMode === "relief") {
         tools.innerHTML = `<button type="button" data-act="refresh" class="parts-refresh is-${partsRefresh}">${partsRefresh === "busy" ? "⏳ Считаю…" : partsRefresh === "done" ? "✓ Картинка обновлена" : "⟳ Обновить картинку"}</button>`
           + (partsSel === null ? "" : `<button type="button" data-act="copy">Копия</button>`
-            + `<button type="button" data-act="del">✕ Удалить</button>`
             + `<button type="button" data-act="deselect">Снять выбор</button>`);
         return;
       }
@@ -6695,7 +6704,6 @@ const DB = {
         + `<button type="button" data-act="leafEdit">Подогнать полотно</button>`
         + (partsSel === null ? "" :
         `<button type="button" data-act="copy">Копия</button>`
-        + `<button type="button" data-act="del">✕ Удалить</button>`
         + `<button type="button" data-act="deselect">Снять выбор</button>`)
         + (parts.some((q) => q.k === "g") ? `<button type="button" data-act="snapGlass">Подогнать стёкла по снимку</button>` : "")
         + (parts.length ? `<button type="button" data-act="clear">Убрать разметку</button>` : "");
@@ -7147,6 +7155,8 @@ const DB = {
       if (partsSel !== null && doc.parts[partsSel] && !refActive && kind !== "d" && !PART_KINDS[kind].overlay && !selIsShade) doc.parts[partsSel].k = kind;
       else {
         const np = newPart(kind, doc.parts);
+        if (kind === "z" && btn.dataset.zv === "full") np.v = "full";
+        if (kind === "z" && btn.dataset.zv === "groove") np.b = 6;
         if (kind === "t" && btn.dataset.tw) {
           const sc = partsScale(leafOfParts(doc.parts)), tw = Number(btn.dataset.tw);
           const cx = np.x + np.w / 2, cy = np.y + np.h / 2;
