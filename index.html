@@ -5281,6 +5281,15 @@ const DB = {
   // Кадр стал крупнее (1600 точек), и каждая готовая картинка весит заметно
   // больше — держим в памяти поменьше штук, чтобы не раздувать телефон.
   const PARTS_CACHE_MAX = 6;
+  // Светотень снимка зависит только от деталей каркаса (тени и фрезеровки в
+  // неё не входят — см. paintPartsLeaf). Поэтому ключ её кэша — сами эти
+  // детали, а не номер правки: двигаешь тень или зону — тяжёлый расчёт
+  // светотени не повторяется, картинка только перекрашивается.
+  function partsReliefSig(doc) {
+    return doc.parts.filter((p) => PART_KINDS[p.k] && !PART_KINDS[p.k].overlay)
+      .map((p) => [p.k, p.x, p.y, p.w, p.h].map((v) => typeof v === "number" ? v.toFixed(5) : v).join(",")).join(";");
+  }
+
   function partsLeafImage(model, photo) {
     if (!model || !photo || !photo.image) return null;
     const doc = partsOf(model.id);
@@ -5332,7 +5341,7 @@ const DB = {
     // строительстве деталей торможение и зависание»).
     const isStale = () => partsLatestKey.get(model.id) !== key || !!partsDrag;
     Promise.all([loadImageAsync(photo.image), filmHref ? loadImageAsync(filmHref) : Promise.resolve(null)])
-      .then(([ph, film]) => paintPartsLeaf(ph, film, filmHex, doc, glass, widthMm, heightMm, adj, isStale, qualityReliefMm(qual), [model.id, doc.rev || 1, String(photo.image || "").length, qualityReliefMm(qual), widthMm, heightMm].join("|")))
+      .then(([ph, film]) => paintPartsLeaf(ph, film, filmHex, doc, glass, widthMm, heightMm, adj, isStale, qualityReliefMm(qual), [model.id, partsReliefSig(doc), String(photo.image || "").length, qualityReliefMm(qual), widthMm, heightMm].join("|")))
       .then((url) => {
         // Устарело: разметку успели изменить, этот результат никому не нужен.
         // Запись убираем, а не помечаем «не вышло» — иначе к этому сочетанию
@@ -6732,7 +6741,13 @@ const DB = {
   }
 
   function onPartsPointerDown(e) {
-    if (e.isPrimary) partsPtrs.clear();   // первый палец нового касания: забытые прежние — прочь
+    // Первый палец нового касания: всё, что осталось от прежнего жеста (если
+    // «палец вверх» потерялся), сбрасываем — иначе забытый сдвиг снимка мешал
+    // закончить следующее движение детали, и разметка «зависала».
+    if (e.isPrimary) {
+      partsPtrs.clear(); partsPan = null;
+      if (partsPinch) { if (partsPinch.raf) cancelAnimationFrame(partsPinch.raf); partsPinch = null; }
+    }
     partsPtrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (partsPtrs.size >= 2) { partsPinchStart(e); return; }
     partsNote = "";
@@ -7054,10 +7069,12 @@ const DB = {
     if (partsPinch) { if (partsPtrs.size < 2) { if (partsPinch.raf) cancelAnimationFrame(partsPinch.raf); partsPinch = null; } return; }
     if (partsPan) {
       const pan = partsPan;
-      if (e && e.pointerId !== pan.id) return;
-      partsPan = null;
-      if (!pan.moved && pan.tap && !(e && e.type === "pointercancel")) pan.tap();
-      return;
+      if (e && e.pointerId !== pan.id) { if (!partsDrag) return; partsPan = null; }
+      else {
+        partsPan = null;
+        if (!pan.moved && pan.tap && !(e && e.type === "pointercancel")) pan.tap();
+        return;
+      }
     }
     if (!partsDrag) return;
     const drag = partsDrag;
