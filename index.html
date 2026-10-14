@@ -5244,7 +5244,13 @@ const DB = {
       const haloPad = glassPart ? null : haloRects;
       const glassFeather = Math.max(2, 6 * pxPerMmX), glassKX = pxPerMmX / pxPerMmY;
       const bevX = Math.max(1, 4 * pxPerMmX), bevY = Math.max(1, 4 * pxPerMmY);
-      const tile = glassPart || !tiles ? null : (PART_KINDS[part.k].grain === "h" ? tiles.h : tiles.v);
+      // Волокно: у стойки — вдоль, у царги — поперёк (по виду детали). У
+      // наличника и раскладки — по форме: вдоль длинной стороны. Вертикальный
+      // наличник, размеченный кнопкой «Нал. ↔» и растянутый вверх, иначе
+      // получал волокно поперёк (жалоба заказчика: Британия ПГ, правый наличник).
+      const byShape = part.k === "nv" || part.k === "nh" || part.k === "rv" || part.k === "rh";
+      const grainH = byShape ? (x1 - x0) / pxPerMmX > (y1 - y0) / pxPerMmY : PART_KINDS[part.k].grain === "h";
+      const tile = glassPart || !tiles ? null : (grainH ? tiles.h : tiles.v);
       // Наклонное стекло: красим только внутри четырёхугольника, вне его —
       // то, что под стеклом (полотно, филёнка или снимок).
       const qpx = glassPart && part.q ? part.q.map((c) => [c[0] * cw, c[1] * ch]) : null;
