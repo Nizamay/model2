@@ -668,6 +668,10 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
    браузерное увеличение не годилось — палец на детали не листает картинку.
    Сдвиг увеличенного снимка — одним пальцем мимо активной детали. */
 .parts-zoom { position: relative; }
+/* Долгое нажатие на снимок разметки не вызывает меню телефона «Скачать
+   изображение / Поделиться…» — палец держат, двигая деталь или ползунок. */
+#s_doorPreview, .parts-zoom, .parts-zoom img, .parts-float, .frame-stage, .frame-stage img { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+.parts-zoom img, .frame-stage img { -webkit-user-drag: none; }
 .parts-zoom.zoomed { overflow: auto; max-height: 72vh; padding: 24px; border: 1px solid var(--border); border-radius: 6px; background: #eef1f5; }
 .parts-zoom .parts-stage { width: calc(min(100%, var(--stage-w)) * var(--pz, 1)); touch-action: none; }
 .parts-sliders { display: flex; flex-wrap: wrap; gap: 4px; justify-content: center; }
@@ -11306,6 +11310,12 @@ const DB = {
     // прямоугольники прямо по фотографии.
     // Подгруппы «Двери»: пока одна открыта, остальные не видны (их задевали
     // пальцем и открывали случайно). Закрыли — все снова на месте.
+    // Меню телефона по долгому нажатию (сохранить/поделиться снимком) в
+    // разметке не нужно: оно всплывало, пока палец держит деталь или ползунок.
+    // Палец со шкалы часто съезжает на картинку двери под полоской — её тоже.
+    document.addEventListener("contextmenu", (e) => {
+      if (e.target && e.target.closest && e.target.closest("#s_partsZoom, #s_partsFloat, #s_frameStage, #s_doorPreview")) e.preventDefault();
+    });
     const doorBody = document.querySelector("#s_groupDoor > .scene-group-body");
     if (doorBody) {
       const subs = () => Array.from(doorBody.children).filter((n) => n.matches && n.matches("details.adjust-panel"));
