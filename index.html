@@ -602,7 +602,23 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 .part .zin .phi-sw { left: 0; bottom: 0; }
 .part .zin .phi-se { right: 0; bottom: 0; }
 /* Каркас под «Рельефом и тенями» — тонкий пунктир, только ориентир. */
-.part-guide { position: absolute; box-sizing: border-box; border: 1px dashed rgba(0,0,0,.55); pointer-events: none; }
+/* Пунктир редкий и очень тонкий (штрих 2, промежуток 8 точек, полточки):
+   под ним должно быть видно тень и фрезеровку (просьба заказчика). */
+.part-guide { position: absolute; pointer-events: none; --gc: rgba(0,0,0,.32);
+  background:
+    repeating-linear-gradient(90deg, var(--gc) 0 2px, transparent 2px 10px) left top / 100% .5px no-repeat,
+    repeating-linear-gradient(90deg, var(--gc) 0 2px, transparent 2px 10px) left bottom / 100% .5px no-repeat,
+    repeating-linear-gradient(180deg, var(--gc) 0 2px, transparent 2px 10px) left top / .5px 100% no-repeat,
+    repeating-linear-gradient(180deg, var(--gc) 0 2px, transparent 2px 10px) right top / .5px 100% no-repeat; }
+.parts-float { position: fixed; top: 10px; left: 10px; right: 66px; z-index: 1000; display: flex; align-items: center; gap: 8px;
+  padding: 6px 8px; box-sizing: border-box; background: var(--bg); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,.25); }
+.parts-float[hidden] { display: none; }
+.parts-float .pf-sl { flex: 1; display: flex; align-items: center; gap: 6px; min-width: 0; }
+.parts-float .pf-sl b { min-width: 28px; text-align: right; font-size: 14px; }
+.parts-float .pf-sl input { flex: 1; min-width: 0; }
+.parts-float .pf-del { margin-left: auto; width: 40px; height: 34px; padding: 0; font-size: 22px; line-height: 1; border-radius: 8px; border: 1px solid var(--border); background: #fff; }
+.parts-tip { position: absolute; z-index: 5; transform: translate(-50%, -120%); padding: 2px 6px; border-radius: 8px; font-size: 12px; font-weight: 700;
+  color: #fff; background: rgba(20,20,20,.85); pointer-events: none; white-space: nowrap; }
 .parts-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; width: 100%; }
 .parts-col { display: flex; flex-direction: column; gap: 4px; }
 .parts-col button { width: 100%; text-align: left; }
@@ -1508,6 +1524,9 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
       <!-- Команды разметки — под плавающей кнопкой ☰ (см. partsFabSync): под
            снимком остаются только ползунки выбранной детали. -->
       <button type="button" class="parts-fab" id="s_partsFab" aria-label="Команды разметки" hidden><span></span><span></span><span></span></button>
+      <!-- Ползунок выбранной детали и «×» — плавающей полоской сверху экрана
+           (см. updatePartsEditor, partsFabSync): крутят, глядя на дверь. -->
+      <div class="parts-float" id="s_partsFloat" hidden></div>
       <div class="parts-menu" id="s_partsMenu" hidden>
         <div class="parts-menu-group"><div class="parts-menu-h">Масштаб снимка</div>
           <div class="parts-zoombar"><button type="button" data-z="-1">−</button><b id="s_partsZoomVal">1×</b><button type="button" data-z="1">+</button><button type="button" data-z="0" aria-label="Весь снимок, без увеличения">1×</button></div></div>
@@ -5420,6 +5439,8 @@ const DB = {
     });
     fab.hidden = !on;
     if (!on) { menu.hidden = true; fab.classList.remove("on"); }
+    const fl = document.getElementById("s_partsFloat");
+    if (fl) fl.hidden = !on || !fl.innerHTML;
   }
 
   function partsEditorCtx() {
@@ -6688,15 +6709,21 @@ const DB = {
       // дверь, прятать в меню нельзя.
       sliders.innerHTML = leafEdit
         ? `<button type="button" data-act="leafSave">✓ Сохранить полотно</button><button type="button" data-act="leafCancel">Отмена</button>`
-        : (sT ? `<label class="parts-shade"><span>Сила тени <b>${tv}</b></span><input type="range" min="0" max="100" step="1" value="${tv}" data-shade></label>` : "")
-          + (sZ ? `<div class="parts-zvar">`
+        : (sZ ? `<div class="parts-zvar">`
             + [["ring", "Рамка"], ["full", "Сплошная"], ["groove", "Канавка 6 мм"]].map(([v, n]) => {
               const cur = sZ.v === "full" ? "full" : "ring";
               return `<button type="button" data-act="zvar" data-v="${v}" class="${v === cur ? "on" : ""}">${n}</button>`;
-            }).join("") + `</div>`
-            + (sZ.v === "full" ? "" : `<label class="parts-shade"><span>Ширина рамки, мм <b>${zv}</b></span><input type="range" min="3" max="200" step="1" value="${zv}" data-zw></label>`) : "")
-          // «Удалить» — под ползунками, рядом с выбранной деталью (просьба заказчика).
-          + (partsSel !== null && parts[partsSel] ? `<button type="button" data-act="del">✕ Удалить</button>` : "");
+            }).join("") + `</div>` : "");
+    }
+    // Плавающая полоска: только число, шкала и «×» (без подписей — просьба
+    // заказчика). Шкала — только у тени (сила); ширину рамки фрезеровки
+    // ведут вручную за жёлтые углы, шкалы у неё нет.
+    const fl = document.getElementById("s_partsFloat");
+    if (fl) {
+      const sel = !leafEdit && partsSel !== null && parts[partsSel] ? parts[partsSel] : null;
+      const sT = sel && sel.k === "t" ? sel : null;
+      fl.innerHTML = !sel ? "" : (sT ? `<label class="pf-sl"><b>${sT.a == null ? 40 : sT.a}</b><input type="range" min="0" max="100" step="1" value="${sT.a == null ? 40 : sT.a}" data-shade aria-label="Сила тени"></label>` : "")
+        + `<button type="button" data-act="del" class="pf-del" aria-label="Удалить">×</button>`;
     }
     partsFabSync();
     if (tools) {
@@ -6950,6 +6977,12 @@ const DB = {
     drag.ys = partsEdges(doc.parts, drag.i, "y");
     drag.el = els.layer.querySelector('.part[data-i="' + drag.i + '"]');
     drag.orig = Object.assign({}, doc.parts[drag.i]);
+    // Тень у пунктира: края деталей каркаса, вдоль которых она лежит, — для
+    // подсказки в процентах (см. partsShadeTip).
+    if (doc.parts[drag.i] && doc.parts[drag.i].k === "t") {
+      drag.guides = doc.parts.filter((q) => PART_KINDS[q.k] && !PART_KINDS[q.k].overlay)
+        .map((q) => ({ x0: q.x, x1: q.x + q.w, y0: q.y, y1: q.y + q.h }));
+    }
     // Пока палец тянет деталь, буквы-метки прячем: за ними не видно мелких
     // деталей снимка (просьба заказчика). Отпустил — появляются.
     els.stage.classList.add("dragging");
@@ -7058,6 +7091,83 @@ const DB = {
       box2.style.height = (p.h * 100).toFixed(3) + "%";
       if (p.k === "z") partsZinApply(p, box2.querySelector(".zin"));
     }
+    if (p.k === "t" && drag.guides) partsShadeTip(p, drag);
+  }
+
+  // Определитель тени на снимке: когда тень касается пунктира (там у двери
+  // и лежит тень — у стыка деталей), подсказка показывает, насколько тёмно на
+  // самом фото у этого штриха, — в тех же единицах, что шкала «силы тени»:
+  // поставить шкалу на это число — и тень на картинке будет как на фото.
+  let partsLumCache = null;
+  function partsPhotoLum() {
+    const img = document.querySelector("#s_partsStage img.parts-photo");
+    if (!img || !img.naturalWidth) return null;
+    const src = img.getAttribute("src");
+    if (partsLumCache && partsLumCache.src === src) return partsLumCache;
+    const w = Math.min(900, img.naturalWidth), h = Math.max(1, Math.round(img.naturalHeight * w / img.naturalWidth));
+    const cv = document.createElement("canvas"); cv.width = w; cv.height = h;
+    const cx = cv.getContext("2d", { willReadFrequently: true });
+    try { cx.drawImage(img, 0, 0, w, h); } catch (err) { return null; }
+    let d;
+    try { d = cx.getImageData(0, 0, w, h).data; } catch (err) { return null; }
+    const lum = new Float32Array(w * h);
+    for (let i = 0, j = 0; i < lum.length; i++, j += 4) lum[i] = 0.299 * d[j] + 0.587 * d[j + 1] + 0.114 * d[j + 2];
+    partsLumCache = { src: src, w: w, h: h, lum: lum };
+    return partsLumCache;
+  }
+  // Насколько темнее фото на линии v (доля кадра) против соседнего поля, на
+  // участке тени b0..b1 вдоль неё; 0..1. vert — линия вертикальная.
+  function partsPhotoShade(v, b0, b1, vert, halfW) {
+    const L = partsPhotoLum();
+    if (!L) return null;
+    const n = vert ? L.w : L.h, m = vert ? L.h : L.w;
+    const at = (a, b) => vert ? L.lum[b * L.w + a] : L.lum[a * L.w + b];
+    const c = Math.round(v * n), R = Math.max(6, Math.round(halfW * n) * 3);
+    const s0 = Math.max(0, Math.round((b0 + (b1 - b0) * 0.2) * m)), s1 = Math.min(m - 1, Math.round((b1 - (b1 - b0) * 0.2) * m));
+    if (s1 <= s0) return null;
+    const prof = new Float32Array(2 * R + 1);
+    let cnt = 0;
+    for (let b = s0; b <= s1; b += 2) {
+      cnt++;
+      for (let k = -R; k <= R; k++) { const a = Math.max(0, Math.min(n - 1, c + k)); prof[k + R] += at(a, b); }
+    }
+    for (let k = 0; k < prof.length; k++) prof[k] /= cnt;
+    const near = Math.max(2, Math.round(R / 3));
+    let lo = Infinity;
+    for (let k = -near; k <= near; k++) lo = Math.min(lo, prof[k + R]);
+    // Поле рядом — светлая сторона: тень у стыка лежит по одну сторону от него.
+    const side = (from, to) => { let sum = 0, q = 0; for (let k = from; k <= to; k++) { sum += prof[k + R]; q++; } return sum / q; };
+    const ref = Math.max(side(-R, -near - 1), side(near + 1, R));
+    if (!(ref > 1)) return null;
+    return Math.max(0, Math.min(1, 1 - lo / ref));
+  }
+  function partsShadeTip(p, drag) {
+    const stage = document.getElementById("s_partsStage");
+    if (!stage) return;
+    let tip = stage.querySelector(".parts-tip");
+    const box = drag.box, vert = p.h * box.height >= p.w * box.width;
+    const a0 = vert ? p.x : p.y, a1 = vert ? p.x + p.w : p.y + p.h;
+    const b0 = vert ? p.y : p.x, b1 = vert ? p.y + p.h : p.x + p.w;
+    const tol = 3 / (vert ? box.width : box.height);
+    let best = null;
+    drag.guides.forEach((g) => {
+      const c0 = vert ? g.y0 : g.x0, c1 = vert ? g.y1 : g.x1;
+      if (c1 < b0 || c0 > b1) return;   // край детали не на высоте (ширине) тени
+      [vert ? g.x0 : g.y0, vert ? g.x1 : g.y1].forEach((v) => {
+        if (v < a0 - tol || v > a1 + tol) return;
+        const mid = Math.abs(v - (a0 + a1) / 2);
+        if (!best || mid < best.mid) best = { v: v, mid: mid };
+      });
+    });
+    if (!best) { if (tip) tip.remove(); return; }
+    // Тень на снимке у этого штриха — в единицах шкалы: сила 100 темнит на 80 %.
+    const dk = partsPhotoShade(best.v, b0, b1, vert, (a1 - a0) / 2);
+    if (dk === null) { if (tip) tip.remove(); return; }
+    if (!tip) { tip = document.createElement("div"); tip.className = "parts-tip"; stage.appendChild(tip); }
+    tip.textContent = "на фото " + Math.round(Math.min(100, dk / 0.8 * 100));
+    // Подсказка посередине тени, а не у края: там жёлтые углы.
+    tip.style.left = ((vert ? best.v : (b0 + b1) / 2) * 100) + "%";
+    tip.style.top = ((vert ? (b0 + b1) / 2 : best.v) * 100) + "%";
   }
 
   function partsZinApply(p, zin) {
@@ -7087,7 +7197,8 @@ const DB = {
     if (drag.last) partsDragApply();
     partsDrag = null;
     const stg = document.getElementById("s_partsStage");
-    if (stg) stg.classList.remove("dragging");
+    // Подсказку «на фото N» оставляем ещё на 3 с — успеть прочесть число.
+    if (stg) { stg.classList.remove("dragging"); const tip = stg.querySelector(".parts-tip"); if (tip) setTimeout(() => tip.remove(), 3000); }
     const doc = partsOf(drag.modelId);
     if (!doc) return;
     // В режиме подгонки полотна ничего не записываем: запись и каркас — по
@@ -10999,7 +11110,10 @@ const DB = {
         ["s_partsBody", "s_reliefBody"].forEach((id) => { const n = document.getElementById(id); if (n) io.observe(n); });
       } else partsInView.add("s_partsBody").add("s_reliefBody");
     }
-    if (partsSliders) partsSliders.addEventListener("input", (e) => {
+    const partsFloat = document.getElementById("s_partsFloat");
+    if (partsFloat) partsFloat.addEventListener("click", onPartsToolClick);
+    if (partsFloat) partsFloat.addEventListener("input", (e) => onPartsSliderInput(e));
+    const onPartsSliderInput = (e) => {
       const rz = e.target.closest("input[data-zw]");
       if (rz) {
         const ctx = partsEditorCtx();
@@ -11020,7 +11134,8 @@ const DB = {
       doc.parts[partsSel].a = Number(r.value);
       const b = r.parentNode.querySelector("b"); if (b) b.textContent = r.value;
       savePartsDoc(doc, ctx.model.id, true);
-    });
+    };
+    if (partsSliders) partsSliders.addEventListener("input", onPartsSliderInput);
 
     // Переходы «Расчёт ⇄ 2D картинка»: на 2D дверь рисуется с текущими
     // параметрами калькулятора, отдельно ничего выбирать не нужно.
