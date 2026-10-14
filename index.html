@@ -7042,6 +7042,19 @@ const DB = {
     // Деталь берётся в два касания: первое делает её активной, и только
     // после этого она двигается. Иначе любое касание фотографии сдвигало
     // деталь под пальцем, и поставленную на место было не удержать.
+    // Касание внутри АКТИВНОЙ детали двигает её, даже если поверх лежит
+    // другая (вложенные зоны фрезеровки, Венеция ПГ: большая рамка не
+    // двигалась — касание доставалось маленькой зоне сверху).
+    {
+      const sp = partsSel !== null ? doc.parts[partsSel] : null;
+      if (sp && partsVisible(sp) && fx >= sp.x && fx <= sp.x + sp.w && fy >= sp.y && fy <= sp.y + sp.h
+        && (!sp.q || partsOnQuad(sp, fx, fy, box, 12)) && !(framePartRect(sp.k) && !partsResizable(sp.k))) {
+        partsDragStart({ mode: "move", i: partsSel, dx: fx - sp.x, dy: fy - sp.y, modelId: ctx.model.id, moved: false }, doc, els, box);
+        els.stage.setPointerCapture(e.pointerId);
+        e.preventDefault();
+        return;
+      }
+    }
     for (let i = doc.parts.length - 1; i >= 0; i--) {
       const p = doc.parts[i];
       if (!partsVisible(p)) continue;
