@@ -628,7 +628,11 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 .part .pq { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
 .part .pq polygon { fill: rgba(0,190,215,.16); stroke: rgba(0,0,0,.75); stroke-width: 1px; vector-effect: non-scaling-stroke; }
 .part.k-t .pq polygon { fill: rgba(0,0,0,.18); }
-.part .ph.phq { width: 20px; height: 20px; border-radius: 50%; transform: translate(-50%, -50%); opacity: .85; }
+.part .ph.phq { opacity: .85; }
+.part .ph.phq-0 { transform: translate(-100%, -100%); }
+.part .ph.phq-1 { transform: translate(0, -100%); }
+.part .ph.phq-2 { transform: none; }
+.part .ph.phq-3 { transform: translate(-100%, 0); }
 .parts-stage.dragging .ph.phq { opacity: .35; }
 .parts-mm { position: fixed; z-index: 1003; pointer-events: none; font: 700 13px/1 system-ui, sans-serif; color: rgba(255, 236, 150, .95);
   text-shadow: 0 0 2px rgba(0,0,0,.95), 0 0 5px rgba(0,0,0,.6); opacity: .85; }
@@ -6895,7 +6899,8 @@ const DB = {
       // Центр квадратика стоит снаружи угла на половину его стороны по каждой
       // оси (см. .ph в CSS): целимся в него, а не в сам угол.
       const H2 = PARTS_HANDLE_PX / 2;
-      const corners = p.q ? p.q.map((c, k) => ["q" + k, c[0], c[1], 0, 0])
+      const QS = [[-1, -1], [1, -1], [1, 1], [-1, 1]];
+      const corners = p.q ? p.q.map((c, k) => ["q" + k, c[0], c[1], QS[k][0], QS[k][1]])
         : [["nw", p.x, p.y, -1, -1], ["ne", p.x + p.w, p.y, 1, -1], ["sw", p.x, p.y + p.h, -1, 1], ["se", p.x + p.w, p.y + p.h, 1, 1]];
       // У фрезеровки-рамки — ещё четыре угла внутреннего края, квадратики внутрь.
       if (p.k === "z") {
@@ -7280,7 +7285,11 @@ const DB = {
   function partsQuadInner(p, sel) {
     const rx = (c) => ((c[0] - p.x) / Math.max(1e-6, p.w) * 100).toFixed(3), ry = (c) => ((c[1] - p.y) / Math.max(1e-6, p.h) * 100).toFixed(3);
     return `<svg class="pq" viewBox="0 0 100 100" preserveAspectRatio="none"><polygon points="${p.q.map((c) => rx(c) + "," + ry(c)).join(" ")}"/></svg>`
-      + (sel ? p.q.map((c) => `<i class="ph phq" style="left:${rx(c)}%;top:${ry(c)}%"></i>`).join("") : "");
+      // Квадратики как у обычной детали: снаружи угла по диагонали, касаются
+      // его своим углом (вл — влево-вверх, вп — вправо-вверх и т. д.), чтобы
+      // не закрывать сам угол; у узкой наклонной полосы пары расходятся в
+      // разные стороны и не слипаются.
+      + (sel ? p.q.map((c, k) => `<i class="ph phq phq-${k}" style="left:${rx(c)}%;top:${ry(c)}%"></i>`).join("") : "");
   }
   function partsQuadDom(p, el) {
     if (!el) return;
