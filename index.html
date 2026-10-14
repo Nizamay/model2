@@ -645,6 +645,16 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 .parts-zvar { display: flex; flex-wrap: wrap; gap: 4px; justify-content: center; width: 100%; }
 .parts-zvar button.on { background: rgba(255,120,0,.22); border-color: rgba(210,90,0,.8); font-weight: 600; }
 .part.k-z > span { background: rgba(210,90,0,.9); }
+.parts-film { padding: 6px 12px; font-size: 12px; font-weight: 700; border-radius: 6px; border: 2px solid #b00000; background: #ff2020 !important; color: #fff; }
+.parts-film.on { background: #b00000 !important; }
+.parts-film:disabled { opacity: .45; }
+/* Деталь с чистой плёнкой — красная обводка метки. */
+.part.pc > span { box-shadow: 0 0 0 2px #ff2020; }
+.part.k-z.zv-photo { background: rgba(0,120,255,.12); border-color: rgba(0,90,200,.9); }
+.part.k-z.zv-photo > span { background: rgba(0,90,200,.9); }
+/* Открыта одна подгруппа «Двери» — остальные спрятаны, чтобы случайно не
+   открыть соседнюю (см. doorSolo). Закрыл — все снова видны. */
+.adjust-panel.solo-hide { display: none !important; }
 .parts-kind.k-z { background: rgba(255,120,0,.16); }
 .part.k-t > span { background: rgba(40,40,40,.85); }
 .parts-kind.k-t { background: rgba(0,0,0,.14); }
@@ -4101,7 +4111,7 @@ const DB = {
   }
 
   function zoneInnerPct(p) {
-    if (p.v === "full") return null;
+    if (p.v === "full" || p.v === "photo") return null;
     const [l, t, r, b] = zoneInsets(p);
     const W = Math.max(1e-6, p.w) * FRAME_MM.w, H = Math.max(1e-6, p.h) * FRAME_MM.h;
     if (l + r >= W - 2 || t + b >= H - 2) return null;
@@ -5139,7 +5149,7 @@ const DB = {
     // «наличники наполовину белая полоса», замеренные 255 при полотне 192.
     const reachLeaf = (part) => {
       if (part.k !== "nv" && part.k !== "nh") return part;
-      const r = { x: part.x, y: part.y, w: part.w, h: part.h, k: part.k };
+      const r = { x: part.x, y: part.y, w: part.w, h: part.h, k: part.k, c: part.c };
       if (part.k === "nv") {
         if (r.x + r.w <= box.x) r.w = box.x - r.x;                       // слева от полотна
         else if (r.x >= box.x + box.w) { const e = r.x + r.w; r.x = box.x + box.w; r.w = e - r.x; }
@@ -5166,9 +5176,27 @@ const DB = {
       const [bl, bt, br, bb] = zoneInsets(p);
       const x0 = p.x * cw, x1 = (p.x + p.w) * cw, y0 = p.y * ch, y1 = (p.y + p.h) * ch;
       const ix0 = x0 + bl * pxPerMmX, ix1 = x1 - br * pxPerMmX, iy0 = y0 + bt * pxPerMmY, iy1 = y1 - bb * pxPerMmY;
-      const hasIn = p.v !== "full" && ix1 - ix0 > 2 && iy1 - iy0 > 2;
+      const hasIn = p.v !== "full" && p.v !== "photo" && ix1 - ix0 > 2 && iy1 - iy0 > 2;
       return { x0, x1, y0, y1, hasIn, ix0, ix1, iy0, iy1 };
     });
+    // Зона «Как на фото» (ручка, замок, фурнитура): внутри неё снимок
+    // остаётся как есть — плёнка там не кладётся, ручка резкая, а не мутное
+    // пятно светотени.
+    // Снимок под зоной запоминаем до покраски: после неё из него берётся
+    // только то, что отличается от поверхности двери (сама ручка), а вокруг
+    // остаётся плёнка — без светлого прямоугольника снимка.
+    const photoZones = doc.parts.filter((p) => p.k === "z" && p.v === "photo").map((p) => {
+      const x0 = Math.max(0, Math.round(p.x * cw)), x1 = Math.min(cw, Math.round((p.x + p.w) * cw));
+      const y0 = Math.max(0, Math.round(p.y * ch)), y1 = Math.min(ch, Math.round((p.y + p.h) * ch));
+      const w = Math.max(0, x1 - x0), h = Math.max(0, y1 - y0), orig = new Uint8ClampedArray(w * h * 4);
+      for (let y = 0; y < h; y++) orig.set(d.subarray(((y0 + y) * cw + x0) * 4, ((y0 + y) * cw + x1) * 4), y * w * 4);
+      return { x0, x1, y0, y1, w, h, orig };
+    }).filter((g) => g.w > 1 && g.h > 1);
+    // Плёнка чистая (рельеф снимка только в зонах): на всей двери, если есть
+    // хоть одна зона, и у детали с отметкой «Плёнка» (part.c) — даже без зон.
+    // Тип двери тут ни при чём: гладкие и фрезерованные бывают и у сборных, и
+    // у щитовых (заказчик).
+    const zoneMode = reliefZones.length > 0;
     const zoneFeather = Math.max(1, 3 * pxPerMmX);
     const haloRects = glassRects.filter((g) => g.h * ch / pxPerMmY < 80).map((g) => ({
       x0: g.x * cw, x1: (g.x + g.w) * cw, y0: g.y * ch, y1: (g.y + g.h) * ch,
@@ -5267,7 +5295,7 @@ const DB = {
           }
           // Зоны фрезеровки: вне зон плёнка чистая (рельефа снимка нет, только
           // нарисованная фаска стыка 4 мм), внутри — как раньше, края мягкие.
-          if (!glassPart && reliefZones.length) {
+          if (!glassPart && (zoneMode || part.c)) {
             let wz = 0;
             if (rowZones) for (let q = 0; q < rowZones.length; q++) {
               const g = rowZones[q];
@@ -5349,6 +5377,23 @@ const DB = {
           const m = 1 - k * wa * we * (3 - 2 * we);
           const i = (y * cw + x) * 4;
           d[i] *= m; d[i + 1] *= m; d[i + 2] *= m;
+        }
+      }
+    }
+    // Зоны «Как на фото»: поверх плёнки — то, что на снимке отличается от
+    // поверхности двери (ручка, замок, накладка). Поверхность — медиана
+    // яркости снимка в зоне; переход мягкий (6–20 % отличия).
+    for (const g of photoZones) {
+      const L = new Float32Array(g.w * g.h);
+      for (let i = 0, j = 0; i < L.length; i++, j += 4) L[i] = 0.299 * g.orig[j] + 0.587 * g.orig[j + 1] + 0.114 * g.orig[j + 2];
+      const srt = Float32Array.from(L).sort(), ref = Math.max(1, srt[srt.length >> 1]);
+      for (let y = 0; y < g.h; y++) {
+        for (let x = 0; x < g.w; x++) {
+          const k = y * g.w + x, dv = Math.abs(L[k] - ref) / ref;
+          const t = Math.max(0, Math.min(1, (dv - 0.06) / 0.14)), wgt = t * t * (3 - 2 * t);
+          if (wgt <= 0) continue;
+          const i = ((g.y0 + y) * cw + g.x0 + x) * 4, j = k * 4;
+          d[i] += (g.orig[j] - d[i]) * wgt; d[i + 1] += (g.orig[j + 1] - d[i + 1]) * wgt; d[i + 2] += (g.orig[j + 2] - d[i + 2]) * wgt;
         }
       }
     }
@@ -6749,7 +6794,7 @@ const DB = {
         const sel = i === partsSel;
         const handles = sel && partsResizable(p.k) && !p.q
           ? ["nw", "ne", "sw", "se"].map((c) => `<i class="ph ph-${c}"></i>`).join("") : "";
-        return `<div class="part k-${p.k}${sel ? " sel" : ""}${p.q ? " quad" : ""}" data-i="${i}"`
+        return `<div class="part k-${p.k}${sel ? " sel" : ""}${p.q ? " quad" : ""}${p.k === "z" && p.v === "photo" ? " zv-photo" : ""}${p.c ? " pc" : ""}" data-i="${i}"`
           + ` style="left:${pct(p.x)};top:${pct(p.y)};width:${pct(p.w)};height:${pct(p.h)}">`
           + (p.k === "z" ? (() => {
             const z = zoneInnerPct(p);
@@ -6771,7 +6816,7 @@ const DB = {
       kinds.innerHTML = `<span class="parts-lead">${lead}</span>` + (partsMode === "relief"
         // Две колонки: слева виды фрезеровки, справа готовые тени.
         ? `<div class="parts-cols"><div class="parts-col"><div class="parts-menu-h">Фрезеровка</div>`
-          + [["ring", "Рамка"], ["full", "Сплошная"], ["groove", "Канавка 6 мм"]].map(([v, n]) =>
+          + [["ring", "Рамка"], ["full", "Сплошная"], ["groove", "Канавка 6 мм"], ["photo", "Как на фото"]].map(([v, n]) =>
             `<button type="button" class="parts-kind k-z" data-kind="z" data-zv="${v}">${n}</button>`).join("")
           + `</div><div class="parts-col"><div class="parts-menu-h">Тень</div>`
           + [["v", 8], ["v", 20], ["v", 50], ["h", 8], ["h", 20], ["h", 50]].map(([d, w]) =>
@@ -6779,7 +6824,12 @@ const DB = {
           + `</div></div>`
         : Object.keys(PART_KINDS).filter((k) => partsVisible({ k: k })).map((k) =>
           `<button type="button" class="parts-kind k-${k}" data-kind="${k}">${PART_KINDS[k].name}</button>`).join("")
-          + `<button type="button" class="parts-kind k-g" data-kind="g" data-q="1">Стекло ◇ наклон</button>`);
+          + `<button type="button" class="parts-kind k-g" data-kind="g" data-q="1">Стекло ◇ наклон</button>`
+          // «Плёнка» — у выбранной детали чистая заливка плёнкой: рельеф и пятна
+          // со снимка не берутся (только фаски стыков); стёкла, тени и
+          // фрезеровка поверх работают как прежде. Повторное нажатие снимает.
+          + (() => { const sp = partsSel !== null && parts[partsSel] && !["g", "d", "t", "z"].includes(parts[partsSel].k) ? parts[partsSel] : null;
+            return `<button type="button" class="parts-film${sp && sp.c ? " on" : ""}" data-act="film"${sp ? "" : " disabled"}>${sp && sp.c ? "✓ Плёнка" : "Плёнка"}</button>`; })());
     }
     const sliders = document.getElementById("s_partsSliders");
     if (sliders) {
@@ -6791,8 +6841,8 @@ const DB = {
       sliders.innerHTML = leafEdit
         ? `<button type="button" data-act="leafSave">✓ Сохранить полотно</button><button type="button" data-act="leafCancel">Отмена</button>`
         : (sZ ? `<div class="parts-zvar">`
-            + [["ring", "Рамка"], ["full", "Сплошная"], ["groove", "Канавка 6 мм"]].map(([v, n]) => {
-              const cur = sZ.v === "full" ? "full" : "ring";
+            + [["ring", "Рамка"], ["full", "Сплошная"], ["groove", "Канавка 6 мм"], ["photo", "Как на фото"]].map(([v, n]) => {
+              const cur = sZ.v === "full" || sZ.v === "photo" ? sZ.v : "ring";
               return `<button type="button" data-act="zvar" data-v="${v}" class="${v === cur ? "on" : ""}">${n}</button>`;
             }).join("") + `</div>` : "");
     }
@@ -7446,7 +7496,7 @@ const DB = {
       else {
         const np = newPart(kind, doc.parts);
         if (kind === "g" && btn.dataset.q) np.q = [[np.x, np.y], [np.x + np.w, np.y], [np.x + np.w, np.y + np.h], [np.x, np.y + np.h]];
-        if (kind === "z" && btn.dataset.zv === "full") np.v = "full";
+        if (kind === "z" && (btn.dataset.zv === "full" || btn.dataset.zv === "photo")) np.v = btn.dataset.zv;
         if (kind === "z" && btn.dataset.zv === "groove") np.b = 6;
         if (kind === "t" && btn.dataset.tw) {
           const sc = partsScale(leafOfParts(doc.parts)), tw = Number(btn.dataset.tw);
@@ -7490,7 +7540,7 @@ const DB = {
       savePartsDoc(doc, ctx.model.id, true);
     } else if (act === "zvar" && partsSel !== null && doc.parts[partsSel] && doc.parts[partsSel].k === "z") {
       const p = doc.parts[partsSel], v = btn.dataset.v;
-      if (v === "full") p.v = "full";
+      if (v === "full" || v === "photo") p.v = v;
       else { delete p.v; if (v === "groove") { p.b = 6; delete p.bi; } }
       savePartsDoc(doc, ctx.model.id, true);
     } else if (act === "copy" && partsSel !== null && doc.parts[partsSel]) {
@@ -7500,6 +7550,7 @@ const DB = {
       if (p.a != null) cp.a = p.a;
       if (p.b != null) cp.b = p.b;
       if (p.v) cp.v = p.v;
+      if (p.c) cp.c = p.c;
       if (Array.isArray(p.bi)) cp.bi = p.bi.slice();
       doc.parts.push(cp);
       partsSel = doc.parts.length - 1;
@@ -7508,6 +7559,10 @@ const DB = {
       doc.parts.splice(partsSel, 1);
       partsSel = null; partsLastSel = null;
       savePartsDoc(doc.parts.length ? doc : null, ctx.model.id, !!doc.parts.length);
+    } else if (act === "film" && partsSel !== null && doc.parts[partsSel] && !["g", "d", "t", "z"].includes(doc.parts[partsSel].k)) {
+      const p = doc.parts[partsSel];
+      if (p.c) delete p.c; else p.c = 1;
+      savePartsDoc(doc, ctx.model.id, true);
     } else if (act === "slant" && partsSel !== null && doc.parts[partsSel] && (doc.parts[partsSel].k === "g" || doc.parts[partsSel].k === "t")) {
       const p = doc.parts[partsSel];
       if (p.q) delete p.q;
@@ -11215,6 +11270,14 @@ const DB = {
     if (qReset) qReset.addEventListener("click", onQualityReset);
     // Разметка деталей модели (см. updatePartsEditor): двигаем и растягиваем
     // прямоугольники прямо по фотографии.
+    // Подгруппы «Двери»: пока одна открыта, остальные не видны (их задевали
+    // пальцем и открывали случайно). Закрыли — все снова на месте.
+    const doorBody = document.querySelector("#s_groupDoor > .scene-group-body");
+    if (doorBody) {
+      const subs = () => Array.from(doorBody.children).filter((n) => n.matches && n.matches("details.adjust-panel"));
+      const doorSolo = () => { const open = subs().find((d) => d.open); subs().forEach((d) => d.classList.toggle("solo-hide", !!open && d !== open)); };
+      subs().forEach((d) => d.addEventListener("toggle", doorSolo));
+    }
     const partsPanel = document.getElementById("s_partsPanel");
     const partsStage = document.getElementById("s_partsStage");
     if (partsPanel) partsPanel.addEventListener("toggle", () => { if (partsPanel.open) partsModeOpen("parts"); updatePartsEditor(); partsFabSync(); });
