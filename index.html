@@ -7289,34 +7289,24 @@ const DB = {
     el.querySelectorAll(".pq, .phq").forEach((n) => n.remove());
     el.insertAdjacentHTML("afterbegin", partsQuadInner(p, true));
   }
-  // Счётчик у пальца: на сколько мм двигаемая линия отошла от ближайшей
-  // параллельной линии соседних деталей (слева она или справа — всё равно).
-  // У высокой детали меряем по ширине, у широкой — по высоте. Только цифры,
-  // бледно-жёлтые и полупрозрачные: при увеличении снимка видно у пальца.
+  // Счётчик у пальца: размер самой детали в мм — у высокой (стекло, тень,
+  // стойка) расстояние между её левым и правым краем, у широкой — между
+  // верхним и нижним. У наклонной — ширина на высоте двигаемого угла.
+  // Только цифры, бледно-жёлтые и полупрозрачные: при увеличении снимка они
+  // у пальца, и одинаковые тонкие стёкла/тени выставляются по числу.
   function partsMmTip(p, drag) {
     let el = document.getElementById("s_partsMm");
     if (!el) { el = document.createElement("div"); el.id = "s_partsMm"; el.className = "parts-mm"; el.hidden = true; document.body.appendChild(el); }
-    const doc = partsOf(drag.modelId);
-    if (!doc || !drag.last) { el.hidden = true; return; }
+    if (!drag.last || (drag.mode !== "move" && drag.mode !== "resize" && drag.mode !== "quad")) { el.hidden = true; return; }
     const W = FRAME_MM.w, H = FRAME_MM.h, tall = p.h * H >= p.w * W;
-    let edges = null;
-    if (drag.mode === "move") edges = tall ? [p.x, p.x + p.w] : [p.y, p.y + p.h];
-    else if (drag.mode === "resize") {
-      const west = drag.corner === "nw" || drag.corner === "sw", north = drag.corner === "nw" || drag.corner === "ne";
-      edges = tall ? [west ? p.x : p.x + p.w] : [north ? p.y : p.y + p.h];
-    } else if (drag.mode === "quad" && p.q) { const c = p.q[Number(drag.corner.slice(1))]; edges = [tall ? c[0] : c[1]]; }
-    if (!edges) { el.hidden = true; return; }
-    const b0 = tall ? p.y : p.x, b1 = tall ? p.y + p.h : p.x + p.w;
-    let best = Infinity;
-    doc.parts.forEach((q, i) => {
-      if (i === drag.i || !PART_KINDS[q.k]) return;
-      const a0 = tall ? q.y : q.x, a1 = tall ? q.y + q.h : q.x + q.w;
-      if (a1 < b0 || a0 > b1) return;   // не рядом по длине
-      const lines = q.q ? q.q.map((c) => tall ? c[0] : c[1]) : (tall ? [q.x, q.x + q.w] : [q.y, q.y + q.h]);
-      lines.forEach((v) => edges.forEach((e) => { const d = Math.abs(v - e) * (tall ? W : H); if (d < best) best = d; }));
-    });
-    if (!isFinite(best)) { el.hidden = true; return; }
-    el.textContent = best < 10 ? best.toFixed(1).replace(".", ",") : String(Math.round(best));
+    let mm = tall ? p.w * W : p.h * H;
+    if (p.q) {
+      const pts = p.q.map((c) => [c[0] * W, c[1] * H]);
+      const c = drag.mode === "quad" ? p.q[Number(drag.corner.slice(1))] : [p.x + p.w / 2, p.y + p.h / 2];
+      const sp = quadSpan(pts, tall ? c[1] * H : c[0] * W, tall);
+      if (sp) mm = sp[1] - sp[0];
+    }
+    el.textContent = mm < 10 ? mm.toFixed(1).replace(".", ",") : String(Math.round(mm));
     el.style.left = (drag.last.x + 26) + "px";
     el.style.top = (drag.last.y - 54) + "px";
     el.hidden = false;
