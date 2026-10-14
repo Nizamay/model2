@@ -617,6 +617,8 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 .parts-float .pf-sl { flex: 1; display: flex; align-items: center; gap: 6px; min-width: 0; }
 .parts-float .pf-sl b { min-width: 28px; text-align: right; font-size: 14px; }
 .parts-float .pf-sl input { flex: 1; min-width: 0; }
+.parts-float .pf-off { margin-left: auto; height: 34px; padding: 0 10px; font-size: 14px; border-radius: 8px; border: 1px solid var(--border); background: #fff; white-space: nowrap; }
+.parts-float .pf-off + .pf-del { margin-left: 0; }
 .parts-float .pf-del { margin-left: auto; width: 40px; height: 34px; padding: 0; font-size: 22px; line-height: 1; border-radius: 8px; border: 1px solid var(--border); background: #fff; }
 .parts-tip { position: absolute; z-index: 5; transform: translate(-50%, -120%); padding: 2px 6px; border-radius: 8px; font-size: 12px; font-weight: 700;
   color: #fff; background: rgba(20,20,20,.85); pointer-events: none; white-space: nowrap; }
@@ -6724,6 +6726,9 @@ const DB = {
       const sel = !leafEdit && partsSel !== null && parts[partsSel] ? parts[partsSel] : null;
       const sT = sel && sel.k === "t" ? sel : null;
       fl.innerHTML = !sel ? "" : (sT ? `<label class="pf-sl"><b>${sT.a == null ? 40 : sT.a}</b><input type="range" min="0" max="100" step="1" value="${sT.a == null ? 40 : sT.a}" data-shade aria-label="Сила тени"></label>` : "")
+        // «Снять активность» — сразу под рукой: случайное касание по жёлтым
+        // углам сдвигало деталь, а снять выбор было трудно (просьба заказчика).
+        + `<button type="button" data-act="deselect" class="pf-off">${sT ? "Снять" : "Снять активность"}</button>`
         + `<button type="button" data-act="del" class="pf-del" aria-label="Удалить">×</button>`;
     }
     partsFabSync();
