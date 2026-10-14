@@ -7038,7 +7038,10 @@ const DB = {
     for (let i = doc.parts.length - 1; i >= 0; i--) {
       const p = doc.parts[i];
       if (!partsVisible(p)) continue;
-      if (fx >= p.x && fx <= p.x + p.w && fy >= p.y && fy <= p.y + p.h) {
+      // Наклонная деталь берётся только за саму полосу (с запасом 12 точек), а
+      // не за весь охватывающий прямоугольник: иначе узкая наклонная канавка
+      // двигалась от касания в любом месте поля (жалоба заказчика, Вектор ПГ).
+      if (fx >= p.x && fx <= p.x + p.w && fy >= p.y && fy <= p.y + p.h && (!p.q || partsOnQuad(p, fx, fy, box, 12))) {
         // Не активная деталь: касание без сдвига делает её активной, а
         // движение пальцем сдвигает снимок (увеличенный) или страницу.
         if (i !== partsSel) {
@@ -7123,6 +7126,12 @@ const DB = {
     partsZoomSet(pp.z0 * Math.hypot(a.x - b.x, a.y - b.y) / pp.d0, mx, my);
     partsScrollBy(pp.mx - mx, pp.my - my);
     pp.mx = mx; pp.my = my;
+  }
+
+  function partsOnQuad(p, fx, fy, box, tolPx) {
+    const pts = p.q.map((c) => [c[0] * box.width, c[1] * box.height]);
+    const x = fx * box.width, y = fy * box.height, sp = quadSpan(pts, y, true);
+    return (sp && x >= sp[0] && x <= sp[1]) || quadEdgeDist(pts, x, y) <= tolPx;
   }
 
   // Радиус захвата угла, точек, — от центра квадратика. Квадратик 22 точки.
