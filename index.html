@@ -617,8 +617,12 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 .parts-float .pf-sl { flex: 1; display: flex; align-items: center; gap: 6px; min-width: 0; }
 .parts-float .pf-sl b { min-width: 28px; text-align: right; font-size: 14px; }
 .parts-float .pf-sl input { flex: 1; min-width: 0; }
-.parts-float .pf-off { margin-left: auto; height: 34px; padding: 0 10px; font-size: 14px; border-radius: 8px; border: 1px solid var(--border); background: #fff; white-space: nowrap; }
-.parts-float .pf-off + .pf-del { margin-left: 0; }
+.parts-float .pf-sq { margin-left: auto; flex: 0 0 auto; width: 30px; height: 30px; padding: 0; box-sizing: border-box; border-radius: 6px;
+  background: #ffd54a; border: 2px solid #6b5200; box-shadow: 0 1px 4px rgba(0,0,0,.35); opacity: .35; }
+.parts-float .pf-sq.on { opacity: 1; }
+.parts-float .pf-sq:disabled { opacity: .2; }
+.parts-float .pf-sq + .pf-del { margin-left: 0; }
+.parts-float .pf-del:disabled { opacity: .35; }
 .parts-float .pf-del { margin-left: auto; width: 40px; height: 34px; padding: 0; font-size: 22px; line-height: 1; border-radius: 8px; border: 1px solid var(--border); background: #fff; }
 .parts-tip { position: absolute; z-index: 5; transform: translate(-50%, -120%); padding: 2px 6px; border-radius: 8px; font-size: 12px; font-weight: 700;
   color: #fff; background: rgba(20,20,20,.85); pointer-events: none; white-space: nowrap; }
@@ -5433,6 +5437,7 @@ const DB = {
 
   // Плавающая ☰ видна, пока открыта панель разметки и она на экране.
   const partsInView = new Set();
+  let partsLastSel = null;   // последняя активная деталь — для жёлтого квадрата в полоске
   function partsFabSync() {
     const fab = document.getElementById("s_partsFab"), menu = document.getElementById("s_partsMenu");
     if (!fab || !menu) return;
@@ -6725,11 +6730,15 @@ const DB = {
     if (fl) {
       const sel = !leafEdit && partsSel !== null && parts[partsSel] ? parts[partsSel] : null;
       const sT = sel && sel.k === "t" ? sel : null;
-      fl.innerHTML = !sel ? "" : (sT ? `<label class="pf-sl"><b>${sT.a == null ? 40 : sT.a}</b><input type="range" min="0" max="100" step="1" value="${sT.a == null ? 40 : sT.a}" data-shade aria-label="Сила тени"></label>` : "")
-        // «Снять активность» — сразу под рукой: случайное касание по жёлтым
-        // углам сдвигало деталь, а снять выбор было трудно (просьба заказчика).
-        + `<button type="button" data-act="deselect" class="pf-off">${sT ? "Снять" : "Снять активность"}</button>`
-        + `<button type="button" data-act="del" class="pf-del" aria-label="Удалить">×</button>`;
+      if (sel) partsLastSel = partsSel;
+      const canBack = !sel && partsLastSel !== null && parts[partsLastSel] && partsVisible(parts[partsLastSel]);
+      // Жёлтый квадрат — как углы выделения: жёлтый, пока деталь активна
+      // (нажатие снимает активность), блёклый — когда активной нет (нажатие
+      // возвращает активность последней детали). Место — шкале (просьба заказчика).
+      fl.innerHTML = leafEdit ? "" : (sT ? `<label class="pf-sl"><b>${sT.a == null ? 40 : sT.a}</b><input type="range" min="0" max="100" step="1" value="${sT.a == null ? 40 : sT.a}" data-shade aria-label="Сила тени"></label>` : "")
+        + (sel ? `<button type="button" data-act="deselect" class="pf-sq on" aria-label="Снять активность"></button>`
+          : `<button type="button" data-act="reselect" class="pf-sq" aria-label="Сделать активной"${canBack ? "" : " disabled"}></button>`)
+        + `<button type="button" data-act="del" class="pf-del" aria-label="Удалить"${sel ? "" : " disabled"}>×</button>`;
     }
     partsFabSync();
     if (tools) {
@@ -7354,8 +7363,10 @@ const DB = {
       savePartsDoc(doc, ctx.model.id, true);
     } else if (act === "del" && partsSel !== null) {
       doc.parts.splice(partsSel, 1);
-      partsSel = null;
+      partsSel = null; partsLastSel = null;
       savePartsDoc(doc.parts.length ? doc : null, ctx.model.id, !!doc.parts.length);
+    } else if (act === "reselect") {
+      if (partsLastSel !== null && doc.parts[partsLastSel] && partsVisible(doc.parts[partsLastSel])) partsSel = partsLastSel;
     } else if (act === "deselect") {
       partsSel = null;
     } else if (act === "clear") {
