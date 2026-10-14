@@ -6716,13 +6716,13 @@ const DB = {
             }).join("") + `</div>` : "");
     }
     // Плавающая полоска: только число, шкала и «×» (без подписей — просьба
-    // заказчика). Для тени — сила, для рамки фрезеровки — ширина в мм.
+    // заказчика). Шкала — только у тени (сила); ширину рамки фрезеровки
+    // ведут вручную за жёлтые углы, шкалы у неё нет.
     const fl = document.getElementById("s_partsFloat");
     if (fl) {
       const sel = !leafEdit && partsSel !== null && parts[partsSel] ? parts[partsSel] : null;
-      const sT = sel && sel.k === "t" ? sel : null, sZ = sel && sel.k === "z" && sel.v !== "full" ? sel : null;
+      const sT = sel && sel.k === "t" ? sel : null;
       fl.innerHTML = !sel ? "" : (sT ? `<label class="pf-sl"><b>${sT.a == null ? 40 : sT.a}</b><input type="range" min="0" max="100" step="1" value="${sT.a == null ? 40 : sT.a}" data-shade aria-label="Сила тени"></label>` : "")
-        + (sZ ? `<label class="pf-sl"><b>${sZ.b == null ? 25 : sZ.b}</b><input type="range" min="3" max="200" step="1" value="${sZ.b == null ? 25 : sZ.b}" data-zw aria-label="Ширина рамки, мм"></label>` : "")
         + `<button type="button" data-act="del" class="pf-del" aria-label="Удалить">×</button>`;
     }
     partsFabSync();
@@ -7094,9 +7094,53 @@ const DB = {
     if (p.k === "t" && drag.guides) partsShadeTip(p, drag);
   }
 
-  // Подсказка у тени: где штрих каркаса проходит поперёк тени — 0 % у левого
-  // (верхнего) её края, 50 % посередине, 100 % у правого (нижнего). Видна,
-  // только пока тень касается пунктира (с запасом в 3 точки).
+  // Определитель тени на снимке: когда тень касается пунктира (там у двери
+  // и лежит тень — у стыка деталей), подсказка показывает, насколько тёмно на
+  // самом фото у этого штриха, — в тех же единицах, что шкала «силы тени»:
+  // поставить шкалу на это число — и тень на картинке будет как на фото.
+  let partsLumCache = null;
+  function partsPhotoLum() {
+    const img = document.querySelector("#s_partsStage img.parts-photo");
+    if (!img || !img.naturalWidth) return null;
+    const src = img.getAttribute("src");
+    if (partsLumCache && partsLumCache.src === src) return partsLumCache;
+    const w = Math.min(900, img.naturalWidth), h = Math.max(1, Math.round(img.naturalHeight * w / img.naturalWidth));
+    const cv = document.createElement("canvas"); cv.width = w; cv.height = h;
+    const cx = cv.getContext("2d", { willReadFrequently: true });
+    try { cx.drawImage(img, 0, 0, w, h); } catch (err) { return null; }
+    let d;
+    try { d = cx.getImageData(0, 0, w, h).data; } catch (err) { return null; }
+    const lum = new Float32Array(w * h);
+    for (let i = 0, j = 0; i < lum.length; i++, j += 4) lum[i] = 0.299 * d[j] + 0.587 * d[j + 1] + 0.114 * d[j + 2];
+    partsLumCache = { src: src, w: w, h: h, lum: lum };
+    return partsLumCache;
+  }
+  // Насколько темнее фото на линии v (доля кадра) против соседнего поля, на
+  // участке тени b0..b1 вдоль неё; 0..1. vert — линия вертикальная.
+  function partsPhotoShade(v, b0, b1, vert, halfW) {
+    const L = partsPhotoLum();
+    if (!L) return null;
+    const n = vert ? L.w : L.h, m = vert ? L.h : L.w;
+    const at = (a, b) => vert ? L.lum[b * L.w + a] : L.lum[a * L.w + b];
+    const c = Math.round(v * n), R = Math.max(6, Math.round(halfW * n) * 3);
+    const s0 = Math.max(0, Math.round((b0 + (b1 - b0) * 0.2) * m)), s1 = Math.min(m - 1, Math.round((b1 - (b1 - b0) * 0.2) * m));
+    if (s1 <= s0) return null;
+    const prof = new Float32Array(2 * R + 1);
+    let cnt = 0;
+    for (let b = s0; b <= s1; b += 2) {
+      cnt++;
+      for (let k = -R; k <= R; k++) { const a = Math.max(0, Math.min(n - 1, c + k)); prof[k + R] += at(a, b); }
+    }
+    for (let k = 0; k < prof.length; k++) prof[k] /= cnt;
+    const near = Math.max(2, Math.round(R / 3));
+    let lo = Infinity;
+    for (let k = -near; k <= near; k++) lo = Math.min(lo, prof[k + R]);
+    // Поле рядом — светлая сторона: тень у стыка лежит по одну сторону от него.
+    const side = (from, to) => { let sum = 0, q = 0; for (let k = from; k <= to; k++) { sum += prof[k + R]; q++; } return sum / q; };
+    const ref = Math.max(side(-R, -near - 1), side(near + 1, R));
+    if (!(ref > 1)) return null;
+    return Math.max(0, Math.min(1, 1 - lo / ref));
+  }
   function partsShadeTip(p, drag) {
     const stage = document.getElementById("s_partsStage");
     if (!stage) return;
@@ -7116,9 +7160,11 @@ const DB = {
       });
     });
     if (!best) { if (tip) tip.remove(); return; }
+    // Тень на снимке у этого штриха — в единицах шкалы: сила 100 темнит на 80 %.
+    const dk = partsPhotoShade(best.v, b0, b1, vert, (a1 - a0) / 2);
+    if (dk === null) { if (tip) tip.remove(); return; }
     if (!tip) { tip = document.createElement("div"); tip.className = "parts-tip"; stage.appendChild(tip); }
-    const pc = Math.round(Math.max(0, Math.min(1, (best.v - a0) / Math.max(1e-9, a1 - a0))) * 100);
-    tip.textContent = pc + " %";
+    tip.textContent = "на фото " + Math.round(Math.min(100, dk / 0.8 * 100));
     // Подсказка посередине тени, а не у края: там жёлтые углы.
     tip.style.left = ((vert ? best.v : (b0 + b1) / 2) * 100) + "%";
     tip.style.top = ((vert ? (b0 + b1) / 2 : best.v) * 100) + "%";
@@ -7151,7 +7197,8 @@ const DB = {
     if (drag.last) partsDragApply();
     partsDrag = null;
     const stg = document.getElementById("s_partsStage");
-    if (stg) { stg.classList.remove("dragging"); const tip = stg.querySelector(".parts-tip"); if (tip) tip.remove(); }
+    // Подсказку «на фото N» оставляем ещё на 3 с — успеть прочесть число.
+    if (stg) { stg.classList.remove("dragging"); const tip = stg.querySelector(".parts-tip"); if (tip) setTimeout(() => tip.remove(), 3000); }
     const doc = partsOf(drag.modelId);
     if (!doc) return;
     // В режиме подгонки полотна ничего не записываем: запись и каркас — по
