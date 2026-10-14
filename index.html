@@ -628,6 +628,7 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 .part .pq { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
 .part .pq polygon { fill: rgba(0,190,215,.16); stroke: rgba(0,0,0,.75); stroke-width: 1px; vector-effect: non-scaling-stroke; }
 .part.k-t .pq polygon { fill: rgba(0,0,0,.18); }
+.part.k-z .pq polygon { fill: rgba(255,120,0,.22); stroke: rgba(210,90,0,.95); stroke-dasharray: 3 2; }
 .part .ph.phq { opacity: .85; }
 .part .ph.phq-0 { transform: translate(-100%, -100%); }
 .part .ph.phq-1 { transform: translate(0, -100%); }
@@ -5176,8 +5177,10 @@ const DB = {
       const [bl, bt, br, bb] = zoneInsets(p);
       const x0 = p.x * cw, x1 = (p.x + p.w) * cw, y0 = p.y * ch, y1 = (p.y + p.h) * ch;
       const ix0 = x0 + bl * pxPerMmX, ix1 = x1 - br * pxPerMmX, iy0 = y0 + bt * pxPerMmY, iy1 = y1 - bb * pxPerMmY;
-      const hasIn = p.v !== "full" && p.v !== "photo" && ix1 - ix0 > 2 && iy1 - iy0 > 2;
-      return { x0, x1, y0, y1, hasIn, ix0, ix1, iy0, iy1 };
+      const hasIn = !p.q && p.v !== "full" && p.v !== "photo" && ix1 - ix0 > 2 && iy1 - iy0 > 2;
+      // Наклонная канавка: зона — четырёхугольник (углы p.q), рельеф внутри него.
+      const qpx = p.q ? p.q.map((c) => [c[0] * cw, c[1] * ch]) : null;
+      return { x0, x1, y0, y1, hasIn, ix0, ix1, iy0, iy1, qpx };
     });
     // Зона «Как на фото» (ручка, замок, фурнитура): внутри неё снимок
     // остаётся как есть — плёнка там не кладётся, ручка резкая, а не мутное
@@ -5305,8 +5308,15 @@ const DB = {
             let wz = 0;
             if (rowZones) for (let q = 0; q < rowZones.length; q++) {
               const g = rowZones[q];
-              let e = Math.min(x - g.x0, g.x1 - x, y - g.y0, g.y1 - y);
-              if (g.hasIn) e = Math.min(e, -Math.min(x - g.ix0, g.ix1 - x, y - g.iy0, g.iy1 - y));
+              let e;
+              if (g.qpx) {
+                if (x < g.x0 - zoneFeather || x > g.x1 + zoneFeather) continue;
+                const sp = quadSpan(g.qpx, y + 0.5, true), dd = quadEdgeDist(g.qpx, x + 0.5, y + 0.5);
+                e = sp && x + 0.5 >= sp[0] && x + 0.5 <= sp[1] ? dd : -dd;
+              } else {
+                e = Math.min(x - g.x0, g.x1 - x, y - g.y0, g.y1 - y);
+                if (g.hasIn) e = Math.min(e, -Math.min(x - g.ix0, g.ix1 - x, y - g.iy0, g.iy1 - y));
+              }
               const t = e >= zoneFeather ? 1 : e <= -zoneFeather ? 0 : (e + zoneFeather) / (2 * zoneFeather);
               if (t > wz) wz = t;
             }
@@ -6822,7 +6832,7 @@ const DB = {
       kinds.innerHTML = `<span class="parts-lead">${lead}</span>` + (partsMode === "relief"
         // Две колонки: слева виды фрезеровки, справа готовые тени.
         ? `<div class="parts-cols"><div class="parts-col"><div class="parts-menu-h">Фрезеровка</div>`
-          + [["ring", "Рамка"], ["full", "Сплошная"], ["groove", "Канавка 6 мм"], ["photo", "Как на фото"]].map(([v, n]) =>
+          + [["ring", "Рамка"], ["full", "Сплошная"], ["groove", "Канавка 6 мм"], ["photo", "Как на фото"], ["slant", "Канавка ◇ наклон"]].map(([v, n]) =>
             `<button type="button" class="parts-kind k-z" data-kind="z" data-zv="${v}">${n}</button>`).join("")
           + `</div><div class="parts-col"><div class="parts-menu-h">Тень</div>`
           + [["v", 8], ["v", 20], ["v", 50], ["h", 8], ["h", 20], ["h", 50]].map(([d, w]) =>
@@ -6877,10 +6887,10 @@ const DB = {
       // Кнопка доступна всегда, в том числе на пустой разметке.
       if (leafEdit) { tools.innerHTML = ""; return; }
       if (partsMode === "relief") {
-        const selQ = partsSel !== null && parts[partsSel] && parts[partsSel].k === "t" ? parts[partsSel] : null;
+        const selQ = partsSel !== null && parts[partsSel] && (parts[partsSel].k === "t" || (parts[partsSel].k === "z" && parts[partsSel].v !== "photo")) ? parts[partsSel] : null;
         tools.innerHTML = `<button type="button" data-act="refresh" class="parts-refresh is-${partsRefresh}">${partsRefresh === "busy" ? "⏳ Считаю…" : partsRefresh === "done" ? "✓ Картинка обновлена" : "⟳ Обновить картинку"}</button>`
           // Наклон тени: четыре угла тянутся по одному (как обрезка снимка).
-          + `<button type="button" data-act="slant"${selQ ? "" : " disabled"}>${selQ && selQ.q ? "▭ Без наклона" : "◇ Наклон тени"}</button>`
+          + `<button type="button" data-act="slant"${selQ ? "" : " disabled"}>${selQ && selQ.q ? "▭ Без наклона" : selQ && selQ.k === "z" ? "◇ Наклон фрезеровки" : "◇ Наклон тени"}</button>`
           + (partsSel === null ? "" : `<button type="button" data-act="copy">Копия</button>`
             + `<button type="button" data-act="deselect">Снять выбор</button>`);
         return;
@@ -7503,6 +7513,15 @@ const DB = {
         const np = newPart(kind, doc.parts);
         if (kind === "g" && btn.dataset.q) np.q = [[np.x, np.y], [np.x + np.w, np.y], [np.x + np.w, np.y + np.h], [np.x, np.y + np.h]];
         if (kind === "z" && (btn.dataset.zv === "full" || btn.dataset.zv === "photo")) np.v = btn.dataset.zv;
+        // «Канавка ◇ наклон» (Вектор ПГ и т. п.): узкая наклонная полоса 6 мм,
+        // рельеф снимка во всей полосе; четыре угла тянутся по одному.
+        if (kind === "z" && btn.dataset.zv === "slant") {
+          const sc = partsScale(leafOfParts(doc.parts)), gw = 6 * sc.x, len = Math.min(0.6, 600 * sc.y), dx = 150 * sc.x;
+          const cx = np.x + np.w / 2, cy = np.y + np.h / 2, x0 = cx - dx / 2 - gw / 2, y0 = cy - len / 2;
+          np.v = "full";
+          np.q = [[x0 + dx, y0], [x0 + dx + gw, y0], [x0 + gw, y0 + len], [x0, y0 + len]];
+          quadSync(np);
+        }
         if (kind === "z" && btn.dataset.zv === "groove") np.b = 6;
         if (kind === "t" && btn.dataset.tw) {
           const sc = partsScale(leafOfParts(doc.parts)), tw = Number(btn.dataset.tw);
@@ -7569,10 +7588,10 @@ const DB = {
       const p = doc.parts[partsSel];
       if (p.c) delete p.c; else p.c = 1;
       savePartsDoc(doc, ctx.model.id, true);
-    } else if (act === "slant" && partsSel !== null && doc.parts[partsSel] && (doc.parts[partsSel].k === "g" || doc.parts[partsSel].k === "t")) {
+    } else if (act === "slant" && partsSel !== null && doc.parts[partsSel] && ["g", "t", "z"].includes(doc.parts[partsSel].k)) {
       const p = doc.parts[partsSel];
       if (p.q) delete p.q;
-      else p.q = [[p.x, p.y], [p.x + p.w, p.y], [p.x + p.w, p.y + p.h], [p.x, p.y + p.h]];
+      else { p.q = [[p.x, p.y], [p.x + p.w, p.y], [p.x + p.w, p.y + p.h], [p.x, p.y + p.h]]; if (p.k === "z" && p.v !== "photo") p.v = "full"; }
       savePartsDoc(doc, ctx.model.id, true);
     } else if (act === "reselect") {
       if (partsLastSel !== null && doc.parts[partsLastSel] && partsVisible(doc.parts[partsLastSel])) partsSel = partsLastSel;
