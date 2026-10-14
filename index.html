@@ -591,6 +591,7 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 .parts-kinds, .parts-tools { display: flex; flex-wrap: wrap; gap: 4px; justify-content: center; align-items: center; }
 .parts-lead { font-size: 12px; color: var(--muted); }
 .parts-kinds button, .parts-tools button { padding: 6px 8px; font-size: 12px; border-radius: 6px; border: 1px solid var(--line); background: #fff; }
+.parts-tools button:disabled { opacity: .45; }
 .parts-stage.dragging .part > span { opacity: 0; }
 .parts-stage.dragging .ph { opacity: .35; }
 .part.k-t { background: rgba(0,0,0,.18); }
@@ -6741,6 +6742,9 @@ const DB = {
       tools.innerHTML = `<button type="button" data-act="refresh" class="parts-refresh is-${partsRefresh}">${partsRefresh === "busy" ? "⏳ Считаю…" : partsRefresh === "done" ? "✓ Картинка обновлена" : "⟳ Обновить картинку"}</button>`
         + `<button type="button" data-act="frame">+ Каркас</button>`
         + `<button type="button" data-act="leafEdit">Подогнать полотно</button>`
+        // «✕ Удалить» в меню «Деталей модели» — всегда на виду (просьба
+        // заказчика); пока деталь не выбрана, кнопка серая.
+        + `<button type="button" data-act="del"${partsSel === null ? " disabled" : ""}>✕ Удалить</button>`
         + (partsSel === null ? "" :
         `<button type="button" data-act="copy">Копия</button>`
         + `<button type="button" data-act="deselect">Снять выбор</button>`)
