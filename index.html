@@ -1586,6 +1586,8 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
           <rect id="s_doorOutlineRect" fill="none" stroke="rgba(0,0,0,.22)" stroke-width="0.6"></rect>
           <g id="s_doorGlassGroup"></g>
           <g id="s_doorHandleGroup"></g>
+          <!-- Свет комнаты — поверх всего (см. lightSVG). -->
+          <g id="s_doorLightGroup" pointer-events="none"></g>
         </svg>
       </div>
       <button type="button" id="s_fsBtn" class="fs-btn">⛶ Во весь экран</button>
@@ -1813,6 +1815,19 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
             <details class="adjust-panel" id="s_plinthPanel">
               <summary>Плинтус</summary>
               <div class="adjust-body"><div class="wall-textures" id="s_plinthKinds"></div></div>
+            </details>
+          </div>
+        </details>
+        <details class="scene-group" id="s_groupRoom">
+          <summary>Свет и декор</summary>
+          <div class="scene-group-body">
+            <details class="adjust-panel" id="s_lightPanel" open>
+              <summary>Свет</summary>
+              <div class="adjust-body"><div class="wall-textures" id="s_lightModes"></div></div>
+            </details>
+            <details class="adjust-panel" id="s_decorPanel" open>
+              <summary>Декор у стены</summary>
+              <div class="adjust-body"><div class="wall-textures" id="s_decorItems"></div></div>
             </details>
           </div>
         </details>
@@ -2601,6 +2616,9 @@ const DB = {
     floorStone: "#e5dcc8",
     floorLino: "#d4b98c",
     plinth: "white",
+    plinthH: 80,
+    light: "day",
+    decor: {},
     // Наличник в 2D: "" — обычный (три доски), "///" — с тремя полосками из
     // деталей со снимков; к «///» — капитель и банкетка (см. casingSceneSvg).
     casingStyle: "",
@@ -3671,6 +3689,7 @@ const DB = {
       glassGroup: q("doorGlassGroup"),
       handleGroup: q("doorHandleGroup"),
       sceneGroup: q("doorSceneGroup"),
+      lightGroup: q("doorLightGroup"),
       patternId: prefix + "doorTexturePattern",
       textureImageId: prefix + "doorTextureImage",
       shadeGradId: prefix + "doorShadeGradient",
@@ -8711,6 +8730,7 @@ const DB = {
     c.sceneGroup.innerHTML = sceneMode
       ? buildScene(layout, { x: x, y: y, w: w, h: h }, baseHex, casingFill, sceneWallColor, state.wallTexture, c.pfx, doorFilter, gap, photoCasing, Math.max(3, CASING_MM * unitsPerMm))
       : "";
+    if (c.lightGroup) c.lightGroup.innerHTML = sceneMode ? lightSVG(layout.vbW, layout.vbH, state.light || "day", c.pfx) : "";
     // Пока стена повторяет фон снимка, менять её нечем: свой цвет, фактура и
     // тон вернули бы прямоугольник вокруг двери. Панели прячем, чтобы не
     // тыкать в ползунки, которые ничего не делают.
@@ -8876,7 +8896,7 @@ const DB = {
   function initSceneGroups() {
     let saved = {};
     try { saved = JSON.parse(localStorage.getItem(SCENE_GROUPS_KEY) || "{}") || {}; } catch (err) { }
-    [["s_groupWall", "wall"], ["s_groupFloor", "floor"], ["s_groupDoor", "door"], ["s_groupFilm", "film"], ["s_groupGlass", "glass"]].forEach(([id, key]) => {
+    [["s_groupWall", "wall"], ["s_groupFloor", "floor"], ["s_groupRoom", "room"], ["s_groupDoor", "door"], ["s_groupFilm", "film"], ["s_groupGlass", "glass"]].forEach(([id, key]) => {
       const g = document.getElementById(id);
       if (!g) return;
       if (saved[key]) g.open = true;
@@ -9309,6 +9329,134 @@ const DB = {
       `<rect x="0" y="${floorY}" width="${W}" height="${H - floorY}" fill="url(#${idf("gloss")})"/>` +
       // плитка и наливной пол блестят сильнее дерева, линолеум — мягко
       (stone || lino ? `<rect x="0" y="${floorY}" width="${W}" height="${H - floorY}" fill="url(#${idf("gloss")})" opacity="${type.id === "pour" ? 0.9 : lino ? 0.3 : 0.6}"/>` : "") + `</g>`;
+  }
+
+  // --- Свет и декор ------------------------------------------------------
+  const LIGHT_MODES = [
+    { id: "day", name: "Дневной" },
+    { id: "window", name: "Свет из окна" },
+    { id: "warm", name: "Тёплый вечер" },
+    { id: "bright", name: "Светлая комната" },
+    { id: "dim", name: "Полумрак" }
+  ];
+  const DECOR_ITEMS = [
+    { id: "chest", name: "Комод" },
+    { id: "picture", name: "Картина" },
+    { id: "plant", name: "Растение" },
+    { id: "switch", name: "Выключатель" }
+  ];
+  const PLINTH_HEIGHTS = [60, 80, 100];
+
+  // Свет — слой поверх всей картинки (стена, пол, дверь, декор): тон и
+  // перепад яркости, как в комнате при таком освещении. «Дневной» — как есть.
+  function lightSVG(W, H, mode, pfx) {
+    const id = (n) => pfx + "lt-" + n;
+    const rect = (fill, style, op) => `<rect x="0" y="0" width="${W}" height="${H}" fill="${fill}" style="mix-blend-mode:${style}" opacity="${op}"/>`;
+    if (mode === "warm") {
+      return `<defs><radialGradient id="${id("lamp")}" cx="50%" cy="-5%" r="95%"><stop offset="0" stop-color="#fff1d6" stop-opacity="0.55"/><stop offset="1" stop-color="#3a2210" stop-opacity="0.45"/></radialGradient></defs>` +
+        rect("#ffb25e", "multiply", 0.22) + rect(`url(#${id("lamp")})`, "soft-light", 1);
+    }
+    if (mode === "window") {
+      return `<defs><linearGradient id="${id("win")}" x1="0" y1="0" x2="1" y2="0.25"><stop offset="0" stop-color="#ffffff" stop-opacity="0.65"/><stop offset="0.55" stop-color="#ffffff" stop-opacity="0"/><stop offset="1" stop-color="#1c2a3c" stop-opacity="0.5"/></linearGradient></defs>` +
+        rect("#d6e4ff", "multiply", 0.16) + rect(`url(#${id("win")})`, "soft-light", 1);
+    }
+    if (mode === "bright") return rect("#ffffff", "screen", 0.14);
+    if (mode === "dim") {
+      return `<defs><radialGradient id="${id("dim")}" cx="45%" cy="45%" r="75%"><stop offset="0" stop-color="#000000" stop-opacity="0.1"/><stop offset="1" stop-color="#000000" stop-opacity="0.45"/></radialGradient></defs>` +
+        rect("#3a4152", "multiply", 0.3) + rect(`url(#${id("dim")})`, "normal", 1);
+    }
+    return "";
+  }
+
+  // Декор у стены — в мм и в той же перспективе, что пол (см. floorSVG):
+  // комод 800×850×450 справа от двери, над ним картина 600×450, растение в
+  // горшке слева, выключатель на высоте 900 мм у наличника.
+  function decorSVG(W, H, floorY, door, casingW, idf) {
+    const on = state.decor || {};
+    if (!Object.keys(on).some((k) => on[k])) return "";
+    const k = floorY / WALL_MM;
+    const E = 1500, C = 3000, cx = door.x + door.w / 2;
+    const hY = floorY - E * k;
+    // X — мм от точки схода поперёк, D — мм от стены, Z — высота над полом
+    const P = (X, D, Z) => {
+      const z = C - D;
+      return [+(cx + (X * k * C) / z).toFixed(1), +(hY + (k * (E - Z) * C) / z).toFixed(1)];
+    };
+    const poly = (pts, fill, extra) => `<polygon points="${pts.map((p) => p.join(",")).join(" ")}" fill="${fill}"${extra || ""}/>`;
+    const right = (door.x + door.w + casingW - cx) / k; // правый край наличника, мм
+    const left = (door.x - casingW - cx) / k;
+    const wallR = (W - cx) / k, wallL = -cx / k;
+    let g = "";
+    let chestL = null;
+    if (on.chest) {
+      const l = right + 350, r = l + 800;
+      if (P(r, 450, 0)[0] < W + 40) {
+        chestL = l;
+        const body = "#efebe4", top = "#e2dccf", side = "#d3ccbf";
+        // тень на полу и на стене
+        g += `<ellipse cx="${(P(l, 300, 0)[0] + P(r, 300, 0)[0]) / 2}" cy="${P(0, 460, 0)[1]}" rx="${(P(r, 450, 0)[0] - P(l, 450, 0)[0]) * 0.56}" ry="${3}" fill="rgba(20,12,4,0.3)" filter="url(#${idf("soft")})"/>`;
+        g += `<rect x="${P(l, 0, 0)[0] + 2}" y="${P(0, 0, 860)[1]}" width="${P(r, 0, 0)[0] - P(l, 0, 0)[0] + 4}" height="${P(0, 0, 0)[1] - P(0, 0, 860)[1]}" fill="rgba(20,12,4,0.14)" filter="url(#${idf("soft")})"/>`;
+        g += poly([P(l, 0, 60), P(l, 450, 60), P(l, 450, 850), P(l, 0, 850)], side);
+        g += poly([P(l, 0, 850), P(r, 0, 850), P(r, 450, 850), P(l, 450, 850)], top);
+        g += poly([P(l, 450, 60), P(r, 450, 60), P(r, 450, 850), P(l, 450, 850)], body, ` stroke="rgba(0,0,0,0.12)" stroke-width="0.5"`);
+        // ножки
+        [l + 40, r - 70].forEach((x) => { g += poly([P(x, 430, 0), P(x + 30, 430, 0), P(x + 30, 430, 60), P(x, 430, 60)], "#8a7b68"); });
+        // три ящика с ручками
+        for (let i = 0; i < 3; i++) {
+          const z0 = 90 + i * 250, z1 = z0 + 230;
+          g += poly([P(l + 25, 451, z0), P(r - 25, 451, z0), P(r - 25, 451, z1), P(l + 25, 451, z1)], "none", ` stroke="rgba(0,0,0,0.18)" stroke-width="0.6"`);
+          const hm = (z0 + z1) / 2, hx = (l + r) / 2;
+          g += poly([P(hx - 70, 452, hm - 8), P(hx + 70, 452, hm - 8), P(hx + 70, 452, hm + 8), P(hx - 70, 452, hm + 8)], "#9a8f80");
+        }
+      }
+    }
+    if (on.picture) {
+      // над комодом, иначе — посередине свободной стены справа
+      const w = 600, h = 450, c0 = chestL != null ? chestL + 400 : Math.min(right + 700, wallR - 400);
+      const x0 = cx + (c0 - w / 2) * k, y0 = floorY - 1780 * k, pw = w * k, ph = h * k, fr = 30 * k, mt = 45 * k;
+      if (x0 + pw < W && x0 > door.x + door.w + casingW) {
+        const gid = idf("pic");
+        g += `<defs><linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#bcd3e6"/><stop offset="1" stop-color="#f1e3c8"/></linearGradient></defs>`;
+        g += `<rect x="${x0 + 2}" y="${y0 + 3}" width="${pw}" height="${ph}" fill="rgba(0,0,0,0.18)" filter="url(#${idf("soft")})"/>`;
+        g += `<rect x="${x0}" y="${y0}" width="${pw}" height="${ph}" fill="#3b3027"/>`;
+        g += `<rect x="${x0 + fr}" y="${y0 + fr}" width="${pw - 2 * fr}" height="${ph - 2 * fr}" fill="#f7f4ee"/>`;
+        const ix = x0 + fr + mt, iy = y0 + fr + mt, iw = pw - 2 * (fr + mt), ih = ph - 2 * (fr + mt);
+        g += `<rect x="${ix}" y="${iy}" width="${iw}" height="${ih}" fill="url(#${gid})"/>`;
+        g += `<path d="M ${ix} ${iy + ih * 0.7} Q ${ix + iw * 0.3} ${iy + ih * 0.45} ${ix + iw * 0.55} ${iy + ih * 0.65} T ${ix + iw} ${iy + ih * 0.55} L ${ix + iw} ${iy + ih} L ${ix} ${iy + ih} Z" fill="#8fa77a"/>`;
+        g += `<path d="M ${ix} ${iy + ih * 0.85} Q ${ix + iw * 0.5} ${iy + ih * 0.7} ${ix + iw} ${iy + ih * 0.82} L ${ix + iw} ${iy + ih} L ${ix} ${iy + ih} Z" fill="#6f8a5c"/>`;
+        g += `<circle cx="${ix + iw * 0.75}" cy="${iy + ih * 0.28}" r="${ih * 0.1}" fill="#fff4d6"/>`;
+      }
+    }
+    if (on.plant) {
+      // слева от двери, если там хватает места; иначе — небольшой цветок на
+      // комоде, а без комода — справа от двери
+      let pcx = left - 380, D = 260, pr = 150, ph = 320, z0 = 0, sc = 1;
+      if (pcx - 200 < wallL) {
+        if (chestL != null) { pcx = chestL + 600; D = 200; pr = 85; ph = 170; z0 = 850; sc = 0.5; }
+        else pcx = Math.min(wallR - 260, right + 500);
+      }
+      g += `<ellipse cx="${P(pcx, D, z0)[0]}" cy="${P(pcx, D + 40, z0)[1]}" rx="${pr * 1.15 * k}" ry="2.5" fill="rgba(20,12,4,0.3)" filter="url(#${idf("soft")})"/>`;
+      // листья — веер вытянутых эллипсов
+      let seed = 4242;
+      const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+      const base = P(pcx, D, z0 + ph);
+      for (let i = 0; i < 16; i++) {
+        const a = -Math.PI / 2 + (rnd() - 0.5) * 2.2, len = (380 + rnd() * 520) * k * sc;
+        const ex = base[0] + Math.cos(a) * len * 0.5, ey = base[1] + Math.sin(a) * len * 0.5;
+        const col = ["#4f7a3f", "#5f8f49", "#3f6634", "#6c9d52"][i % 4];
+        g += `<ellipse cx="${ex.toFixed(1)}" cy="${ey.toFixed(1)}" rx="${(len * 0.5).toFixed(1)}" ry="${(len * 0.09).toFixed(1)}" transform="rotate(${(a * 180 / Math.PI).toFixed(0)} ${ex.toFixed(1)} ${ey.toFixed(1)})" fill="${col}"/>`;
+      }
+      g += poly([P(pcx - pr, D, z0 + ph), P(pcx + pr, D, z0 + ph), P(pcx + pr * 0.75, D, z0), P(pcx - pr * 0.75, D, z0)], "#b9b4ab", ` stroke="rgba(0,0,0,0.15)" stroke-width="0.5"`);
+      g += poly([P(pcx - pr, D, z0 + ph), P(pcx + pr, D, z0 + ph), P(pcx + pr, D, z0 + ph - 35 * sc), P(pcx - pr, D, z0 + ph - 35 * sc)], "#cdc8bf");
+    }
+    if (on.switch) {
+      // выключатель 80×80 мм, центр на 900 мм, в 150 мм от наличника
+      const sx = door.x + door.w + casingW + 150 * k, sy = floorY - 940 * k, s = 80 * k;
+      g += `<rect x="${sx + 0.6}" y="${sy + 0.8}" width="${s}" height="${s}" rx="${6 * k}" fill="rgba(0,0,0,0.18)" filter="url(#${idf("soft")})"/>`;
+      g += `<rect x="${sx}" y="${sy}" width="${s}" height="${s}" rx="${6 * k}" fill="#f8f7f4" stroke="rgba(0,0,0,0.15)" stroke-width="0.4"/>`;
+      g += `<rect x="${sx + s * 0.22}" y="${sy + s * 0.22}" width="${s * 0.56}" height="${s * 0.56}" rx="${3 * k}" fill="#ffffff" stroke="rgba(0,0,0,0.12)" stroke-width="0.3"/>`;
+    }
+    return g;
   }
 
   // Наложение выбранной текстуры на стену (поверх базового цвета, до виньетки).
@@ -9802,9 +9950,14 @@ const DB = {
     // --- Плинтус с лёгким профилем.
     const plinthHex = state.plinth === "floor" ? shade(floorColorNow(), -6)
       : state.plinth === "door" ? baseHex : "#f4f0e7";
-    s += `<rect x="0" y="${floorY - 9}" width="${W}" height="9" fill="${plinthHex}"/>`;
-    s += `<rect x="0" y="${floorY - 9}" width="${W}" height="2" fill="#ffffff" opacity="0.6"/>`;
-    s += `<rect x="0" y="${floorY - 2}" width="${W}" height="2" fill="rgba(0,0,0,0.14)"/>`;
+    // высота плинтуса — 60/80/100 мм в масштабе стены
+    const pH = (state.plinthH || 80) * (floorY / WALL_MM);
+    s += `<rect x="0" y="${floorY - pH}" width="${W}" height="${pH}" fill="${plinthHex}"/>`;
+    s += `<rect x="0" y="${floorY - pH}" width="${W}" height="${pH * 0.2}" fill="#ffffff" opacity="0.6"/>`;
+    s += `<rect x="0" y="${floorY - pH * 0.22}" width="${W}" height="${pH * 0.22}" fill="rgba(0,0,0,0.14)"/>`;
+
+    // --- Декор у стены (комод, картина, растение, выключатель).
+    s += decorSVG(W, H, floorY, door, casingW || 0, idf);
 
     // Отражение полотна на полу убрано: оно выглядело нереалистично и
     // создавало ложное ощущение «выпуклости» двери снизу (см. отчёт
@@ -12944,7 +13097,13 @@ const DB = {
       `<div class="wall-tex-vars">${type.vars.map((x) =>
         `<button type="button" class="wall-tex-var${x.id === v.id ? " active" : ""}" data-var="${x.id}">${x.name}</button>`).join("")}</div>`;
     document.getElementById("s_plinthKinds").innerHTML = PLINTH_KINDS.map((x) =>
-      `<button type="button" class="wall-texture${x.id === (state.plinth || "white") ? " active" : ""}" data-plinth="${x.id}">${x.name}</button>`).join("");
+      `<button type="button" class="wall-texture${x.id === (state.plinth || "white") ? " active" : ""}" data-plinth="${x.id}">${x.name}</button>`).join("") +
+      `<div class="wall-tex-vars">${PLINTH_HEIGHTS.map((h) =>
+        `<button type="button" class="wall-tex-var${h === (state.plinthH || 80) ? " active" : ""}" data-plinth-h="${h}">${h} мм</button>`).join("")}</div>`;
+    document.getElementById("s_lightModes").innerHTML = LIGHT_MODES.map((x) =>
+      `<button type="button" class="wall-texture${x.id === (state.light || "day") ? " active" : ""}" data-light="${x.id}">${x.name}</button>`).join("");
+    document.getElementById("s_decorItems").innerHTML = DECOR_ITEMS.map((x) =>
+      `<button type="button" class="wall-texture${(state.decor || {})[x.id] ? " active" : ""}" data-decor="${x.id}">${(state.decor || {})[x.id] ? "✓ " : ""}${x.name}</button>`).join("");
   }
   function initFloorPanels() {
     const on = (id, fn) => { const n = document.getElementById(id); if (n) n.addEventListener("click", fn); };
@@ -12963,8 +13122,21 @@ const DB = {
       renderFloorPanels(); render();
     });
     on("s_plinthKinds", (e) => {
+      const h = e.target.closest("[data-plinth-h]");
+      if (h) { state.plinthH = Number(h.dataset.plinthH); renderFloorPanels(); render(); return; }
       const b = e.target.closest("[data-plinth]");
       if (b) { state.plinth = b.dataset.plinth; renderFloorPanels(); render(); }
+    });
+    on("s_lightModes", (e) => {
+      const b = e.target.closest("[data-light]");
+      if (b) { state.light = b.dataset.light; renderFloorPanels(); render(); }
+    });
+    on("s_decorItems", (e) => {
+      const b = e.target.closest("[data-decor]");
+      if (!b) return;
+      const id = b.dataset.decor;
+      state.decor = { ...(state.decor || {}), [id]: !(state.decor || {})[id] };
+      renderFloorPanels(); render();
     });
     renderFloorPanels();
   }
