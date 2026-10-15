@@ -1549,6 +1549,7 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
       <p class="scene-view-hint info-text" data-scope="view">Дверь — по текущему расчёту.</p>
       <p class="scene-photo-note info-text" data-scope="view" id="s_modelPhotoNote" hidden></p>
       <p class="scene-photo-note" id="s_patinaNote" hidden></p>
+      <p class="scene-photo-note" id="s_glassNote" hidden></p>
       <div class="door-preview">
         <svg id="s_doorPreview" class="door-preview-svg scene" viewBox="0 0 360 400" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Дверь на стене">
           <defs>
@@ -8145,6 +8146,23 @@ const DB = {
     if (!note) return;
     const ptn0 = document.getElementById("s_patinaNote");
     if (ptn0) ptn0.hidden = true;
+    // Узорное стекло (см. glassPatternSource): если у модели-источника стекло
+    // не обведено деталью «Стекло» (или нет снимка), узор взять неоткуда —
+    // на двери обычное стекло по «Виду». Подсказка видна всегда.
+    const gn = document.getElementById("s_glassNote");
+    if (gn) {
+      const m1 = getModel(state.modelId);
+      const g1 = m1 && state.glassId && state.glassId !== "none" ? modelGlasses(m1).find((gl) => gl.id === state.glassId) : null;
+      const src = g1 ? glassPatternSource(m1, g1) : null;
+      let msg = "";
+      if (src && src.id !== m1.id) {
+        if (!modelPhotoOf(src.id) || !modelPhotoOf(src.id).image) msg = `Узор стекла берётся со снимка «${src.name}», а снимка у неё нет.`;
+        else if (!glassPatternRect(src.id)) msg = `Узор стекла — со снимка «${src.name}»: обведите там стекло деталью «Стекло» (Детали модели).`;
+      }
+      if (src && !(partsOf(m1.id) || { parts: [] }).parts.some((q) => q.k === "g")) msg = `Обведите стекло этой двери деталью «Стекло» (Детали модели) — туда встанет узор${src.id !== m1.id ? ` со снимка «${src.name}»` : ""}.`;
+      gn.hidden = !msg;
+      gn.textContent = msg;
+    }
     const m = getModel(state.modelId);
     if (!m) { note.hidden = true; note.textContent = ""; return; }
     note.hidden = false;
@@ -14414,7 +14432,10 @@ const DB = {
   // Ввод названия/цены существующего элемента (не меняет структуру → не перерисовываем редактор)
   function onPriceInput(e) {
     const input = e.target;
-    if (input.tagName !== "INPUT") return;
+    // Списки «Вид» и «Узор» у стекла модели — тоже здесь: раньше сюда
+    // доходили только поля ввода, и выбор в списке не сохранялся (заказчик:
+    // «Узор» после выбора возвращался на «По названию»).
+    if (input.tagName !== "INPUT" && !(input.tagName === "SELECT" && input.dataset.kind === "modelGlass")) return;
 
     // Тумблер-«движок»: включает/выключает кнопки удаления внутри пункта,
     // чтобы удалить нельзя было случайно. Цвет внутри категории — сам себе
