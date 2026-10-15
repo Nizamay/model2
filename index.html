@@ -1724,6 +1724,9 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
             <div class="arow"><span>Вид</span>
               <select id="s_casingStyle"><option value="">Обычный</option><option value="///">«///»</option></select>
             </div>
+            <div class="arow" id="s_casingJointRow"><span>Соединение</span>
+              <select id="s_casingJoint"><option value="ус">На ус</option><option value="прямо">Прямое</option></select>
+            </div>
             <label class="casing-opt"><input type="checkbox" id="s_casingCap"> Капитель</label>
             <label class="casing-opt"><input type="checkbox" id="s_casingBank"> Банкетка (с квадратными элементами)</label>
           </div>
@@ -2562,6 +2565,9 @@ const DB = {
     // деталей со снимков; к «///» — капитель и банкетка (см. casingSceneSvg).
     casingStyle: "",
     casingCap: false,
+    // Соединение «///» без доп. элементов: "ус" — углы на ус, "прямо" —
+    // верхняя доска во всю ширину, боковые встык под ней.
+    casingJoint: "ус",
     casingBank: false,
     // Тон стены — те же поля, что и у тон-коррекции плёнки (см. adjOf/
     // filterCss): Оттенок/Насыщенность/Яркость/Контраст + каналы R/G/B.
@@ -8912,6 +8918,15 @@ const DB = {
     const lx = door.x - cw, rx = door.x + door.w;
     const pic = (k, x, y, w, h) => `<image href="${img[k]}" x="${x}" y="${y}" width="${w}" height="${h}" preserveAspectRatio="none"/>`;
     let s = "";
+    if (!extra && state.casingJoint === "прямо") {
+      // Прямое соединение: верхняя доска во всю ширину, боковые — под ней встык.
+      const th = cw, oy = door.y - th, ow = door.w + cw * 2;
+      s += pic("vL", lx, door.y, cw, bottom - door.y) + pic("vR", rx, door.y, cw, bottom - door.y);
+      s += pic("top", lx, oy, ow, th);
+      // Стыки — тонкая тень под верхней доской над боковыми.
+      [lx, rx].forEach((x0) => { s += `<rect x="${x0}" y="${door.y}" width="${cw}" height="0.7" fill="rgba(0,0,0,0.22)"/>`; });
+      return s;
+    }
     if (!extra) {
       // Углы на ус: доски кончаются по диагонали угла.
       const th = cw, oy = door.y - th, ow = door.w + cw * 2;
@@ -11970,15 +11985,21 @@ const DB = {
     }
     // Наличник на картинке (см. casingSceneSvg).
     const casStyle = document.getElementById("s_casingStyle"), casCap = document.getElementById("s_casingCap"), casBank = document.getElementById("s_casingBank");
+    const casJoint = document.getElementById("s_casingJoint"), casJointRow = document.getElementById("s_casingJointRow");
     const casSync = () => {
       if (casStyle) casStyle.value = state.casingStyle;
+      // Соединение — только у «///» без капители и банкетки: с ними углы
+      // закрыты квадратами и капителью.
+      if (casJoint) casJoint.value = state.casingJoint;
+      if (casJointRow) casJointRow.hidden = !(state.casingStyle === "///" && !state.casingCap && !state.casingBank);
       [casCap, casBank].forEach((n) => { if (n) n.disabled = state.casingStyle !== "///"; });
       if (casCap) casCap.checked = state.casingCap;
       if (casBank) casBank.checked = state.casingBank;
     };
     if (casStyle) casStyle.addEventListener("change", () => { state.casingStyle = casStyle.value; casSync(); drawDoor(sceneCtx, true); });
-    if (casCap) casCap.addEventListener("change", () => { state.casingCap = casCap.checked; drawDoor(sceneCtx, true); });
-    if (casBank) casBank.addEventListener("change", () => { state.casingBank = casBank.checked; drawDoor(sceneCtx, true); });
+    if (casCap) casCap.addEventListener("change", () => { state.casingCap = casCap.checked; casSync(); drawDoor(sceneCtx, true); });
+    if (casBank) casBank.addEventListener("change", () => { state.casingBank = casBank.checked; casSync(); drawDoor(sceneCtx, true); });
+    if (casJoint) casJoint.addEventListener("change", () => { state.casingJoint = casJoint.value; drawDoor(sceneCtx, true); });
     casSync();
     // «Засветка»: кнопка показывает и прячет движок; значение — у разметки модели.
     const lightBtn = document.getElementById("s_lightBtn"), lightRow = document.getElementById("s_lightRow");
