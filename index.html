@@ -5132,6 +5132,22 @@ const DB = {
     // Стекло — нет: у него свой цвет из позиции «Стекло», к плёнке он
     // отношения не имеет.
     const flat = adjustFilmRgb(partsRgb(filmHex), adjust);
+    // Запас под блики у очень светлого цвета. Белая эмаль — это 255 во всех
+    // каналах, светлее ей стать некуда: всё, что на снимке светлее ровного
+    // поля (блик на скате филёнки, светлая грань фрезеровки), обрезалось в
+    // ту же белизну, и от рельефа оставалась половина — тени без бликов
+    // (жалоба заказчика: «на снимке видны глубина и фрезеровка»). Поэтому
+    // ровное поле у таких цветов садится на 240 — так белая дверь и выглядит
+    // на любом снимке, — и выше остаётся место свету. Цвета темнее не меняются.
+    const LEVEL_MAX = 240;
+    let filmLum = 0.299 * flat[0] + 0.587 * flat[1] + 0.114 * flat[2];
+    if (tiles && tiles.v && tiles.v.data.length) {
+      const td = tiles.v.data;
+      let sum = 0, n = 0;
+      for (let j = 0; j < td.length; j += 4 * 7) { sum += 0.299 * td[j] + 0.587 * td[j + 1] + 0.114 * td[j + 2]; n++; }
+      if (n) filmLum = sum / n;
+    }
+    const kLevel = filmLum > LEVEL_MAX ? LEVEL_MAX / filmLum : 1;
     const glassRgb = partsRgb(glass.flat && glass.deep ? glass.deep : glass.fill);
     const roomRefl = glass.room > 0 ? glassRoomReflection(glass.wall) : null;
     const reflPx = [0, 0, 0];
@@ -5237,6 +5253,21 @@ const DB = {
     // Тип двери тут ни при чём: гладкие и фрезерованные бывают и у сборных, и
     // у щитовых (заказчик).
     const zoneMode = reliefZones.length > 0;
+    // Рельеф внутри зон — прямо со снимка, в полном кадре и без размытия.
+    // Общий рельеф (relief) размыт на 5 мм, выровнен по 40 мм и с
+    // приглушёнными короткими штрихами — так он гасит тиснение «под дерево»
+    // по всей двери, но с ним уходят и резьба, и мягкий скат филёнки
+    // (жалоба заказчика: на снимке видны глубина и фрезеровка, на двери —
+    // нет). Зону же обвели именно там, где рельеф со снимка нужен, поэтому
+    // в ней берём яркость снимка как есть (до покраски).
+    let zoneLum = null;
+    if (zoneMode) {
+      zoneLum = new Uint8Array(cw * ch);
+      for (let y = 0; y < ch; y++) {
+        for (let i = y * cw * 4, p = y * cw, e = p + cw; p < e; i += 4, p++) zoneLum[p] = (77 * d[i] + 150 * d[i + 1] + 29 * d[i + 2]) >> 8;
+        if ((y & 63) === 63 && await pause()) return null;
+      }
+    }
     const zoneFeather = Math.max(1, 3 * pxPerMmX);
     const haloRects = glassRects.filter((g) => g.h * ch / pxPerMmY < 80).map((g) => ({
       x0: g.x * cw, x1: (g.x + g.w) * cw, y0: g.y * ch, y1: (g.y + g.h) * ch,
@@ -5260,6 +5291,15 @@ const DB = {
         for (let x = x0; x < x1; x += 2) sample[sn++] = relief[rAt(x, y)];
       }
       if (!sn) continue;
+      // Опорная яркость для рельефа зон — медиана снимка по детали.
+      let refZ = 1;
+      if (zoneLum) {
+        const zs = new Uint8Array(sn);
+        let zn = 0;
+        for (let y = y0; y < y1; y += 2) for (let x = x0; x < x1; x += 2) zs[zn++] = zoneLum[y * cw + x];
+        zs.sort();
+        refZ = zs[zn >> 1] || 1;
+      }
       sample.sort();
       const ref = sample[sample.length >> 1] || 1;
       // Приводим деталь к цвету плёнки: рельеф по детали в среднем должен
@@ -5364,9 +5404,13 @@ const DB = {
             if (db < 1) fl *= 1 - 0.16 * (1 - db);
             if (dr < 1) fl *= 1 - 0.12 * (1 - dr);
             if (shadeK !== 1) fl = 1 + (fl - 1) * shadeK;
+            if (wz > 0 && zoneLum) {
+              const rz = clampRel(zoneLum[y * cw + x] / refZ);
+              relBase = shadeK === 1 ? rz : clampRel(1 + (rz - 1) * shadeK);
+            }
             relBase = fl + (relBase - fl) * wz;
           }
-          const rel = glassPart && glass.flat ? 1 : relBase;
+          const rel = glassPart ? (glass.flat ? 1 : relBase) : relBase * kLevel;
           let fr, fg, fb;
           if (glassPart) { fr = glassRgb[0]; fg = glassRgb[1]; fb = glassRgb[2]; }
           else if (tile) {
@@ -5403,7 +5447,15 @@ const DB = {
           if (wgt <= 0.01) continue;
           const i = ((g.y0 + y) * cw + g.x0 + x) * 4, j = k * 4;
           let r = g.orig[j], gg = g.orig[j + 1], b = g.orig[j + 2];
-          if (patinaKind === "silver") {
+          if (patinaKind === "gold") {
+            // Золото — насыщеннее, чем на снимке: там позолота бледная,
+            // «шампань», и на перекрашенной двери её не хватало (заказчик,
+            // патина на максимуме). Светотень та же, цвет гуще в 1.6 раза.
+            const l = 0.299 * r + 0.587 * gg + 0.114 * b;
+            r = Math.max(0, Math.min(255, l + (r - l) * 1.6));
+            gg = Math.max(0, Math.min(255, l + (gg - l) * 1.6));
+            b = Math.max(0, Math.min(255, l + (b - l) * 1.6));
+          } else if (patinaKind === "silver") {
             // Серебро: та же светотень, что у позолоты на снимке, серый с лёгкой холодцой.
             const l = 0.299 * r + 0.587 * gg + 0.114 * b, v = Math.min(255, l * 1.12);
             r = v * 0.97; gg = v * 0.99; b = Math.min(255, v * 1.03);
