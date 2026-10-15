@@ -5442,7 +5442,85 @@ const DB = {
           wt[y * w + x] = hm * ts * ts * (3 - 2 * ts);
         }
       }
-      return { x0, y0, w, h, orig, wt };
+      // Стекло патиной не красится: зона «Патина» поверх стекла (узор
+      // стекла) его не трогает.
+      doc.parts.forEach((q) => {
+        if (q.k !== "g") return;
+        const gx0 = Math.max(x0, Math.round(q.x * cw)), gx1 = Math.min(x1, Math.round((q.x + q.w) * cw));
+        const gy0 = Math.max(y0, Math.round(q.y * ch)), gy1 = Math.min(y1, Math.round((q.y + q.h) * ch));
+        for (let y = gy0; y < gy1; y++) if (gx1 > gx0) wt.fill(0, (y - y0) * w + (gx0 - x0), (y - y0) * w + (gx1 - x0));
+      });
+      // Позолоты на снимке нет (Венеция ПО: узор белый, рельефом) — патину
+      // кладём по самому рельефу узора: где снимок темнее или светлее своей
+      // округи на 4 мм (канавки, грани завитков). Чувствительность та же.
+      let gsum = 0;
+      for (let k = 0; k < wt.length; k++) gsum += wt[k];
+      let synth = false;
+      if (gsum < 0.003 * w * h && w > 4 && h > 4) {
+        synth = true;
+        const L = new Float32Array(w * h);
+        for (let k = 0, j = 0; k < L.length; k++, j += 4) L[k] = 0.299 * orig[j] + 0.587 * orig[j + 1] + 0.114 * orig[j + 2];
+        const r = Math.max(2, Math.round(4 * pxPerMmX));
+        const tmp = new Float32Array(w * h), M = new Float32Array(w * h);
+        for (let y = 0; y < h; y++) {
+          let sum = 0, n = 0;
+          for (let x = 0; x <= r && x < w; x++) { sum += L[y * w + x]; n++; }
+          for (let x = 0; x < w; x++) {
+            tmp[y * w + x] = sum / n;
+            const add = x + r + 1, drop = x - r;
+            if (add < w) { sum += L[y * w + add]; n++; }
+            if (drop >= 0) { sum -= L[y * w + drop]; n--; }
+          }
+        }
+        for (let x = 0; x < w; x++) {
+          let sum = 0, n = 0;
+          for (let y = 0; y <= r && y < h; y++) { sum += tmp[y * w + x]; n++; }
+          for (let y = 0; y < h; y++) {
+            M[y * w + x] = sum / n;
+            const add = y + r + 1, drop = y - r;
+            if (add < h) { sum += tmp[add * w + x]; n++; }
+            if (drop >= 0) { sum -= tmp[drop * w + x]; n--; }
+          }
+        }
+        const r0 = 0.045 - 0.04 * sens;
+        for (let k = 0; k < wt.length; k++) {
+          const m = M[k] || 1, dev = Math.max((m - L[k]) / m, 0.6 * (L[k] - m) / m);
+          const t = Math.max(0, Math.min(1, (dev - r0) / 0.03));
+          tmp[k] = t * t * (3 - 2 * t);
+        }
+        // Края завитков найдены — расширяем их на ~1 мм, чтобы золото легло
+        // на весь тонкий узор, а не только по его кромке.
+        const rr = Math.max(1, Math.round(1 * pxPerMmX));
+        for (let y = 0; y < h; y++) {
+          let sum = 0, n = 0;
+          for (let x = 0; x <= rr && x < w; x++) { sum += tmp[y * w + x]; n++; }
+          for (let x = 0; x < w; x++) {
+            M[y * w + x] = sum / n;
+            const add = x + rr + 1, drop = x - rr;
+            if (add < w) { sum += tmp[y * w + add]; n++; }
+            if (drop >= 0) { sum -= tmp[y * w + drop]; n--; }
+          }
+        }
+        for (let x = 0; x < w; x++) {
+          let sum = 0, n = 0;
+          for (let y = 0; y <= rr && y < h; y++) { sum += M[y * w + x]; n++; }
+          for (let y = 0; y < h; y++) {
+            wt[y * w + x] = Math.min(1, 2 * sum / n);
+            const add = y + rr + 1, drop = y - rr;
+            if (add < h) { sum += M[add * w + x]; n++; }
+            if (drop >= 0) { sum -= M[drop * w + x]; n--; }
+          }
+        }
+        doc.parts.forEach((q) => {
+          if (q.k !== "g") return;
+          const gx0 = Math.max(x0, Math.round(q.x * cw)), gx1 = Math.min(x1, Math.round((q.x + q.w) * cw));
+          const gy0 = Math.max(y0, Math.round(q.y * ch)), gy1 = Math.min(y1, Math.round((q.y + q.h) * ch));
+          for (let y = gy0; y < gy1; y++) if (gx1 > gx0) wt.fill(0, (y - y0) * w + (gx0 - x0), (y - y0) * w + (gx1 - x0));
+        });
+        const srt = Float32Array.from(L).sort();
+        return { x0, y0, w, h, orig, wt, synth, ref: srt[srt.length >> 1] || 230 };
+      }
+      return { x0, y0, w, h, orig, wt, synth };
     }).filter((g) => g.w > 1 && g.h > 1) : [];
     // Плёнка чистая (рельеф снимка только в зонах): на всей двери, если есть
     // хоть одна зона, и у детали с отметкой «Плёнка» (part.c) — даже без зон.
@@ -5474,6 +5552,7 @@ const DB = {
         st.sort((p, q) => p - q);
         const lw = st[(st.length * 0.7) | 0] || 230;
         for (const g of patinaZones) {
+          if (g.synth) continue;   // позолоты на снимке нет — убирать нечего
           for (let y = 0; y < g.h; y++) {
             for (let x = 0; x < g.w; x++) {
               const wgt = g.wt[y * g.w + x];
@@ -5705,7 +5784,12 @@ const DB = {
           if (wgt <= 0.01) continue;
           const i = ((g.y0 + y) * cw + g.x0 + x) * 4, j = k * 4;
           let r = g.orig[j], gg = g.orig[j + 1], b = g.orig[j + 2];
-          if (patinaKind === "gold") {
+          if (g.synth) {
+            // Патина по рельефу: цвет золота или серебра со светотенью снимка.
+            const v = Math.max(0.45, Math.min(1.15, (0.299 * r + 0.587 * gg + 0.114 * b) / g.ref));
+            if (patinaKind === "gold") { r = 205 * v; gg = 165 * v; b = 80 * v; }
+            else { r = 168 * v; gg = 174 * v; b = 184 * v; }
+          } else if (patinaKind === "gold") {
             // Золото — насыщеннее, чем на снимке: там позолота бледная,
             // «шампань», и на перекрашенной двери её не хватало (заказчик,
             // патина на максимуме). Светотень та же, цвет гуще в 1.6 раза.
