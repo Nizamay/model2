@@ -643,6 +643,9 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 .parts-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; width: 100%; }
 .parts-col { display: flex; flex-direction: column; gap: 4px; }
 .parts-col button { width: 100%; text-align: left; }
+/* Вид активной детали в меню — подсвечен жёлтым, как квадрат сверху. */
+.parts-kind.cur { outline: 3px solid #ffcf33; outline-offset: -1px; font-weight: 700; }
+.parts-menu-h.cur { color: #b8860b; }
 .parts-zvar { display: flex; flex-wrap: wrap; gap: 4px; justify-content: center; width: 100%; }
 .parts-zvar button.on { background: rgba(255,120,0,.22); border-color: rgba(210,90,0,.8); font-weight: 600; }
 .part.k-z > span { background: rgba(210,90,0,.9); }
@@ -6885,23 +6888,43 @@ const DB = {
       const lead = partsSel === null || refActive || partsMode === "relief" ? "Добавить:" : "Сделать:";
       // В «Рельефе и тенях» вместо одной «Тени» — готовые полосы разной
       // толщины (вдоль и поперёк); дальше их тянут за углы, как любую деталь.
+      // Вид активной детали подсвечен в меню (как жёлтый квадрат сверху):
+      // по одним буквам на снимке не понять, какая это настройка.
+      const cs = partsSel !== null && parts[partsSel] && partsVisible(parts[partsSel]) ? parts[partsSel] : null;
+      const curKey = (() => {
+        if (!cs) return "";
+        if (cs.k === "z") return "z:" + (cs.q ? "slant" : cs.v === "full" || cs.v === "photo" || cs.v === "patina" ? cs.v : cs.b === 6 ? "groove" : "ring");
+        if (cs.k === "t") {
+          const sc = partsScale(leafOfParts(parts)), wm = cs.w / sc.x, hm = cs.h / sc.y, vert = hm >= wm, mm = vert ? wm : hm;
+          const near = [8, 20, 50].reduce((b0, v) => Math.abs(v - mm) < Math.abs(b0 - mm) ? v : b0, 8);
+          return "t:" + (vert ? "v" : "h") + (Math.abs(near - mm) <= near * 0.35 ? near : "");
+        }
+        return cs.k === "g" && cs.q ? "gq" : cs.k;
+      })();
+      const kb = (key, attrs, cls, name) => `<button type="button" class="parts-kind ${cls}${key === curKey ? " cur" : ""}" ${attrs}>${name}</button>`;
+      const kindBtns = (list) => list.filter((k) => partsVisible({ k: k })).map((k) => kb(k, `data-kind="${k}"`, "k-" + k, PART_KINDS[k].name)).join("");
+      const head = (name, on) => `<div class="parts-menu-h${on ? " cur" : ""}">${name}</div>`;
       kinds.innerHTML = `<span class="parts-lead">${lead}</span>` + (partsMode === "relief"
         // Две колонки: слева виды фрезеровки, справа готовые тени.
-        ? `<div class="parts-cols"><div class="parts-col"><div class="parts-menu-h">Фрезеровка</div>`
+        ? `<div class="parts-cols"><div class="parts-col">${head("Фрезеровка", curKey.startsWith("z:"))}`
           + [["ring", "Рамка"], ["full", "Сплошная"], ["groove", "Канавка 6 мм"], ["photo", "Как на фото"], ["slant", "Канавка ◇ наклон"], ["patina", "Патина"]].map(([v, n]) =>
-            `<button type="button" class="parts-kind k-z" data-kind="z" data-zv="${v}">${n}</button>`).join("")
-          + `</div><div class="parts-col"><div class="parts-menu-h">Тень</div>`
+            kb("z:" + v, `data-kind="z" data-zv="${v}"`, "k-z", n)).join("")
+          + `</div><div class="parts-col">${head("Тень", curKey.startsWith("t:"))}`
           + [["v", 8], ["v", 20], ["v", 50], ["h", 8], ["h", 20], ["h", 50]].map(([d, w]) =>
-            `<button type="button" class="parts-kind k-t" data-kind="t" data-dir="${d}" data-tw="${w}">${d === "v" ? "↕" : "↔"} ${w} мм</button>`).join("")
+            kb("t:" + d + w, `data-kind="t" data-dir="${d}" data-tw="${w}"`, "k-t", `${d === "v" ? "↕" : "↔"} ${w} мм`)).join("")
           + `</div></div>`
-        : Object.keys(PART_KINDS).filter((k) => partsVisible({ k: k })).map((k) =>
-          `<button type="button" class="parts-kind k-${k}" data-kind="${k}">${PART_KINDS[k].name}</button>`).join("")
-          + `<button type="button" class="parts-kind k-g" data-kind="g" data-q="1">Стекло ◇ наклон</button>`
+        // Тоже две колонки: слева детали полотна, справа стёкла и наличник.
+        : `<div class="parts-cols"><div class="parts-col">${head("Детали", /^(d|s|p|f|rv|rh)$/.test(curKey))}`
+          + kindBtns(["d", "s", "p", "f", "rv", "rh"])
+          + `</div><div class="parts-col">${head("Стекло, наличник", /^(g|gq|nv|nh)$/.test(curKey))}`
+          + kindBtns(["g"]) + kb("gq", `data-kind="g" data-q="1"`, "k-g", "Стекло ◇ наклон")
+          + kindBtns(["nv", "nh"])
           // «Плёнка» — у выбранной детали чистая заливка плёнкой: рельеф и пятна
           // со снимка не берутся (только фаски стыков); стёкла, тени и
           // фрезеровка поверх работают как прежде. Повторное нажатие снимает.
           + (() => { const sp = partsSel !== null && parts[partsSel] && !["g", "d", "t", "z"].includes(parts[partsSel].k) ? parts[partsSel] : null;
-            return `<button type="button" class="parts-film${sp && sp.c ? " on" : ""}" data-act="film"${sp ? "" : " disabled"}>${sp && sp.c ? "✓ Плёнка" : "Плёнка"}</button>`; })());
+            return `<button type="button" class="parts-film${sp && sp.c ? " on" : ""}" data-act="film"${sp ? "" : " disabled"}>${sp && sp.c ? "✓ Плёнка" : "Плёнка"}</button>`; })()
+          + `</div></div>`);
     }
     const sliders = document.getElementById("s_partsSliders");
     if (sliders) {
