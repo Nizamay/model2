@@ -436,6 +436,7 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 }
 
 .wall-swatch.active { outline: 2px solid var(--accent); outline-offset: 1px; }
+.scene-group.solo-off { display: none; }
 .wall-own-note { margin: 8px 0 0; font-size: 12px; color: var(--muted, #6b7280); }
 
 .wall-color-row input[type="color"] {
@@ -1754,20 +1755,9 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
         <details class="scene-group" id="s_groupWall">
           <summary>Стена</summary>
           <div class="scene-group-body">
-        <details class="adjust-panel" id="s_wallColorPanel">
-          <summary>Цвет стены</summary>
-          <div class="adjust-body">
-            <div class="wall-swatches" id="s_wallSwatches"></div>
-            <p class="hint wall-own-note" id="s_wallOwnNote" hidden></p>
-          </div>
-        </details>
-        <details class="adjust-panel" id="s_wallTexturePanel">
-          <summary>Текстура стены</summary>
-          <div class="adjust-body">
-            <div class="wall-textures" id="s_wallTextures"></div>
-          </div>
-        </details>
-        <!-- Тон стены — те же ползунки, что и у плёнки в «Изменение цен»
+        <!-- «Настроить тон стены» — первым, сразу под картинкой (просьба
+             заказчика: при настройке должна быть видна сама стена).
+             Тон стены — те же ползунки, что и у плёнки в «Изменение цен»
              (см. colorRow/filterCss): готовых образцов цвета всегда мало,
              а так любой из них подгоняется под реальную стену. Нативный
              выбор цвета (<input type="color">) убран по просьбе заказчика
@@ -1787,6 +1777,19 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
             <div class="adjust-actions">
               <button type="button" id="s_wallAdjustReset">Сбросить тон</button>
             </div>
+          </div>
+        </details>
+        <details class="adjust-panel" id="s_wallColorPanel">
+          <summary>Цвет стены</summary>
+          <div class="adjust-body">
+            <div class="wall-swatches" id="s_wallSwatches"></div>
+            <p class="hint wall-own-note" id="s_wallOwnNote" hidden></p>
+          </div>
+        </details>
+        <details class="adjust-panel" id="s_wallTexturePanel">
+          <summary>Текстура стены</summary>
+          <div class="adjust-body">
+            <div class="wall-textures" id="s_wallTextures"></div>
           </div>
         </details>
           </div>
@@ -2596,6 +2599,7 @@ const DB = {
     floorVar: {},
     floorColor: "#c69a62",
     floorStone: "#e5dcc8",
+    floorLino: "#d4b98c",
     plinth: "white",
     // Наличник в 2D: "" — обычный (три доски), "///" — с тремя полосками из
     // деталей со снимков; к «///» — капитель и банкетка (см. casingSceneSvg).
@@ -8887,6 +8891,15 @@ const DB = {
         if (g.open) refreshSceneEditors();
       });
     });
+    // Пока группа раскрыта, остальные спрятаны: под картинкой только то, что
+    // настраивают, и картинку видно (просьба заказчика). Свернул — все снова.
+    const all = [...document.querySelectorAll(".scene-group")];
+    const solo = () => {
+      const open = all.filter((g) => g.open);
+      all.forEach((g) => g.classList.toggle("solo-off", open.length > 0 && !g.open));
+    };
+    all.forEach((g) => g.addEventListener("toggle", solo));
+    solo();
     updateSceneGroups();
   }
 
@@ -9040,7 +9053,17 @@ const DB = {
     { id: "pour", name: "Наливной пол", stone: true, vars: [
       { id: "mono", name: "Однотонный" }, { id: "pmarble", name: "Мраморный" },
       { id: "micro", name: "Микроцемент" }, { id: "metal", name: "Металлик" },
-      { id: "flakes", name: "С крошкой (флоки)" }] }
+      { id: "flakes", name: "С крошкой (флоки)" }] },
+    // Линолеум — напечатанный рисунок: швы и разброс тона слабее, блеск мягкий.
+    // base/kind — каким рисунком пола его рисовать (см. floorSVG).
+    { id: "lino", name: "Линолеум", vars: [
+      { id: "lboard", name: "Под доску", L: 1200, B: 150, print: true },
+      { id: "lherring", name: "Под паркет «ёлочка»", kind: "herring", L: 420, B: 70, print: true },
+      { id: "lsquares", name: "Под паркет «квадраты»", kind: "squares", L: 300, B: 60, print: true },
+      { id: "ltile", name: "Под плитку 30×30", base: "tile", L: 300, B: 300, print: true },
+      { id: "lrhomb", name: "Ромбики", kind: "rhomb", S: 200, print: true },
+      { id: "lmarble", name: "Под мрамор", base: "pour", kind: "pmarble", print: true },
+      { id: "lspeck", name: "С крапом", base: "pour", kind: "flakes", fine: true, print: true }] }
   ];
   // Цвета камня — для плитки и наливного пола (у дерева свои, FLOOR_PRESETS).
   const STONE_PRESETS = [
@@ -9061,9 +9084,29 @@ const DB = {
     return (0.299 * r + 0.587 * g + 0.114 * b) / 255;
   }
   // Цвет пола для выбранного покрытия: дерево и камень — каждый свой.
+  // Популярные расцветки линолеума (дерево, бежевые и серые «под плитку»).
+  const LINO_PRESETS = [
+    { name: "Беленый", hex: "#e0d6c6" },
+    { name: "Светлый дуб", hex: "#d4b98c" },
+    { name: "Бук", hex: "#c9a27a" },
+    { name: "Натуральный дуб", hex: "#b88a55" },
+    { name: "Орех", hex: "#7d5538" },
+    { name: "Венге", hex: "#4d382b" },
+    { name: "Бежевый", hex: "#d2c2a5" },
+    { name: "Серый", hex: "#a7a39c" },
+    { name: "Терракотовый", hex: "#a8634a" },
+    { name: "Оливковый", hex: "#7c8460" }
+  ];
+  // Палитра покрытия и поле состояния, где помнится его цвет.
+  function floorPalette() {
+    const t = FLOOR_TYPES.find((x) => x.id === state.floorType) || FLOOR_TYPES[0];
+    if (t.id === "lino") return { list: LINO_PRESETS, key: "floorLino", def: 1 };
+    if (t.stone) return { list: STONE_PRESETS, key: "floorStone", def: 1 };
+    return { list: FLOOR_PRESETS, key: "floorColor", def: 2 };
+  }
   function floorColorNow() {
-    return FLOOR_TYPES.find((t) => t.id === state.floorType && t.stone)
-      ? (state.floorStone || STONE_PRESETS[1].hex) : (state.floorColor || FLOOR_PRESETS[2].hex);
+    const p = floorPalette();
+    return state[p.key] || p.list[p.def].hex;
   }
   const PLINTH_KINDS = [
     { id: "white", name: "Белый" },
@@ -9095,9 +9138,10 @@ const DB = {
     };
     let seed = 777;
     const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
-    const seam = "rgba(40,24,10,0.38)";
-    const grain = shade(color, -16);
     const { type, v } = floorVariant();
+    const T = v.base || type.id, K = v.kind || v.id;
+    const seam = v.print ? "rgba(40,24,10,0.16)" : "rgba(40,24,10,0.38)";
+    const grain = shade(color, -16);
     let g = "";
     // Доска — четырёхугольник по углам [X,D]; ось — направление волокон.
     const board = (pts, tone, grainLines) => {
@@ -9109,7 +9153,7 @@ const DB = {
         g += `<line x1="${a[0]}" y1="${a[1]}" x2="${b[0]}" y2="${b[1]}" stroke="${grain}" stroke-width="0.4" opacity="0.35"/>`;
       });
     };
-    const tone = () => Math.round((rnd() * 2 - 1) * 7);
+    const tone = () => Math.round((rnd() * 2 - 1) * (v.print ? 4 : 7));
     // Прямоугольная доска со сторонами вдоль осей: x0..x1 поперёк, d0..d1 вглубь.
     const rectBoard = (x0, x1, d0, d1, alongD) => {
       const lines = [];
@@ -9121,8 +9165,20 @@ const DB = {
       board([[x0, d0], [x1, d0], [x1, d1], [x0, d1]], tone(), lines);
     };
 
-    const stone = type.id === "tile" || type.id === "pour";
-    if (type.id === "tile") {
+    const lino = type.id === "lino";
+    const stone = !lino && (T === "tile" || T === "pour");
+    if (K === "rhomb") {
+      // Ромбики: квадраты под 45° двух тонов с тонкой каймой — «народный»
+      // рисунок линолеума.
+      const S = v.S, r2 = Math.SQRT1_2, n = Math.ceil((Xm + Dn) / S) + 2;
+      const alt = shade(color, luminanceHex(color) > 0.5 ? -22 : 22);
+      const rot = (u, w) => [(u - w) * r2, (u + w) * r2];
+      for (let i = -n; i <= n; i++) for (let j = -n; j <= n; j++) {
+        const pts = [rot(i * S, j * S), rot((i + 1) * S, j * S), rot((i + 1) * S, (j + 1) * S), rot(i * S, (j + 1) * S)];
+        if (pts.every((q) => q[1] > Dn) || pts.every((q) => q[1] < -S) || pts.every((q) => q[0] > Xm) || pts.every((q) => q[0] < -Xm)) continue;
+        g += `<polygon points="${pts.map((q) => P(q[0], q[1]).join(",")).join(" ")}" fill="${(i + j) % 2 ? alt : color}" stroke="${shade(color, -35)}" stroke-width="0.5" stroke-opacity="0.5"/>`;
+      }
+    } else if (T === "tile") {
       // Плитка/керамогранит: светлые швы 2–3 мм, тон плитки почти ровный.
       const grout = shade(color, luminanceHex(color) > 0.55 ? -18 : 28);
       const L = v.L, B = v.B;
@@ -9133,7 +9189,7 @@ const DB = {
           const pts = [[x, d], [x + L, d], [x + L, d + B], [x, d + B]];
           if (pts.every((q) => q[1] > Dn) || pts.every((q) => q[0] > Xm) || pts.every((q) => q[0] < -Xm)) continue;
           const fill = v.chess && (r + c) % 2 ? alt : shade(color, Math.round((rnd() * 2 - 1) * 2));
-          g += `<polygon points="${pts.map((q) => P(q[0], q[1]).join(",")).join(" ")}" fill="${fill}" stroke="${grout}" stroke-width="0.7"/>`;
+          g += `<polygon points="${pts.map((q) => P(q[0], q[1]).join(",")).join(" ")}" fill="${fill}" stroke="${grout}" stroke-width="${v.print ? 0.5 : 0.7}"${v.print ? ` stroke-opacity="0.6"` : ""}/>`;
           if (v.marble) {
             // 1–2 прожилки на плитку — у каждой плитки свой рисунок
             for (let n = 0; n < 1 + (rnd() < 0.5 ? 1 : 0); n++) {
@@ -9148,9 +9204,9 @@ const DB = {
           }
         }
       }
-    } else if (type.id === "pour") {
+    } else if (T === "pour") {
       // Наливной пол: без швов; рисунок — по подвиду.
-      if (v.id === "pmarble") {
+      if (K === "pmarble") {
         for (let n = 0; n < 40; n++) {
           let vx = (rnd() * 2 - 1) * Xm, vd = rnd() * Dn - 200, pts2 = [];
           const ang = rnd() * Math.PI;
@@ -9161,16 +9217,17 @@ const DB = {
           }
           g += `<polyline points="${pts2.join(" ")}" fill="none" stroke="${shade(color, -28)}" stroke-width="${(0.4 + rnd() * 0.8).toFixed(2)}" opacity="0.45"/>`;
         }
-      } else if (v.id === "flakes") {
-        const cols = [shade(color, 55), shade(color, -45), shade(color, -15)];
-        for (let n = 0; n < 1400; n++) {
-          const fx = (rnd() * 2 - 1) * Xm, fd = rnd() * Dn, sz = 8 + rnd() * 14, a2 = rnd() * 3;
+      } else if (K === "flakes") {
+        // у линолеума «с крапом» крап мельче и спокойнее
+        const cols = v.fine ? [shade(color, 30), shade(color, -30), shade(color, -12)] : [shade(color, 55), shade(color, -45), shade(color, -15)];
+        for (let n = 0; n < (v.fine ? 2600 : 1400); n++) {
+          const fx = (rnd() * 2 - 1) * Xm, fd = rnd() * Dn, sz = v.fine ? 3 + rnd() * 5 : 8 + rnd() * 14, a2 = rnd() * 3;
           const q = [[0, 0], [sz, sz * 0.2], [sz * 0.8, sz], [-sz * 0.1, sz * 0.7]].map(([qx, qy]) =>
             P(fx + qx * Math.cos(a2) - qy * Math.sin(a2), fd + qx * Math.sin(a2) + qy * Math.cos(a2)).join(","));
           g += `<polygon points="${q.join(" ")}" fill="${cols[n % 3]}" opacity="0.85"/>`;
         }
       }
-    } else if (v.id === "herring" || v.id === "herring2") {
+    } else if (K === "herring" || K === "herring2") {
       // Ёлочка: решётка (B,B) и (L,−L), повёрнутая на 45° — «ёлки» бегут к зрителю.
       const L = v.L, B = v.B, r2 = Math.SQRT1_2;
       const rot = (px, py) => [(px - py) * r2, (px + py) * r2];
@@ -9188,7 +9245,7 @@ const DB = {
           parts.forEach(([px, py, pw, ph]) => board([rot(px, py), rot(px + pw, py), rot(px + pw, py + ph), rot(px, py + ph)], tone(), []));
         });
       }
-    } else if (v.id === "chevron") {
+    } else if (K === "chevron") {
       // Французская ёлка: колонки параллелограммов под 45°, соседние — зеркально.
       const B = v.B, wc = v.L * Math.SQRT1_2, Bp = B * Math.SQRT2;
       for (let x0 = -Math.ceil(Xm / wc) * wc, j = 0; x0 < Xm; x0 += wc, j++) {
@@ -9199,7 +9256,7 @@ const DB = {
           board([[x0, y0], [x0 + wc, y0 + s * wc], [x0 + wc, y0 + s * wc + Bp], [x0, y0 + Bp]], tone(), []);
         }
       }
-    } else if (v.id === "squares") {
+    } else if (K === "squares") {
       // Квадраты: модуль L×L из L/B планок, направление чередуется шахматкой.
       const L = v.L, n = Math.round(L / v.B), b = L / n;
       for (let mx = -Math.ceil(Xm / L); mx * L < Xm; mx++) for (let md = -1; md * L < Dn; md++) {
@@ -9244,14 +9301,14 @@ const DB = {
     return `<clipPath id="${clipId}"><rect x="0" y="${floorY}" width="${W}" height="${H - floorY}"/></clipPath>` +
       `<rect x="0" y="${floorY}" width="${W}" height="${H - floorY}" fill="${color}"/>` +
       `<g clip-path="url(#${clipId})">${g}` +
-      (stone ? "" : `<rect x="0" y="${floorY}" width="${W}" height="${H - floorY}" filter="url(#${idf("wood")})" opacity="0.35"/>`) +
+      (stone || (lino && (T === "tile" || T === "pour" || K === "rhomb")) ? "" : `<rect x="0" y="${floorY}" width="${W}" height="${H - floorY}" filter="url(#${idf("wood")})" opacity="${lino ? 0.22 : 0.35}"/>`) +
       (v.id === "micro" ? `<rect x="0" y="${floorY}" width="${W}" height="${H - floorY}" filter="url(#${idf("tadL")})" opacity="0.25"/><rect x="0" y="${floorY}" width="${W}" height="${H - floorY}" filter="url(#${idf("tadD")})" opacity="0.2"/>` : "") +
       (v.id === "metal" ? `<rect x="0" y="${floorY}" width="${W}" height="${H - floorY}" filter="url(#${idf("silkL")})" opacity="0.55"/><rect x="0" y="${floorY}" width="${W}" height="${H - floorY}" filter="url(#${idf("silkD")})" opacity="0.4"/>` : "") +
-      (stone ? `<rect x="0" y="${floorY}" width="${W}" height="${H - floorY}" filter="url(#${idf("paint")})" opacity="0.4"/>` : "") +
+      (stone || lino ? `<rect x="0" y="${floorY}" width="${W}" height="${H - floorY}" filter="url(#${idf("paint")})" opacity="0.4"/>` : "") +
       `<rect x="0" y="${floorY}" width="${W}" height="${H - floorY}" fill="url(#${idf("floorShade")})"/>` +
       `<rect x="0" y="${floorY}" width="${W}" height="${H - floorY}" fill="url(#${idf("gloss")})"/>` +
-      // плитка и наливной пол блестят сильнее дерева
-      (stone ? `<rect x="0" y="${floorY}" width="${W}" height="${H - floorY}" fill="url(#${idf("gloss")})" opacity="${type.id === "pour" ? 0.9 : 0.6}"/>` : "") + `</g>`;
+      // плитка и наливной пол блестят сильнее дерева, линолеум — мягко
+      (stone || lino ? `<rect x="0" y="${floorY}" width="${W}" height="${H - floorY}" fill="url(#${idf("gloss")})" opacity="${type.id === "pour" ? 0.9 : lino ? 0.3 : 0.6}"/>` : "") + `</g>`;
   }
 
   // Наложение выбранной текстуры на стену (поверх базового цвета, до виньетки).
@@ -12879,8 +12936,7 @@ const DB = {
     const sw = document.getElementById("s_floorSwatches");
     if (!sw) return;
     const cur = floorColorNow().toLowerCase();
-    const stoneNow = (FLOOR_TYPES.find((t) => t.id === state.floorType) || {}).stone;
-    sw.innerHTML = (stoneNow ? STONE_PRESETS : FLOOR_PRESETS).map((p) =>
+    sw.innerHTML = floorPalette().list.map((p) =>
       `<button type="button" class="wall-swatch${p.hex.toLowerCase() === cur ? " active" : ""}" data-hex="${p.hex}" style="background:${p.hex}" title="${p.name}" aria-label="${p.name}"></button>`).join("");
     const { type, v } = floorVariant();
     document.getElementById("s_floorTypes").innerHTML = FLOOR_TYPES.map((t) =>
@@ -12895,8 +12951,7 @@ const DB = {
     on("s_floorSwatches", (e) => {
       const b = e.target.closest(".wall-swatch");
       if (!b) return;
-      if ((FLOOR_TYPES.find((t) => t.id === state.floorType) || {}).stone) state.floorStone = b.dataset.hex;
-      else state.floorColor = b.dataset.hex;
+      state[floorPalette().key] = b.dataset.hex;
       renderFloorPanels(); render();
     });
     on("s_floorTypes", (e) => {
