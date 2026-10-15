@@ -11732,13 +11732,16 @@ const DB = {
   }
 
   function bind() {
-    // Своя последняя модель у каждого раздела: сходили в «Погонаж» за
-    // наличником — вернулись к той же двери, а не к первой в списке.
-    const modelBySection = {};
+    // Свой последний расчёт у каждого раздела: сходили в «Погонаж» за
+    // наличником — вернулись к той же двери со всем выбранным (материал,
+    // цвет, патина, стекло, размер, опции), а не к первой модели списка
+    // (заказчик: «патина и стекло исчезли»).
+    const calcBySection = {};
     el.section.addEventListener("change", () => {
-      if (state.modelId) modelBySection[state.section] = state.modelId;
-      state.section = el.section.value;
-      if (modelBySection[state.section]) state.modelId = modelBySection[state.section];
+      calcBySection[state.section] = captureCalcState();
+      const next = el.section.value;
+      if (calcBySection[next]) { restoreCalcState({ ...calcBySection[next], section: next }); return; }
+      state.section = next;
       applySectionUI();
       populateModels();
       populateMaterial();
