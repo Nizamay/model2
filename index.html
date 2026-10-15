@@ -646,6 +646,9 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 /* Вид активной детали в меню — подсвечен жёлтым, как квадрат сверху. */
 .parts-kind.cur { outline: 3px solid #ffcf33; outline-offset: -1px; font-weight: 700; }
 .parts-menu-h.cur { color: #b8860b; }
+.relief-light { margin-top: 8px; }
+.light-btn { padding: 6px 10px; font-size: 13px; border-radius: 6px; border: 1px solid var(--line); background: #fff; }
+.light-btn.on { background: #fff4cc; border-color: #e0b400; }
 .parts-zvar { display: flex; flex-wrap: wrap; gap: 4px; justify-content: center; width: 100%; }
 .parts-zvar button.on { background: rgba(255,120,0,.22); border-color: rgba(210,90,0,.8); font-weight: 600; }
 .part.k-z > span { background: rgba(210,90,0,.9); }
@@ -1610,6 +1613,17 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
           <summary>Рельеф и тени <button type="button" class="info-btn" data-info="s_reliefInfo" aria-label="Пояснение" aria-expanded="false">i</button></summary>
           <div class="adjust-body" id="s_reliefBody">
             <p class="parts-hint info-text" id="s_reliefInfo">«Фрезеровка» — обведите места, где на двери есть канавки, фрезеровка, ручка: там плёнка берёт рельеф со снимка. Если на модели есть хоть одна зона, вне зон плёнка чистая — без пятен и полос со снимка, только стыки деталей. Нет зон — рельеф со снимка везде, как раньше. «Тень» — полоса, затемняющая плёнку под собой; сила — ползунком.</p>
+            <!-- «Засветка» — движок модели (поле light разметки, 0–100): насколько
+                 выравнивать неровный свет снимка в зонах фрезеровки. Спрятан
+                 под кнопкой, чтобы не мешал (просьба заказчика); ставится
+                 под снимок в partsModeOpen. -->
+            <div class="relief-light" id="s_lightBox">
+              <button type="button" class="light-btn" id="s_lightBtn" aria-expanded="false">☀ Засветка</button>
+              <div class="arow" id="s_lightRow" hidden><span>Выровнять засветку <b id="s_lightVal">100</b></span><input type="range" id="s_light" min="0" max="100" step="5" value="100">
+                <div class="range-scale" aria-hidden="true"><span>0</span><span>50</span><span>100</span></div>
+                <p class="frame-note">0 — свет как на снимке, 100 — пятна света выровнены, остаётся только рисунок фрезеровки. Картинка двери пересчитается, когда закроете панель.</p>
+              </div>
+            </div>
           </div>
         </details>
 <!-- Подгонка снимка модели под единую рамку 850x2085 мм (см. FRAME_MM):
@@ -5291,6 +5305,13 @@ const DB = {
       if (!bd) return null;
       zoneWide = new Float32Array(n);
       for (let k = 0; k < n; k++) zoneWide[k] = bd[k] > 0.05 ? bn[k] / bd[k] : (sharp[k] || 1);
+      // Движок «Засветка» модели (doc.light, 0–100, по умолчанию 100): насколько
+      // выравнивать. 0 — свет как на снимке, 100 — выровнен полностью.
+      const t = Math.max(0, Math.min(100, doc.light == null ? 100 : Number(doc.light) || 0)) / 100;
+      let mw = 0;
+      for (let k = 0; k < n; k++) mw += zoneWide[k];
+      mw = mw / Math.max(1, n) || 1;
+      for (let k = 0; k < n; k++) zoneWide[k] = mw + (zoneWide[k] - mw) * t;
     }
     const zoneRel = (x, y) => zoneLum[y * cw + x] / (zoneWide[rAt(x, y)] || 1);
     const zoneFeather = Math.max(1, 3 * pxPerMmX);
@@ -5698,6 +5719,8 @@ const DB = {
       const n = document.getElementById(id);
       if (n && body && n.parentNode !== body) body.appendChild(n);
     });
+    const lb = document.getElementById("s_lightBox");
+    if (mode === "relief" && lb && body) body.appendChild(lb);
     if (mode === "relief" && leafEdit) { const d = partsOf(leafEdit.modelId); partsLeafEditEnd(d, false); }
     return mine;
   }
@@ -11588,6 +11611,32 @@ const DB = {
         ["s_partsBody", "s_reliefBody"].forEach((id) => { const n = document.getElementById(id); if (n) io.observe(n); });
       } else partsInView.add("s_partsBody").add("s_reliefBody");
     }
+    // «Засветка»: кнопка показывает и прячет движок; значение — у разметки модели.
+    const lightBtn = document.getElementById("s_lightBtn"), lightRow = document.getElementById("s_lightRow");
+    const lightIn = document.getElementById("s_light"), lightVal = document.getElementById("s_lightVal");
+    const lightSync = () => {
+      const ctx = partsEditorCtx(), doc = ctx && partsOf(ctx.model.id);
+      const v = doc && doc.light != null ? doc.light : 100;
+      if (lightIn) lightIn.value = v;
+      if (lightVal) lightVal.textContent = v;
+    };
+    if (lightBtn && lightRow) lightBtn.addEventListener("click", () => {
+      lightRow.hidden = !lightRow.hidden;
+      lightBtn.classList.toggle("on", !lightRow.hidden);
+      lightBtn.setAttribute("aria-expanded", String(!lightRow.hidden));
+      lightSync();
+    });
+    if (lightIn) {
+      lightIn.addEventListener("input", () => { if (lightVal) lightVal.textContent = lightIn.value; });
+      lightIn.addEventListener("change", () => {
+        const ctx = partsEditorCtx(), doc = ctx && partsOf(ctx.model.id);
+        if (!doc) return;
+        doc.light = Number(lightIn.value);
+        savePartsDoc(doc, ctx.model.id, true);
+      });
+    }
+    const reliefPanelL = document.getElementById("s_reliefPanel");
+    if (reliefPanelL) reliefPanelL.addEventListener("toggle", () => { if (reliefPanelL.open) lightSync(); });
     const partsFloat = document.getElementById("s_partsFloat");
     if (partsFloat) partsFloat.addEventListener("click", onPartsToolClick);
     if (partsFloat) partsFloat.addEventListener("input", (e) => onPartsSliderInput(e));
