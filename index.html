@@ -658,6 +658,8 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 /* Открыта одна подгруппа «Двери» — остальные спрятаны, чтобы случайно не
    открыть соседнюю (см. doorSolo). Закрыл — все снова видны. */
 .adjust-panel.solo-hide { display: none !important; }
+/* Настройка двери: картинку на стене и «Во весь экран» прячем (см. doorSolo). */
+#viewScene.door-tuning .door-preview, #viewScene.door-tuning #s_fsBtn { display: none !important; }
 .parts-kind.k-z { background: rgba(255,120,0,.16); }
 .part.k-t > span { background: rgba(40,40,40,.85); }
 .parts-kind.k-t { background: rgba(0,0,0,.14); }
@@ -1529,6 +1531,7 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
     <div id="viewScene" hidden>
       <p class="scene-view-hint info-text" data-scope="view">Дверь — по текущему расчёту.</p>
       <p class="scene-photo-note info-text" data-scope="view" id="s_modelPhotoNote" hidden></p>
+      <p class="scene-photo-note" id="s_patinaNote" hidden></p>
       <div class="door-preview">
         <svg id="s_doorPreview" class="door-preview-svg scene" viewBox="0 0 360 400" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Дверь на стене">
           <defs>
@@ -7708,6 +7711,8 @@ const DB = {
   function updateModelPhotoNote(photo, recolored) {
     const note = document.getElementById("s_modelPhotoNote");
     if (!note) return;
+    const ptn0 = document.getElementById("s_patinaNote");
+    if (ptn0) ptn0.hidden = true;
     const m = getModel(state.modelId);
     if (!m) { note.hidden = true; note.textContent = ""; return; }
     note.hidden = false;
@@ -7721,6 +7726,14 @@ const DB = {
       return;
     }
     note.classList.remove("scene-photo-note-empty");
+    // Патину на снимке меняет только зона «Патина» разметки. Нет её — золото
+    // остаётся как снято, и «Без патины»/«Серебро» на картинке не видны.
+    const pdoc = partsOf(m.id);
+    const noPatinaZone = state.section === "щитовое" && state.material === "эмаль" && modelPatina(m).length > 0
+      && !(pdoc && pdoc.parts.some((p) => p.k === "z" && p.v === "patina"));
+    // Подсказка видна всегда (не под «i»): иначе непонятно, почему не работает.
+    const ptn = document.getElementById("s_patinaNote");
+    if (ptn) { ptn.hidden = !noPatinaZone; ptn.textContent = noPatinaZone ? "Патина на картинке — как на снимке: обведите позолоту зоной «Патина» (Рельеф и тени)." : ""; }
     if (recolored) { note.textContent = `${m.name} — по разметке, плёнка и стекло из расчёта.`; return; }
     // «Матрица» — законченная картинка: комплектация зафиксирована
     // производителем, перекрашивать нечего, сетка ей не нужна.
@@ -11398,8 +11411,19 @@ const DB = {
     const doorBody = document.querySelector("#s_groupDoor > .scene-group-body");
     if (doorBody) {
       const subs = () => Array.from(doorBody.children).filter((n) => n.matches && n.matches("details.adjust-panel"));
-      const doorSolo = () => { const open = subs().find((d) => d.open); subs().forEach((d) => d.classList.toggle("solo-hide", !!open && d !== open)); };
+      // Пока идёт настройка двери (открыта подгруппа со своим снимком),
+      // картинка двери на стене сверху только занимает экран — прячем её.
+      // «Светотень двери» своего снимка не имеет: там картинка нужна.
+      const doorSolo = () => {
+        const grp = document.getElementById("s_groupDoor");
+        const open = grp && grp.open ? subs().find((d) => d.open) : null;
+        subs().forEach((d) => d.classList.toggle("solo-hide", !!open && d !== open));
+        const vs = document.getElementById("viewScene");
+        if (vs) vs.classList.toggle("door-tuning", !!open && !open.classList.contains("wall-adjust-panel"));
+      };
       subs().forEach((d) => d.addEventListener("toggle", doorSolo));
+      const grp = document.getElementById("s_groupDoor");
+      if (grp) grp.addEventListener("toggle", doorSolo);
     }
     const partsPanel = document.getElementById("s_partsPanel");
     const partsStage = document.getElementById("s_partsStage");
