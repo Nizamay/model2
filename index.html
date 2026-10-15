@@ -647,7 +647,7 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 .parts-kind.cur { outline: 3px solid #ffcf33; outline-offset: -1px; font-weight: 700; }
 .parts-menu-h.cur { color: #b8860b; }
 .relief-light { margin-top: 8px; }
-.casing-opt { display: flex; align-items: center; gap: 8px; margin: 8px 0; font-size: 14px; }
+.casing-opt { display: flex; align-items: center; gap: 8px; margin: 4px 0; font-size: 14px; color: var(--text); }
 .casing-sub { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 14px; }
 .casing-sub[hidden] { display: none; }
 .casing-sub select { flex: 1; }
@@ -1445,15 +1445,6 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
       <select id="trimPatina"></select>
     </div>
 
-    <!-- Наличник на 2D картинке двери (см. casingSceneSvg): выбирается здесь,
-         в «Погонаж» → «Наличник», — его тут и ищут, когда комплектуют дверь
-         (заказчик). Дверь на картинке — последняя выбранная в своём разделе. -->
-    <div class="field casing-field" id="casingField">
-      <label for="s_casingStyle">Наличник на 2D картинке</label>
-      <select id="s_casingStyle"><option value="">Обычный</option><option value="///">«///»</option></select>
-      <div class="casing-sub" id="s_casingJointRow"><span>Соединение</span>
-        <select id="s_casingJoint"><option value="ус">На ус</option><option value="прямо">Прямое</option></select>
-      </div>
       <label class="casing-opt"><input type="checkbox" id="s_casingCap"> Капитель</label>
       <label class="casing-opt"><input type="checkbox" id="s_casingBank"> Банкетка (с квадратными элементами)</label>
     </div>
@@ -1617,6 +1608,21 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
         <!-- Две группы, обе свёрнуты: «Стена» — комната вокруг двери, «Дверь» —
              сама дверь и её снимок. Раньше семь панелей шли одним списком, и
              нужную приходилось искать глазами. -->
+        <!-- Наличник на картинке (см. casingSceneSvg): своя группа над «Дверью»
+             (заказчик: на странице расчёта он путался и мешал). -->
+        <details class="scene-group" id="s_groupCasing">
+          <summary>Наличник</summary>
+          <div class="scene-group-body casing-group">
+            <div class="arow"><span>Вид</span>
+              <select id="s_casingStyle"><option value="">Обычный</option><option value="///">«///»</option></select>
+            </div>
+            <div class="casing-sub" id="s_casingJointRow"><span>Соединение</span>
+              <select id="s_casingJoint"><option value="ус">На ус</option><option value="прямо">Прямое</option></select>
+            </div>
+            <label class="casing-opt"><input type="checkbox" id="s_casingCap"> Капитель</label>
+            <label class="casing-opt"><input type="checkbox" id="s_casingBank"> Банкетка (с квадратными элементами)</label>
+          </div>
+        </details>
         <details class="scene-group" id="s_groupDoor">
           <summary>Дверь <button type="button" class="info-btn" id="s_doorInfoBtn" hidden data-info="s_doorNoPhoto" aria-label="Почему нет настроек" aria-expanded="false">i</button></summary>
           <div class="scene-group-body">
@@ -2914,7 +2920,6 @@ const DB = {
     el.trimTenonField.hidden = !isTrim;
     el.trimVariantField.hidden = !isTrim;
     el.trimPatinaField.hidden = !isTrim;
-    { const cf = document.getElementById("casingField"); if (cf) cf.hidden = !isTrim; }
     el.trimWidthModeField.hidden = !isTrim;
     el.trimWidthStdField.hidden = !isTrim;
     el.trimWidthFreeField.hidden = !isTrim;
@@ -2970,7 +2975,6 @@ const DB = {
       el.trimVariantField.hidden = true;
       el.trimPatinaField.hidden = true;
       state.trimPatinaId = "none";
-      { const cf = document.getElementById("casingField"); if (cf) cf.hidden = true; }
       el.trimWidthModeField.hidden = true;
       el.trimWidthStdField.hidden = true;
       el.trimWidthFreeField.hidden = true;
@@ -2990,7 +2994,6 @@ const DB = {
     const isExtra = isTrimExtra(vid);
     // У капители и банкетки нет длины и толщины — только ширина.
     el.trimLengthThicknessRow.hidden = isExtra;
-    { const cf = document.getElementById("casingField"); if (cf) cf.hidden = !isNal; }
 
     el.trimThicknessField.hidden = isDob;
     el.trimDoor42Field.hidden = !isBox;
