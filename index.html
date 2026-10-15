@@ -2251,8 +2251,9 @@ const DEFAULT_GLASSES = [
   { id: "venice", name: "Венеция", price: 0 },
   { id: "versal2", name: "Версаль 2", price: 0 },
   { id: "versal3", name: "Версаль 3", price: 0 },
-  { id: "turin2", name: "Турин 2", price: 0 },
-  { id: "turin3", name: "Турин 3", price: 0 },
+  // Стекло Турин — с узором со снимка «Турин 2 ПО»; оно же у Ампир ПО,
+  // Турин 1/2/3 ПО и у других дверей (см. glassPatternSource).
+  { id: "turin2", name: "Стекло Турин", price: 0 },
   { id: "sumgait", name: "Сумгаит", price: 0 }
 ];
 
@@ -3637,6 +3638,41 @@ const DB = {
   // Краска стекла для перекраски двери: цвет и блеск из каталога. gloss = 0 —
   // ровный цвет без бликов со снимка (чёрное стекло должно быть чёрным, жалоба
   // заказчика), иначе блики и гравировка со снимка видны на gloss процентов.
+  // Стекло с узором. Узор берётся со снимка модели-источника: со стекла,
+  // обведённого там деталью «Стекло». Источник — поле pattern у стекла модели
+  // (id модели или "none"), а без него — по названию: «Стекло Турин» (и любое
+  // «Турин…») — «Турин 2 ПО», остальные — модель «<название> ПО» («Венеция» —
+  // «Венеция ПО»). Своя модель — стекло со своего снимка как есть; чужая —
+  // узор её стекла растягивается в стекло этой двери.
+  function glassPatternSource(model, g) {
+    if (!g || g.pattern === "none") return null;
+    if (g.pattern) return DB.models.find((m) => m.id === g.pattern) || null;
+    const n = String(g.name || "").trim().toLowerCase().replace(/^стекло\s+/, "");
+    if (!n) return null;
+    if (/^турин/.test(n)) return DB.models.find((m) => m.name === "Турин 2 ПО") || null;
+    return DB.models.find((m) => m.name.toLowerCase() === n + " по") || null;
+  }
+  // Где на снимке модели её стекло: самая большая деталь «Стекло» разметки.
+  // Ручка, обведённая на снимке-источнике зоной «Как на фото» (с хвостом),
+  // в узор не идёт: край стекла, на который она заходит, отрезается (у
+  // «Турин 2 ПО» рычаг ручки лежит на стекле и переезжал бы в чужое стекло).
+  function glassPatternRect(modelId) {
+    const doc = partsOf(modelId);
+    const gs = doc ? doc.parts.filter((p) => p.k === "g") : [];
+    if (!gs.length) return null;
+    const g = gs.reduce((a, b) => (b.w * b.h > a.w * a.h ? b : a));
+    let x0 = g.x, x1 = g.x + g.w;
+    const y0 = g.y, y1 = g.y + g.h, mid = g.x + g.w / 2;
+    doc.parts.forEach((p) => {
+      if (p.k !== "z" || p.v !== "photo") return;
+      [p, zoneTail(p)].forEach((r) => {
+        if (!r || r.x >= x1 || r.x + r.w <= x0 || r.y >= y1 || r.y + r.h <= y0) return;
+        if (r.x + r.w / 2 < mid) x0 = Math.max(x0, r.x + r.w); else x1 = Math.min(x1, r.x);
+      });
+    });
+    return x1 - x0 > g.w * 0.3 ? { x: x0, y: y0, w: x1 - x0, h: y1 - y0 } : g;
+  }
+
   function glassPaint(glassId, glassName, modelGlass) {
     const look = glassLookFor(glassId, glassName, modelGlass);
     const gloss = Math.max(0, Math.min(100, Number(look.gloss) || 0));
@@ -5346,6 +5382,36 @@ const DB = {
       for (let y = 0; y < h; y++) orig.set(d.subarray(((y0 + y) * cw + x0) * 4, ((y0 + y) * cw + x1) * 4), y * w * 4);
       return { x0, x1, y0, y1, w, h, orig };
     }).filter((g) => g.w > 1 && g.h > 1);
+    // Узорное стекло: пиксели узора на каждую деталь «Стекло» — своё со
+    // снимка (до покраски), чужое — стекло модели-источника, растянутое в
+    // прямоугольник детали (см. glassPatternSource).
+    const glassPat = new Map();
+    if (glass.pattern) {
+      doc.parts.forEach((p) => {
+        if (p.k !== "g") return;
+        const x0 = Math.max(0, Math.round(p.x * cw)), x1 = Math.min(cw, Math.round((p.x + p.w) * cw));
+        const y0 = Math.max(0, Math.round(p.y * ch)), y1 = Math.min(ch, Math.round((p.y + p.h) * ch));
+        const w = x1 - x0, h = y1 - y0;
+        if (w < 2 || h < 2) return;
+        let px;
+        if (glass.pattern.own) {
+          px = new Uint8ClampedArray(w * h * 4);
+          for (let y = 0; y < h; y++) px.set(d.subarray(((y0 + y) * cw + x0) * 4, ((y0 + y) * cw + x1) * 4), y * w * 4);
+        } else {
+          const src = glass.pattern.img, r = glass.pattern.rect;
+          const pc = document.createElement("canvas"); pc.width = w; pc.height = h;
+          const pcx = pc.getContext("2d");
+          pcx.imageSmoothingEnabled = true; pcx.imageSmoothingQuality = "high";
+          // Узор не растягиваем, а вписываем «с запасом» (cover): ромбы и
+          // завитки сохраняют свою форму, лишнее по краям обрезается.
+          const sw = r.w * src.naturalWidth, sh = r.h * src.naturalHeight;
+          const k = Math.max(w / sw, h / sh), cw2 = w / k, ch2 = h / k;
+          pcx.drawImage(src, r.x * src.naturalWidth + (sw - cw2) / 2, r.y * src.naturalHeight + (sh - ch2) / 2, cw2, ch2, 0, 0, w, h);
+          px = pcx.getImageData(0, 0, w, h).data;
+        }
+        glassPat.set(p, { x0, y0, w, h, px });
+      });
+    }
     // Зоны «Патина»: позолота на снимке находится по цвету (жёлтый, насыщенный)
     // ДО покраски; после неё эти точки получают цвет выбранной патины —
     // золото (как на снимке), серебро или, при «Без патины», остаются эмалью.
@@ -5502,6 +5568,7 @@ const DB = {
       meanRel = meanRel / (hi - lo);
       const norm = meanRel > 0.05 ? 1 / meanRel : 1;
       const glassPart = part.k === "g";
+      const gPat = glassPart ? glassPat.get(part) : null;
       const haloPad = glassPart ? null : haloRects;
       const glassFeather = Math.max(2, 6 * pxPerMmX), glassKX = pxPerMmX / pxPerMmY;
       const bevX = Math.max(1, 4 * pxPerMmX), bevY = Math.max(1, 4 * pxPerMmY);
@@ -5590,6 +5657,12 @@ const DB = {
               relBase = shadeK === 1 ? rz : clampRel(1 + (rz - 1) * shadeK);
             }
             relBase = fl + (relBase - fl) * wz;
+          }
+          if (gPat) {
+            // Узорное стекло — пиксели узора как есть, без бликов и отражений поверх.
+            const j = ((y - gPat.y0) * gPat.w + (x - gPat.x0)) * 4;
+            d[i] = gPat.px[j]; d[i + 1] = gPat.px[j + 1]; d[i + 2] = gPat.px[j + 2]; d[i + 3] = 255;
+            continue;
           }
           const rel = glassPart ? (glass.flat ? 1 : relBase) : relBase * kLevel;
           let fr, fg, fb;
@@ -5755,6 +5828,13 @@ const DB = {
     const filmHex = (swatch && swatch.hex) || EMAL_COLOR_HEX[state.color] || "#c9cbcd";
     const glassName = (modelGlasses(model).find((gl) => gl.id === state.glassId) || {}).name;
     const glass = glassPaint(state.glassId, glassName, modelGlasses(model).find((gl) => gl.id === state.glassId));
+    // Узорное стекло (см. glassPatternSource): своё — со своего снимка,
+    // чужое — со снимка и стекла модели-источника.
+    const patModel = state.glassId && state.glassId !== "none" ? glassPatternSource(model, modelGlasses(model).find((gl) => gl.id === state.glassId)) : null;
+    const patOwn = !!patModel && patModel.id === model.id;
+    const patRec = patModel && !patOwn ? modelPhotoOf(patModel.id) : null;
+    const patRect = patModel && !patOwn ? glassPatternRect(patModel.id) : null;
+    const patSig = patOwn ? "own" : (patRec && patRec.image && patRect) ? [patModel.id, (partsOf(patModel.id) || {}).rev || 0, String(patRec.image).length].join(":") : "";
     const widthMm = Math.max(300, Number(state.width) || 800);
     const heightMm = Math.max(1000, Number(state.height) || 2000);
     // Поправка цвета входит в ключ: подвинули ползунок — нужна новая картинка,
@@ -5775,7 +5855,7 @@ const DB = {
       Math.round(widthMm / 25), Math.round(heightMm / 25),
       adj.h, adj.s, adj.b, adj.c, adj.cr, adj.cg, adj.cb, adj.m,
       Math.round(doorShadeK() * 100), String(photo.image || "").length,
-      qual.sharp, qual.smooth, qual.lines, glass.fill, glass.gloss, glass.room, glass.room ? glass.wall : "", patinaKind];
+      qual.sharp, qual.smooth, qual.lines, glass.fill, glass.gloss, glass.room, glass.room ? glass.wall : "", patinaKind, patSig];
     const key = [model.id, doc.rev || 1].concat(rest).join("|");
     // То же сочетание, но без номера правки разметки: пока считается картинка
     // по новой разметке, в сцене остаётся прежняя, а не голый снимок — иначе
@@ -5799,7 +5879,12 @@ const DB = {
     // а страница занята и не отвечает на касания (жалоба заказчика: «при
     // строительстве деталей торможение и зависание»).
     const isStale = () => partsLatestKey.get(model.id) !== key || !!partsDrag;
-    Promise.all([loadImageAsync(photo.image), filmHref ? loadImageAsync(filmHref) : Promise.resolve(null)])
+    Promise.all([loadImageAsync(photo.image), filmHref ? loadImageAsync(filmHref) : Promise.resolve(null),
+      patSig && !patOwn ? loadImageAsync(patRec.image).catch(() => null) : Promise.resolve(null)])
+      .then(([ph, film, patImg]) => {
+        glass.pattern = patOwn ? { own: true } : (patImg ? { img: patImg, rect: patRect } : null);
+        return [ph, film];
+      })
       .then(([ph, film]) => paintPartsLeaf(ph, film, filmHex, doc, glass, widthMm, heightMm, adj, isStale, qualityReliefMm(qual), [model.id, partsReliefSig(doc), String(photo.image || "").length, qualityReliefMm(qual), widthMm, heightMm].join("|"), patinaKind))
       .then((url) => {
         // Устарело: разметку успели изменить, этот результат никому не нужен.
@@ -12500,8 +12585,10 @@ const DB = {
       // у «Щитовые», см. applySectionUI/updatePatinaVisibility).
       DB.models = s.models.map((m) => ({
         ...m,
+        // «Турин 2» стало «Стекло Турин» (заказчик): одно стекло на Ампир ПО и
+        // Турин 1/2/3 ПО.
         glasses: Array.isArray(m.glasses)
-          ? m.glasses.map((g) => ({ ...g }))
+          ? m.glasses.map((g) => (g.id === "turin2" && g.name === "Турин 2" ? { ...g, name: "Стекло Турин" } : { ...g }))
           : (m.type !== "матрица" ? DEFAULT_GLASSES.map((g) => ({ ...g })) : undefined),
         patina: Array.isArray(m.patina)
           ? m.patina.map((p) => ({ ...p }))
@@ -13908,12 +13995,23 @@ const DB = {
   function modelGlassRow(modelId, g) {
     const a = dataAttrs("modelGlass", { model: modelId, id: g.id });
     const cur = glassLookFor(g.id, g.name, g).id;
+    // Узор со снимка (см. glassPatternSource): по названию, без узора или со
+    // стекла выбранной модели — для новых дверей с чужим узорным стеклом.
+    const m0 = DB.models.find((x) => x.id === modelId);
+    const auto = !g.pattern ? glassPatternSource(m0, { ...g, pattern: "" }) : null;
+    const patSel = `<select class="glass-look-select" data-field="pattern" ${a} aria-label="Узор стекла">`
+      + `<option value=""${!g.pattern ? " selected" : ""}>По названию${!g.pattern ? (auto ? ` (${esc(auto.name)})` : " (нет)") : ""}</option>`
+      + `<option value="none"${g.pattern === "none" ? " selected" : ""}>Без узора</option>`
+      + DB.models.filter((x) => x.type !== "матрица" && / ПО$/.test(x.name)).sort((x, y) => RU_COLLATOR.compare(x.name, y.name))
+        .map((x) => `<option value="${esc(x.id)}"${g.pattern === x.id ? " selected" : ""}>Со снимка: ${esc(x.name)}</option>`).join("")
+      + `</select>`;
     const lookSel = `<select class="glass-look-select" data-field="look" ${a} aria-label="Вид стекла">`
       + (DB.glassLooks || []).map((l) => `<option value="${esc(l.id)}"${l.id === cur ? " selected" : ""}>${esc(l.name)}</option>`).join("")
       + `</select>`;
     return `<div class="choice-row">
       <input type="text" class="edit-name" value="${esc(g.name)}" data-field="name" ${a}>
       <label class="glass-look-row"><span>Вид</span>${lookSel}</label>
+      <label class="glass-look-row"><span>Узор</span>${patSel}</label>
       <span class="price-input-wrap"><input type="text" inputmode="decimal" class="pricenum" enterkeyhint="enter" value="${g.price}" data-field="price" ${a}></span>
       <div class="pitem-del">
         <label class="switch"><input type="checkbox" class="arm-del"><span class="switch-track"></span></label>
@@ -14336,6 +14434,13 @@ const DB = {
       const m = DB.models.find((x) => x.id === d.model); if (!m) return;
       const g = (m.glasses || []).find((x) => x.id === d.id); if (!g) return;
       g.look = input.value;
+      savePrices(); schedulePartsRedraw();
+      return;
+    }
+    if (d.kind === "modelGlass" && field === "pattern") {
+      const m = DB.models.find((x) => x.id === d.model); if (!m) return;
+      const g = (m.glasses || []).find((x) => x.id === d.id); if (!g) return;
+      if (input.value) g.pattern = input.value; else delete g.pattern;
       savePrices(); schedulePartsRedraw();
       return;
     }
