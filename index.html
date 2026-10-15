@@ -2679,11 +2679,11 @@ const DB = {
       { id: "aged", name: "Состаренный" }, { id: "white", name: "Белёный" },
       { id: "block", name: "Бетонный блок" }] },
     { id: "wood", name: "Вагонка", vars: [
-      { id: "vertical", name: "Вертикальная" }, { id: "horizontal", name: "Горизонтальная" },
-      { id: "wide", name: "Широкая доска" }, { id: "shtil", name: "Штиль" }, { id: "diagonal", name: "Диагональ" }] },
+      { id: "vertical", name: "Вертикальная 96 мм" }, { id: "horizontal", name: "Горизонтальная" },
+      { id: "wide", name: "Широкая 140 мм" }, { id: "shtil", name: "Штиль 120 мм" }, { id: "diagonal", name: "Диагональ" }] },
     { id: "logs", name: "Бревна круглые", vars: [
-      { id: "round", name: "Оцилиндрованные" }, { id: "thin", name: "Тонкие" },
-      { id: "thick", name: "Толстые" }, { id: "hewn", name: "Рубленые" }, { id: "blockhouse", name: "Блок-хаус" }] }
+      { id: "round", name: "Оцилиндрованные Ø220" }, { id: "thin", name: "Тонкие Ø180" },
+      { id: "thick", name: "Толстые Ø280" }, { id: "hewn", name: "Рубленые" }, { id: "blockhouse", name: "Блок-хаус" }] }
   ];
 
   const el = {
@@ -8967,19 +8967,19 @@ const DB = {
           <feColorMatrix type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  2.4 0 0 0 -1.1"/>
         </filter>
         <filter id="${idf("tadL")}" x="0" y="0" width="100%" height="100%">
-          <feTurbulence type="fractalNoise" baseFrequency="0.02" numOctaves="4" seed="13" stitchTiles="stitch"/>
+          <feTurbulence type="fractalNoise" baseFrequency="0.036" numOctaves="4" seed="13" stitchTiles="stitch"/>
           <feColorMatrix type="matrix" values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  2.0 0 0 0 -0.85"/>
         </filter>
         <filter id="${idf("tadD")}" x="0" y="0" width="100%" height="100%">
-          <feTurbulence type="fractalNoise" baseFrequency="0.02" numOctaves="4" seed="27" stitchTiles="stitch"/>
+          <feTurbulence type="fractalNoise" baseFrequency="0.036" numOctaves="4" seed="27" stitchTiles="stitch"/>
           <feColorMatrix type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  2.0 0 0 0 -0.85"/>
         </filter>
         <filter id="${idf("vnL")}" x="0" y="0" width="100%" height="100%">
-          <feTurbulence type="fractalNoise" baseFrequency="0.009 0.014" numOctaves="5" seed="3" stitchTiles="stitch"/>
+          <feTurbulence type="fractalNoise" baseFrequency="0.024 0.032" numOctaves="5" seed="3" stitchTiles="stitch"/>
           <feColorMatrix type="matrix" values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  2.8 0 0 0 -1.2"/>
         </filter>
         <filter id="${idf("vnD")}" x="0" y="0" width="100%" height="100%">
-          <feTurbulence type="fractalNoise" baseFrequency="0.009 0.014" numOctaves="5" seed="19" stitchTiles="stitch"/>
+          <feTurbulence type="fractalNoise" baseFrequency="0.024 0.032" numOctaves="5" seed="19" stitchTiles="stitch"/>
           <feColorMatrix type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  2.8 0 0 0 -1.2"/>
         </filter>
         <filter id="${idf("wood")}" x="0" y="0" width="100%" height="100%">
@@ -9259,6 +9259,9 @@ const DB = {
   // текстуры есть подвиды (WALL_TEXTURES[].vars) — variant их id; пустой или
   // неизвестный — первый подвид. Узоры строятся тут же, без картинок.
   function wallTextureSVG(W, floorY, wallColor, texture, idf, variant) {
+    // Единиц сцены на 1 мм стены: размеры досок, брёвен и рисунка шпаклёвки
+    // заданы в мм и соразмерны двери 2000 мм.
+    const mmK = floorY / WALL_MM;
     const noise = (filt, op) => `<rect x="0" y="0" width="${W}" height="${floorY}" filter="url(#${idf(filt)})" opacity="${op}"/>`;
     const full = (fill, op) => `<rect x="0" y="0" width="${W}" height="${floorY}" fill="${fill}"${op != null ? ` opacity="${op}"` : ""}/>`;
     // Повторяемые «случайные» числа: узор не прыгает при каждой перерисовке.
@@ -9274,14 +9277,14 @@ const DB = {
       if (v === "travertine") {
         // Травертин: слоистые горизонтальные прожилки, поры и швы плит.
         let g = noise("trav", 0.35) + noise("paint", 0.3);
-        const sw = W / 4, sh = floorY / 3;
-        for (let r = 0; r < 3; r++) {
+        const sw = 600 * mmK, sh = 300 * mmK; // плиты травертина 600×300 мм
+        for (let r = 0; r * sh < floorY; r++) {
           const off = (r % 2) * sw * 0.5;
           g += `<rect x="0" y="${r * sh}" width="${W}" height="1.2" fill="rgba(0,0,0,0.16)"/>`;
           for (let x = off; x < W; x += sw) g += `<rect x="${x}" y="${r * sh}" width="1.2" height="${sh}" fill="rgba(0,0,0,0.14)"/>`;
         }
-        for (let i = 0; i < 90; i++) {
-          const x = rnd() * W, y = rnd() * floorY, rx = 0.8 + rnd() * 2.6;
+        for (let i = 0; i < 260; i++) {
+          const x = rnd() * W, y = rnd() * floorY, rx = (2 + rnd() * 10) * mmK; // поры 2–12 мм
           g += `<ellipse cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" rx="${rx.toFixed(1)}" ry="${(rx * 0.45).toFixed(1)}" fill="${shade(wallColor, -28)}" opacity="0.35"/>`;
         }
         return g;
@@ -9302,10 +9305,10 @@ const DB = {
       if (v === "sand") {
         // Песчаная: мелкое зерно и плавные волны мазков.
         let g = noise("shagreen", 0.85) + noise("paint", 0.6);
-        for (let i = 0; i < 7; i++) {
-          const y = floorY * (0.06 + i * 0.14);
-          g += `<path d="M -10 ${y} Q ${W * 0.25} ${y - 14} ${W * 0.5} ${y} T ${W + 10} ${y}" fill="none" stroke="#ffffff" stroke-width="6" opacity="0.07" filter="url(#${idf("soft")})"/>`;
-          g += `<path d="M -10 ${y + 7} Q ${W * 0.25} ${y - 7} ${W * 0.5} ${y + 7} T ${W + 10} ${y + 7}" fill="none" stroke="#000000" stroke-width="5" opacity="0.06" filter="url(#${idf("soft")})"/>`;
+        // мазки через ~150 мм
+        for (let y = 60 * mmK; y < floorY; y += 150 * mmK) {
+          g += `<path d="M -10 ${y} Q ${W * 0.12} ${y - 40 * mmK} ${W * 0.25} ${y} T ${W + 10} ${y}" fill="none" stroke="#ffffff" stroke-width="${45 * mmK}" opacity="0.08" filter="url(#${idf("soft")})"/>`;
+          g += `<path d="M -10 ${y + 40 * mmK} Q ${W * 0.12} ${y} ${W * 0.25} ${y + 40 * mmK} T ${W + 10} ${y + 40 * mmK}" fill="none" stroke="#000000" stroke-width="${35 * mmK}" opacity="0.07" filter="url(#${idf("soft")})"/>`;
         }
         return g;
       }
@@ -9313,11 +9316,11 @@ const DB = {
         // Кракелюр: сетка тонких трещин поверх мягких пятен.
         let g = noise("tadL", 0.18) + noise("tadD", 0.15);
         let d = "";
-        for (let i = 0; i < 140; i++) {
+        for (let i = 0; i < 700; i++) {
           let x = rnd() * W, y = rnd() * floorY;
           d += `M ${x.toFixed(1)} ${y.toFixed(1)}`;
           for (let k = 0; k < 4; k++) {
-            x += (rnd() - 0.5) * 16; y += (rnd() - 0.5) * 16;
+            x += (rnd() - 0.5) * 50 * mmK; y += (rnd() - 0.5) * 50 * mmK; // ячейки трещин 20–60 мм
             d += ` L ${x.toFixed(1)} ${y.toFixed(1)}`;
           }
         }
@@ -9326,8 +9329,8 @@ const DB = {
       }
       // Венецианская: глубокие разводы и мраморный блеск.
       let g = noise("vnL", 0.38) + noise("vnD", 0.28);
-      for (let i = 0; i < 6; i++) {
-        const x = rnd() * W, y = rnd() * floorY, r = 20 + rnd() * 50;
+      for (let i = 0; i < 18; i++) {
+        const x = rnd() * W, y = rnd() * floorY, r = (100 + rnd() * 200) * mmK; // мазки шпателя 100–300 мм
         g += `<ellipse cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" rx="${r.toFixed(1)}" ry="${(r * 0.35).toFixed(1)}" transform="rotate(${(-30 + rnd() * 60).toFixed(0)} ${x.toFixed(1)} ${y.toFixed(1)})" fill="#ffffff" opacity="0.10" filter="url(#${idf("soft6")})"/>`;
       }
       return g + noise("paint", 0.1);
@@ -9421,6 +9424,10 @@ const DB = {
     if (grp.id === "wood") {
       // Вагонка: доски с V-образным пазом, объёмом и волокном. Доски рисуются
       // вертикально в полосе span × len; горизонталь и диагональ — поворотом.
+      // Ширина видимой части доски: евровагонка 96 мм (рабочая 88), штиль 120,
+      // широкая 140 мм; паз V — около 5 мм.
+      const groove = Math.max(0.6, 5 * mmK);
+      const EU = 88 * mmK;
       const boards = (span, len, bw, flat) => {
         let g = "";
         let b = 0;
@@ -9428,8 +9435,8 @@ const DB = {
           if (!flat) {
             g += `<rect x="${bx}" y="0" width="${bw * 0.5}" height="${len}" fill="#ffffff" opacity="0.05"/>`;
             g += `<rect x="${bx + bw * 0.6}" y="0" width="${bw * 0.4}" height="${len}" fill="#000000" opacity="0.07"/>`;
-            g += `<rect x="${bx}" y="0" width="1.6" height="${len}" fill="rgba(0,0,0,0.3)"/>`;
-            g += `<rect x="${bx + 1.6}" y="0" width="1" height="${len}" fill="rgba(255,255,255,0.14)"/>`;
+            g += `<rect x="${bx}" y="0" width="${groove}" height="${len}" fill="rgba(0,0,0,0.3)"/>`;
+            g += `<rect x="${bx + groove}" y="0" width="${groove * 0.6}" height="${len}" fill="rgba(255,255,255,0.14)"/>`;
           } else {
             // Штиль: доски стыкуются почти без зазора, поверхность ровная.
             g += `<rect x="${bx}" y="0" width="0.8" height="${len}" fill="rgba(0,0,0,0.22)"/>`;
@@ -9451,19 +9458,21 @@ const DB = {
       };
       let g;
       if (v === "horizontal") {
-        g = `<g transform="translate(${W} 0) rotate(90)">${boards(floorY, W, 22, false)}</g>`;
+        g = `<g transform="translate(${W} 0) rotate(90)">${boards(floorY, W, EU, false)}</g>`;
       } else if (v === "diagonal") {
         const D = Math.ceil(Math.hypot(W, floorY));
-        g = clip + `<g clip-path="url(#${clipId})"><g transform="rotate(45 ${W / 2} ${floorY / 2}) translate(${W / 2 - D / 2} ${floorY / 2 - D / 2})">${boards(D, D, 22, false)}</g></g>`;
+        g = clip + `<g clip-path="url(#${clipId})"><g transform="rotate(45 ${W / 2} ${floorY / 2}) translate(${W / 2 - D / 2} ${floorY / 2 - D / 2})">${boards(D, D, EU, false)}</g></g>`;
       } else {
-        g = boards(W, floorY, v === "wide" ? 40 : 22, v === "shtil");
+        g = boards(W, floorY, v === "wide" ? 140 * mmK : v === "shtil" ? 120 * mmK : EU, v === "shtil");
       }
       return g + noise("paint", 0.2);
     }
 
     if (grp.id === "logs") {
       // Бревна круглые (сруб): горизонтальные брёвна с цилиндрическим объёмом.
-      const lh0 = v === "thin" ? 24 : v === "thick" ? 46 : 34;
+      // Рабочая высота венца: Ø180 → 155 мм, Ø220 → 190, Ø280 → 242, рубленые
+      // ~Ø260 → 225; блок-хаус 190 мм (видимая часть 140).
+      const lh0 = (v === "thin" ? 155 : v === "thick" ? 242 : v === "hewn" ? 225 : v === "blockhouse" ? 140 : 190) * mmK;
       // тон по сечению цилиндра: доля высоты → сдвиг яркости; у блок-хауса
       // профиль площе (это доска под бревно), а стыки досок видны.
       const bands = v === "blockhouse"
