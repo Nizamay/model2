@@ -1,0 +1,56 @@
+#!/usr/bin/env python3
+"""Детали наличника «///» для 2D: вырезает их из двух снимков заказчика и
+вшивает в index.html между метками CASING_PIECES_BEGIN / CASING_PIECES_END.
+
+  наличник_капитель_банкетка.png — капитель, квадратные элементы, консоль
+      (верхний наличник), боковой наличник и банкетка;
+  наличник_обычный.png — наличник «///» без доп. элементов, углы на ус.
+
+Координаты — в точках исходных снимков. Детали сохраняются в WebP с
+прозрачностью; перекраска (цвет эмали, патина) — в самой программе.
+"""
+import base64, io, json, os, re
+from PIL import Image
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.abspath(os.path.join(HERE, "..", "..", ".."))
+
+def piece(img, box, scale=1.0):
+    c = img.crop(box)
+    if scale != 1.0:
+        c = c.resize((max(1, round(c.width * scale)), max(1, round(c.height * scale))), Image.LANCZOS)
+    buf = io.BytesIO()
+    c.save(buf, "WEBP", quality=92, method=6)
+    return {"src": "data:image/webp;base64," + base64.b64encode(buf.getvalue()).decode(), "w": c.width, "h": c.height}
+
+k = Image.open(os.path.join(HERE, "наличник_капитель_банкетка.png")).convert("RGBA")
+p = Image.open(os.path.join(HERE, "наличник_обычный.png")).convert("RGBA")
+S = 0.5  # обычный снимок вдвое крупнее, чем нужно
+
+out = {
+    # board — ширина бокового наличника в точках снимка: по ней всё
+    # остальное переводится в миллиметры сцены.
+    "kap": {
+        "board": 53,
+        "capL": piece(k, (0, 0, 120, 48)), "capM": piece(k, (250, 0, 390, 48)), "capR": piece(k, (521, 0, 641, 48)),
+        "capOver": 27,   # капитель шире наличника на столько с каждой стороны
+        "sqL": piece(k, (27, 48, 76, 98)), "sqR": piece(k, (565, 48, 614, 98)),
+        "con": piece(k, (200, 48, 440, 98)),
+        "vL": piece(k, (27, 300, 80, 1100)), "vR": piece(k, (561, 300, 614, 1100)),
+        "bkL": piece(k, (27, 1185, 80, 1300)), "bkR": piece(k, (561, 1185, 614, 1300)),
+    },
+    "plain": {
+        "board": round(176 * S),
+        "vL": piece(p, (0, 1200, 176, 2800), S), "vR": piece(p, (1698, 1200, 1875, 2800), S),
+        "top": piece(p, (600, 0, 1275, 180), S),
+    },
+}
+
+html_path = os.path.join(ROOT, "index.html")
+html = open(html_path, encoding="utf-8").read()
+block = "  // CASING_PIECES_BEGIN (собирается assets/source/casing_2026/build_casing.py)\n  const CASING_PIECES = " + json.dumps(out, ensure_ascii=False) + ";\n  // CASING_PIECES_END"
+new, n = re.subn(r"  // CASING_PIECES_BEGIN.*?// CASING_PIECES_END", lambda m: block, html, flags=re.S)
+if n != 1:
+    raise SystemExit("метки CASING_PIECES_BEGIN/END не найдены")
+open(html_path, "w", encoding="utf-8").write(new)
+print("ok", sum(len(v["src"]) for g in out.values() for v in g.values() if isinstance(v, dict)), "байт")
