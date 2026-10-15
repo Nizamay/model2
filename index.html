@@ -661,6 +661,15 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 .part.k-z.zv-patina > span { background: rgba(170,128,0,.95); }
 .part.k-z.zv-photo { background: rgba(0,120,255,.12); border-color: rgba(0,90,200,.9); }
 .part.k-z.zv-photo > span { background: rgba(0,90,200,.9); }
+/* «Хвост» зоны «Как на фото» — прямоугольник сбоку от неё (под ручку-рычаг),
+   см. zoneTail. Углы — только на дальнем конце. */
+.ztail { position: absolute; box-sizing: border-box; border: 1px dashed rgba(0,90,200,.9); background: rgba(0,120,255,.10); pointer-events: none; }
+.ztail .ph { position: absolute; width: 22px; height: 22px; box-sizing: border-box; background: #ffd54a; border: 2px solid #6b5200;
+  border-radius: 5px; box-shadow: 0 1px 4px rgba(0, 0, 0, .4); z-index: 3; }
+.ztail .ph-nw { left: -22px; top: -22px; }
+.ztail .ph-ne { right: -22px; top: -22px; }
+.ztail .ph-sw { left: -22px; bottom: -22px; }
+.ztail .ph-se { right: -22px; bottom: -22px; }
 /* Открыта одна подгруппа «Двери» — остальные спрятаны, чтобы случайно не
    открыть соседнюю (см. doorSolo). Закрыл — все снова видны. */
 .adjust-panel.solo-hide { display: none !important; }
@@ -3918,6 +3927,20 @@ const DB = {
     return parts.length ? { rev: 1, parts: parts } : null;
   }
 
+  // «Хвост» зоны «Как на фото» (поле tl): прямоугольник, пристёгнутый к её
+  // боку, — для рычага ручки, который торчит из накладки в сторону. tl.s —
+  // сторона (1 справа, −1 слева), tl.x1 — дальний край, tl.y и tl.h —
+  // верх и высота (доли кадра). Ближний край — бок самой зоны: двигаешь
+  // или тянешь зону — хвост остаётся пристёгнутым.
+  function zoneTail(p) {
+    const t = p && p.tl;
+    if (!t || p.k !== "z" || p.v !== "photo") return null;
+    const near = t.s > 0 ? p.x + p.w : p.x;
+    const x0 = Math.max(0, Math.min(near, t.x1)), x1 = Math.min(1, Math.max(near, t.x1));
+    if (x1 - x0 < 0.002 || !(t.h > 0.002)) return null;
+    return { x: x0, y: Math.max(0, t.y), w: x1 - x0, h: Math.min(1 - Math.max(0, t.y), t.h) };
+  }
+
   function partsOf(modelId) {
     if (!DB.modelParts) DB.modelParts = {};
     const own = DB.modelParts[modelId];
@@ -5214,7 +5237,15 @@ const DB = {
     // Фрезеровка — рамка «квадрат в квадрате»: внешний край — прямоугольник
     // детали, внутренний — отступ b мм (по умолчанию 25). Рельеф снимка — только
     // в полосе между ними; если b не меньше половины стороны — во всей зоне.
-    const reliefZones = doc.parts.filter((p) => p.k === "z").map((p) => {
+    // Хвосты зон «Как на фото» — такие же зоны «Как на фото» (см. zoneTail).
+    const zoneParts = [];
+    doc.parts.forEach((p) => {
+      if (p.k !== "z") return;
+      zoneParts.push(p);
+      const t = zoneTail(p);
+      if (t) zoneParts.push({ k: "z", v: "photo", x: t.x, y: t.y, w: t.w, h: t.h });
+    });
+    const reliefZones = zoneParts.map((p) => {
       const [bl, bt, br, bb] = zoneInsets(p);
       const x0 = p.x * cw, x1 = (p.x + p.w) * cw, y0 = p.y * ch, y1 = (p.y + p.h) * ch;
       const ix0 = x0 + bl * pxPerMmX, ix1 = x1 - br * pxPerMmX, iy0 = y0 + bt * pxPerMmY, iy1 = y1 - bb * pxPerMmY;
@@ -5229,7 +5260,7 @@ const DB = {
     // Снимок под зоной запоминаем до покраски: после неё из него берётся
     // только то, что отличается от поверхности двери (сама ручка), а вокруг
     // остаётся плёнка — без светлого прямоугольника снимка.
-    const photoZones = doc.parts.filter((p) => p.k === "z" && p.v === "photo").map((p) => {
+    const photoZones = zoneParts.filter((p) => p.v === "photo").map((p) => {
       const x0 = Math.max(0, Math.round(p.x * cw)), x1 = Math.min(cw, Math.round((p.x + p.w) * cw));
       const y0 = Math.max(0, Math.round(p.y * ch)), y1 = Math.min(ch, Math.round((p.y + p.h) * ch));
       const w = Math.max(0, x1 - x0), h = Math.max(0, y1 - y0), orig = new Uint8ClampedArray(w * h * 4);
@@ -5578,7 +5609,13 @@ const DB = {
     for (const g of photoZones) {
       const L = new Float32Array(g.w * g.h);
       for (let i = 0, j = 0; i < L.length; i++, j += 4) L[i] = 0.299 * g.orig[j] + 0.587 * g.orig[j + 1] + 0.114 * g.orig[j + 2];
-      const srt = Float32Array.from(L).sort(), ref = Math.max(1, srt[srt.length >> 1]);
+      // Поверхность двери — по краю зоны, а не по всей зоне: середину зоны
+      // занимает сама накладка, и её медиана делала «отличающимся» и фон
+      // вокруг — он переезжал со снимка серым прямоугольником (заказчик).
+      const ring = [];
+      for (let x = 0; x < g.w; x++) ring.push(L[x], L[(g.h - 1) * g.w + x]);
+      for (let y = 1; y < g.h - 1; y++) ring.push(L[y * g.w], L[y * g.w + g.w - 1]);
+      const srt = Float32Array.from(ring).sort(), ref = Math.max(1, srt[srt.length >> 1]);
       for (let y = 0; y < g.h; y++) {
         for (let x = 0; x < g.w; x++) {
           const k = y * g.w + x, dv = Math.abs(L[k] - ref) / ref;
@@ -7002,7 +7039,14 @@ const DB = {
             return z ? `<i class="zin" style="left:${z.l}%;right:${z.r}%;top:${z.t}%;bottom:${z.b}%">${ih}</i>` : "";
           })() : "")
           + (p.q ? partsQuadInner(p, sel) : "")
-          + `<span>${PART_KINDS[p.k].short}</span>${handles}</div>`;
+          + `<span>${PART_KINDS[p.k].short}</span>${handles}</div>`
+          + (() => {
+            const t = zoneTail(p);
+            if (!t) return "";
+            const side = p.tl.s > 0 ? ["ne", "se"] : ["nw", "sw"];
+            return `<div class="ztail" data-tail="${i}" style="left:${pct(t.x)};top:${pct(t.y)};width:${pct(t.w)};height:${pct(t.h)}">`
+              + (sel ? side.map((c) => `<i class="ph ph-${c}"></i>`).join("") : "") + `</div>`;
+          })();
       }).join("");
     }
     if (kinds && leafEdit) kinds.innerHTML = "";
@@ -7160,6 +7204,18 @@ const DB = {
     if (!box.width || !box.height) return;
     const fx = (e.clientX - box.left) / box.width;
     const fy = (e.clientY - box.top) / box.height;
+    // Палец 5 секунд неподвижно на зоне «Как на фото» — у неё появляется
+    // «хвост» под рычаг ручки (или убирается, если уже был; см. zoneTail).
+    partsHoldStop();
+    if (!leafEdit) {
+      for (let i = doc.parts.length - 1; i >= 0; i--) {
+        const q = doc.parts[i];
+        if (q.k === "z" && q.v === "photo" && partsVisible(q) && fx >= q.x && fx <= q.x + q.w && fy >= q.y && fy <= q.y + q.h) {
+          partsHold = { id: e.pointerId, x0: e.clientX, y0: e.clientY, timer: setTimeout(() => partsHoldFire(ctx.model.id, i), PARTS_HOLD_MS) };
+          break;
+        }
+      }
+    }
 
     // Сначала углы активной детали: они мелкие, и перекрываются соседями.
     // Берём ИМЕННО БЛИЖАЙШИЙ угол, а не первый подходящий: у узкой детали
@@ -7181,6 +7237,8 @@ const DB = {
           corners.push(["i-nw", ix0, iy0, 1, 1], ["i-ne", ix1, iy0, -1, 1], ["i-sw", ix0, iy1, 1, -1], ["i-se", ix1, iy1, -1, -1]);
         }
       }
+      const tl = zoneTail(p);
+      if (tl) corners.push(["t-top", p.tl.x1, tl.y, p.tl.s, -1], ["t-bot", p.tl.x1, tl.y + tl.h, p.tl.s, 1]);
       let near = null;
       corners.forEach(([name, cx2, cy2, sx, sy]) => {
         const dx = fx * box.width - (cx2 * box.width + sx * H2), dy = fy * box.height - (cy2 * box.height + sy * H2);
@@ -7195,7 +7253,7 @@ const DB = {
         // Палец лежит на квадратике снаружи угла: запоминаем, насколько он
         // отстоит от самого угла, и ведём угол на столько же позади пальца —
         // иначе при первом движении угол прыгнул бы под палец.
-        partsDragStart({ mode: near.name.startsWith("i-") ? "inner" : /^q\d$/.test(near.name) ? "quad" : "resize", i: partsSel, corner: near.name.replace("i-", ""), modelId: ctx.model.id, moved: false,
+        partsDragStart({ mode: near.name.startsWith("t-") ? "tail" : near.name.startsWith("i-") ? "inner" : /^q\d$/.test(near.name) ? "quad" : "resize", i: partsSel, corner: near.name.replace("i-", ""), modelId: ctx.model.id, moved: false,
           offX: near.cx - fx, offY: near.cy - fy }, doc, els, box);
         els.stage.setPointerCapture(e.pointerId);
         e.preventDefault();
@@ -7284,6 +7342,40 @@ const DB = {
     partsPanStart(e, els, () => { if (partsSel !== null) { partsSel = null; updatePartsEditor(); } });
   }
 
+  const PARTS_HOLD_MS = 5000;
+  let partsHold = null;
+  function partsHoldStop() { if (partsHold) { clearTimeout(partsHold.timer); partsHold = null; } }
+  function partsHoldFire(modelId, i) {
+    partsHold = null;
+    const doc = partsOf(modelId), p = doc && doc.parts[i];
+    if (!p || p.k !== "z" || p.v !== "photo") return;
+    // Начатое движение отменяем: палец всё это время стоял на месте.
+    if (partsDrag) {
+      if (partsDrag.raf) cancelAnimationFrame(partsDrag.raf);
+      if (partsDrag.i === i && partsDrag.orig) Object.assign(p, partsDrag.orig);
+      partsDrag = null;
+    }
+    partsPan = null;
+    { const stg = document.getElementById("s_partsStage"); if (stg) stg.classList.remove("dragging"); }
+    if (p.tl) {
+      delete p.tl;
+      partsNote = "Хвост зоны убран.";
+    } else {
+      // Хвост — в сторону середины полотна (туда смотрит рычаг ручки):
+      // в полторы ширины зоны, не короче 60 мм; высотой 15 % зоны, не меньше 25 мм.
+      const leaf = leafOfParts(doc.parts) || { x: 0, w: 1 };
+      const sd = p.x + p.w / 2 < leaf.x + leaf.w / 2 ? 1 : -1;
+      const near = sd > 0 ? p.x + p.w : p.x, len = Math.max(p.w * 1.5, 60 / FRAME_MM.w);
+      const h = Math.max(p.h * 0.15, 25 / FRAME_MM.h);
+      p.tl = { s: sd, x1: Math.max(0, Math.min(1, near + sd * len)), y: Math.max(0, p.y + p.h * 0.3 - h / 2), h: h };
+      partsNote = "Хвост зоны: тяните за его жёлтые углы — длина и высота под рычаг ручки. Убрать — снова держать палец на зоне 5 с.";
+    }
+    partsSel = i;
+    try { if (navigator.vibrate) navigator.vibrate(40); } catch (_) {}
+    savePartsDoc(doc, modelId, true);
+    updatePartsEditor();
+  }
+
   // Увеличение и сдвиг снимка разметки. partsPtrs — пальцы на снимке;
   // два пальца — щипок (масштаб и сдвиг), один мимо активной детали — сдвиг.
   const partsPtrs = new Map();
@@ -7322,6 +7414,7 @@ const DB = {
     e.preventDefault();
   }
   function partsPinchStart(e) {
+    partsHoldStop();
     const stage = document.getElementById("s_partsStage");
     // Начатое одним пальцем движение детали отменяется: деталь — на прежнее место.
     if (partsDrag) {
@@ -7383,7 +7476,8 @@ const DB = {
     drag.xs = partsEdges(doc.parts, drag.i, "x");
     drag.ys = partsEdges(doc.parts, drag.i, "y");
     drag.el = els.layer.querySelector('.part[data-i="' + drag.i + '"]');
-    drag.orig = Object.assign({}, doc.parts[drag.i]);
+    drag.tailEl = els.layer.querySelector('.ztail[data-tail="' + drag.i + '"]');
+    drag.orig = JSON.parse(JSON.stringify(doc.parts[drag.i]));
     // Тень у пунктира: края деталей каркаса, вдоль которых она лежит, — для
     // подсказки в процентах (см. partsShadeTip).
     if (doc.parts[drag.i] && doc.parts[drag.i].k === "t") {
@@ -7405,6 +7499,7 @@ const DB = {
   // последнюю точку и двигаем прямоугольник один раз на кадр.
   function onPartsPointerMove(e) {
     if (partsPtrs.has(e.pointerId)) partsPtrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (partsHold && (partsHold.id !== e.pointerId || Math.hypot(e.clientX - partsHold.x0, e.clientY - partsHold.y0) > 10)) partsHoldStop();
     if (partsPinch) { if (!partsPinch.raf) partsPinch.raf = requestAnimationFrame(partsPinchApply); e.preventDefault(); return; }
     if (partsPan && partsPan.id === e.pointerId) {
       e.preventDefault();
@@ -7447,6 +7542,24 @@ const DB = {
     // Стекло тоже без прилипания: тонкие стёкла ставят по снимку и по счётчику
     // мм, а прилипание к соседней планке сбивало их (жалоба заказчика).
     const snap = ["p", "s", "d", "t", "z", "nv", "nh", "g"].includes(p.k) ? (v) => v : partsSnap;
+    if (partsDrag.mode === "tail" && p.tl) {
+      // Дальний конец хвоста — за пальцем; верх или низ — тот, за чей угол
+      // взяли. Хвост можно перекинуть и на другой бок зоны.
+      const t = p.tl, bot = t.y + t.h, minH = 3 / FRAME_MM.h;
+      const x1 = Math.max(0, Math.min(1, fx));
+      t.s = x1 >= p.x + p.w / 2 ? 1 : -1;
+      t.x1 = x1;
+      if (partsDrag.corner === "t-top") { t.y = Math.max(0, Math.min(bot - minH, fy)); t.h = bot - t.y; }
+      else t.h = Math.max(minH, Math.min(1 - t.y, fy - t.y));
+      drag.moved = true;
+      const el = drag.tailEl, r = zoneTail(p);
+      if (el && r) {
+        el.style.left = (r.x * 100).toFixed(3) + "%"; el.style.top = (r.y * 100).toFixed(3) + "%";
+        el.style.width = (r.w * 100).toFixed(3) + "%"; el.style.height = (r.h * 100).toFixed(3) + "%";
+        el.querySelectorAll(".ph").forEach((n) => { n.className = n.className.replace(/ph-(n|s)[ew]/, (m, v) => "ph-" + v + (t.s > 0 ? "e" : "w")); });
+      }
+      return;
+    }
     if (partsDrag.mode === "inner") {
       const W = p.w * FRAME_MM.w, H = p.h * FRAME_MM.h;
       const ins = zoneInsets(p).slice();
@@ -7481,6 +7594,7 @@ const DB = {
       p.x = Math.max(0, Math.min(1 - p.w, nx));
       p.y = Math.max(0, Math.min(1 - p.h, ny));
       if (p.q) { const dx = p.x - ox, dy = p.y - oy; p.q = p.q.map((c) => [c[0] + dx, c[1] + dy]); }
+      if (p.tl) { p.tl.x1 += p.x - ox; p.tl.y += p.y - oy; }
     } else {
       const west = partsDrag.corner === "nw" || partsDrag.corner === "sw";
       const north = partsDrag.corner === "nw" || partsDrag.corner === "ne";
@@ -7510,6 +7624,11 @@ const DB = {
       box2.style.width = (p.w * 100).toFixed(3) + "%";
       box2.style.height = (p.h * 100).toFixed(3) + "%";
       if (p.k === "z") partsZinApply(p, box2.querySelector(".zin"));
+    }
+    const tEl = drag.tailEl, tR = tEl && zoneTail(p);
+    if (tR) {
+      tEl.style.left = (tR.x * 100).toFixed(3) + "%"; tEl.style.top = (tR.y * 100).toFixed(3) + "%";
+      tEl.style.width = (tR.w * 100).toFixed(3) + "%"; tEl.style.height = (tR.h * 100).toFixed(3) + "%";
     }
     partsMmTip(p, drag);
     if (p.k === "t" && drag.guides) partsShadeTip(p, drag);
@@ -7640,6 +7759,7 @@ const DB = {
   }
 
   function onPartsPointerUp(e) {
+    partsHoldStop();
     if (e && e.pointerId != null) partsPtrs.delete(e.pointerId);
     if (partsPinch) { if (partsPtrs.size < 2) { if (partsPinch.raf) cancelAnimationFrame(partsPinch.raf); partsPinch = null; } return; }
     if (partsPan) {
