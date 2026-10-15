@@ -436,6 +436,7 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 }
 
 .wall-swatch.active { outline: 2px solid var(--accent); outline-offset: 1px; }
+.wall-own-note { margin: 8px 0 0; font-size: 12px; color: var(--muted, #6b7280); }
 
 .wall-color-row input[type="color"] {
   width: 34px;
@@ -1757,6 +1758,7 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
           <summary>Цвет стены</summary>
           <div class="adjust-body">
             <div class="wall-swatches" id="s_wallSwatches"></div>
+            <p class="hint wall-own-note" id="s_wallOwnNote" hidden></p>
           </div>
         </details>
         <details class="adjust-panel" id="s_wallTexturePanel">
@@ -2633,19 +2635,21 @@ const DB = {
     { name: "Винный", hex: "#8b3b4b" }
   ];
 
-  // Текстуры стены и их подвиды (первый подвид — по умолчанию).
+  // Текстуры стены и их подвиды (первый подвид — по умолчанию). Текстура
+  // перекрашивается выбранным цветом стены; только у сложных подвидов обоев и
+  // шпаклёвки (с hex) свой цвет — образцы цвета его не меняют.
   const WALL_TEXTURES = [
     { id: "smooth", name: "Гладкая", vars: [
       { id: "matte", name: "Матовая" }, { id: "satin", name: "Шелковисто-матовая" },
       { id: "gloss", name: "Глянцевая" }, { id: "shagreen", name: "Шагрень" }, { id: "velvet", name: "Бархатная" }] },
     { id: "putty", name: "Декоративная шпаклёвка", vars: [
-      { id: "venetian", name: "Венецианская" }, { id: "travertine", name: "Травертин" },
-      { id: "silk", name: "Мокрый шёлк" }, { id: "tadelakt", name: "Марокканская" },
-      { id: "sand", name: "Песчаная" }, { id: "craquelure", name: "Кракелюр" }] },
+      { id: "venetian", name: "Венецианская", hex: "#d6c8b0" }, { id: "travertine", name: "Травертин", hex: "#ddcdb0" },
+      { id: "silk", name: "Мокрый шёлк", hex: "#d9d3c8" }, { id: "tadelakt", name: "Марокканская", hex: "#c9a080" },
+      { id: "sand", name: "Песчаная" }, { id: "craquelure", name: "Кракелюр", hex: "#e2d6bf" }] },
     { id: "stripes", name: "Обои", vars: [
       { id: "wide", name: "Широкая полоска" }, { id: "narrow", name: "Узкая полоска" },
       { id: "double", name: "Двойная полоска" }, { id: "duo", name: "Двухцветная полоска" },
-      { id: "rhomb", name: "Ромбы" }, { id: "damask", name: "Дамаск" }] },
+      { id: "rhomb", name: "Ромбы", hex: "#e6dcc6" }, { id: "damask", name: "Дамаск", hex: "#e4d8c0" }] },
     { id: "brick", name: "Кирпич", vars: [
       { id: "classic", name: "Одинарный" }, { id: "oneandhalf", name: "Полуторный" },
       { id: "clinker", name: "Клинкер" }, { id: "riegel", name: "Ригель (длинный)" },
@@ -8676,7 +8680,7 @@ const DB = {
     // остался, — то есть когда дверь на снимке не нашлась и кадр показан
     // целиком. Нашлась — фон обрезан, и стена живёт своей жизнью.
     const photoWallHex = photoAsIsModel && !photoBox && !photoFramed ? modelPhotoEdgeHex(modelPhoto) : null;
-    const sceneWallColor = photoWallHex || state.wallColor;
+    const sceneWallColor = photoWallHex || wallTexOwnHex() || state.wallColor;
     c.sceneGroup.innerHTML = sceneMode
       ? buildScene(layout, { x: x, y: y, w: w, h: h }, baseHex, casingFill, sceneWallColor, state.wallTexture, c.pfx, doorFilter, gap, photoCasing, Math.max(3, CASING_MM * unitsPerMm))
       : "";
@@ -12598,21 +12602,39 @@ const DB = {
   function setWallTexture(id) {
     state.wallTexture = id;
     renderWallTextures();
+    renderWallSwatches();
     render();
   }
 
+  // Свой цвет выбранного подвида текстуры (сложные обои и шпаклёвка) или null.
+  function wallTexVariant() {
+    const grp = WALL_TEXTURES.find((t) => t.id === state.wallTexture) || WALL_TEXTURES[0];
+    const id = (state.wallTexVar || {})[grp.id];
+    return grp.vars.find((x) => x.id === id) || grp.vars[0];
+  }
+  function wallTexOwnHex() {
+    return wallTexVariant().hex || null;
+  }
+
   function renderWallSwatches() {
-    const cur = state.wallColor.toLowerCase();
+    const own = wallTexOwnHex();
+    const cur = own ? "" : state.wallColor.toLowerCase();
     const html = WALL_PRESETS.map(
       (p) =>
         `<button type="button" class="wall-swatch${p.hex.toLowerCase() === cur ? " active" : ""}" data-hex="${p.hex}" style="background:${p.hex}" title="${p.name}" aria-label="${p.name}"></button>`
     ).join("");
     el.sceneWallSwatches.innerHTML = html;
+    const note = document.getElementById("s_wallOwnNote");
+    if (note) {
+      note.hidden = !own;
+      note.textContent = own ? `У текстуры «${wallTexVariant().name}» свой цвет — образцы его не меняют. Подстроить можно в «Настроить тон стены».` : "";
+    }
   }
 
   function setWallTexVar(id) {
     state.wallTexVar = { ...(state.wallTexVar || {}), [state.wallTexture]: id };
     renderWallTextures();
+    renderWallSwatches();
     render();
   }
 
