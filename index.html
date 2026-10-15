@@ -423,11 +423,12 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
   margin-top: -6px;
 }
 
-.wall-swatches { display: flex; gap: 6px; flex-wrap: wrap; }
+/* 20 образцов: два ряда по 10 (пастельные / яркие), квадраты тянутся по ширине. */
+.wall-swatches { display: grid; grid-template-columns: repeat(10, 1fr); gap: 5px; max-width: 360px; }
 
 .wall-swatch {
-  width: 24px;
-  height: 24px;
+  width: 100%;
+  aspect-ratio: 1;
   border-radius: 6px;
   border: 1px solid var(--border);
   padding: 0;
@@ -435,6 +436,7 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 }
 
 .wall-swatch.active { outline: 2px solid var(--accent); outline-offset: 1px; }
+.wall-own-note { margin: 8px 0 0; font-size: 12px; color: var(--muted, #6b7280); }
 
 .wall-color-row input[type="color"] {
   width: 34px;
@@ -461,6 +463,10 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 }
 
 .wall-texture.active { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+/* Подвиды выбранной текстуры — отдельной строкой под текстурами. */
+.wall-tex-vars { display: flex; gap: 6px; flex-wrap: wrap; width: 100%; margin-top: 4px; padding-top: 10px; border-top: 1px dashed var(--border); }
+.wall-tex-var { font-size: 12px; padding: 4px 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text); cursor: pointer; }
+.wall-tex-var.active { border-color: var(--accent); background: var(--accent); color: #fff; }
 
 /* Раздел «2D картинка». */
 /* Кнопка «i» рядом с заголовком: пояснения спрятаны под неё (просьба
@@ -1752,6 +1758,7 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
           <summary>Цвет стены</summary>
           <div class="adjust-body">
             <div class="wall-swatches" id="s_wallSwatches"></div>
+            <p class="hint wall-own-note" id="s_wallOwnNote" hidden></p>
           </div>
         </details>
         <details class="adjust-panel" id="s_wallTexturePanel">
@@ -2565,6 +2572,8 @@ const DB = {
     sceneMode: false,
     wallColor: "#e8e2d5",
     wallTexture: "smooth",
+    // Выбранный подвид для каждой текстуры: { brick: "clinker", ... }.
+    wallTexVar: {},
     // Наличник в 2D: "" — обычный (три доски), "///" — с тремя полосками из
     // деталей со снимков; к «///» — капитель и банкетка (см. casingSceneSvg).
     casingStyle: "",
@@ -2600,26 +2609,58 @@ const DB = {
 
   // Пресеты цвета стены для быстрого выбора (можно задать и свой через
   // input[type=color]).
+  // 20 образцов: первый ряд — пастельные, второй — яркие, но не кислотные.
+  // Подбор по трендам окраски 2025–2026 (природные тёплые, шалфей, глина и
+  // терракота, «пыльные» голубой и синий, ягодные и винные вместо красного).
   const WALL_PRESETS = [
     { name: "Тёплый белый", hex: "#e8e2d5" },
-    { name: "Светло-серый", hex: "#d7d8d3" },
-    { name: "Шалфей", hex: "#cdd6cb" },
-    { name: "Голубой", hex: "#cdd8e2" },
-    { name: "Бежевый", hex: "#e3d3c1" },
-    { name: "Песочный", hex: "#d9c7ac" },
-    { name: "Капучино", hex: "#c9b6a4" },
-    { name: "Терракота", hex: "#d9b9a3" }
+    { name: "Слоновая кость", hex: "#ece3cc" },
+    { name: "Грейж", hex: "#d8d2c7" },
+    { name: "Шалфей", hex: "#cdd6c4" },
+    { name: "Мятный", hex: "#d1e2d8" },
+    { name: "Голубой туман", hex: "#cfdbe5" },
+    { name: "Лаванда", hex: "#dcd5e3" },
+    { name: "Пудровый розовый", hex: "#ead2cd" },
+    { name: "Персиковый", hex: "#efd6c0" },
+    { name: "Песочный", hex: "#dfcfb2" },
+    { name: "Терракота", hex: "#c46c4e" },
+    { name: "Коралловый", hex: "#d77c62" },
+    { name: "Горчичный", hex: "#c99b3e" },
+    { name: "Оливковый", hex: "#8d9150" },
+    { name: "Изумрудный", hex: "#3f876a" },
+    { name: "Бирюзовый", hex: "#38878f" },
+    { name: "Синий", hex: "#3d67a3" },
+    { name: "Фиолетовый", hex: "#76659f" },
+    { name: "Ягодный", hex: "#a9506b" },
+    { name: "Винный", hex: "#8b3b4b" }
   ];
 
-  // Текстуры стены.
+  // Текстуры стены и их подвиды (первый подвид — по умолчанию). Текстура
+  // перекрашивается выбранным цветом стены; только у сложных подвидов обоев и
+  // шпаклёвки (с hex) свой цвет — образцы цвета его не меняют.
   const WALL_TEXTURES = [
-    { id: "smooth", name: "Гладкая" },
-    { id: "plaster", name: "Штукатурка" },
-    { id: "stripes", name: "Обои в полоску" },
-    { id: "concrete", name: "Бетон" },
-    { id: "brick", name: "Кирпич" },
-    { id: "wood", name: "Вагонка" },
-    { id: "logs", name: "Бревна круглые" }
+    { id: "smooth", name: "Гладкая", vars: [
+      { id: "matte", name: "Матовая" }, { id: "satin", name: "Шелковисто-матовая" },
+      { id: "gloss", name: "Глянцевая" }, { id: "shagreen", name: "Шагрень" }, { id: "velvet", name: "Бархатная" }] },
+    { id: "putty", name: "Декоративная шпаклёвка", vars: [
+      { id: "venetian", name: "Венецианская", hex: "#d6c8b0" }, { id: "travertine", name: "Травертин", hex: "#ddcdb0" },
+      { id: "silk", name: "Мокрый шёлк", hex: "#d9d3c8" }, { id: "tadelakt", name: "Марокканская", hex: "#c9a080" },
+      { id: "sand", name: "Песчаная" }, { id: "craquelure", name: "Кракелюр", hex: "#e2d6bf" }] },
+    { id: "stripes", name: "Обои", vars: [
+      { id: "wide", name: "Широкая полоска" }, { id: "narrow", name: "Узкая полоска" },
+      { id: "double", name: "Двойная полоска" }, { id: "duo", name: "Двухцветная полоска" },
+      { id: "rhomb", name: "Ромбы", hex: "#e6dcc6" }, { id: "damask", name: "Дамаск", hex: "#e4d8c0" }] },
+    { id: "brick", name: "Кирпич", vars: [
+      { id: "classic", name: "Одинарный" }, { id: "oneandhalf", name: "Полуторный" },
+      { id: "clinker", name: "Клинкер" }, { id: "riegel", name: "Ригель (длинный)" },
+      { id: "aged", name: "Состаренный" }, { id: "white", name: "Белёный" },
+      { id: "block", name: "Бетонный блок" }] },
+    { id: "wood", name: "Вагонка", vars: [
+      { id: "vertical", name: "Вертикальная" }, { id: "horizontal", name: "Горизонтальная" },
+      { id: "wide", name: "Широкая доска" }, { id: "shtil", name: "Штиль" }, { id: "diagonal", name: "Диагональ" }] },
+    { id: "logs", name: "Бревна круглые", vars: [
+      { id: "round", name: "Оцилиндрованные" }, { id: "thin", name: "Тонкие" },
+      { id: "thick", name: "Толстые" }, { id: "hewn", name: "Рубленые" }, { id: "blockhouse", name: "Блок-хаус" }] }
   ];
 
   const el = {
@@ -8639,7 +8680,7 @@ const DB = {
     // остался, — то есть когда дверь на снимке не нашлась и кадр показан
     // целиком. Нашлась — фон обрезан, и стена живёт своей жизнью.
     const photoWallHex = photoAsIsModel && !photoBox && !photoFramed ? modelPhotoEdgeHex(modelPhoto) : null;
-    const sceneWallColor = photoWallHex || state.wallColor;
+    const sceneWallColor = photoWallHex || wallTexOwnHex() || state.wallColor;
     c.sceneGroup.innerHTML = sceneMode
       ? buildScene(layout, { x: x, y: y, w: w, h: h }, baseHex, casingFill, sceneWallColor, state.wallTexture, c.pfx, doorFilter, gap, photoCasing, Math.max(3, CASING_MM * unitsPerMm))
       : "";
@@ -8881,10 +8922,38 @@ const DB = {
           <feColorMatrix type="saturate" values="0"/>
           <feComponentTransfer><feFuncA type="linear" slope="0.32"/></feComponentTransfer>
         </filter>
-        <filter id="${idf("concrete")}" x="0" y="0" width="100%" height="100%">
-          <feTurbulence type="fractalNoise" baseFrequency="0.022" numOctaves="5" seed="21" stitchTiles="stitch"/>
+        <filter id="${idf("shagreen")}" x="0" y="0" width="100%" height="100%">
+          <feTurbulence type="fractalNoise" baseFrequency="0.45" numOctaves="2" seed="5" stitchTiles="stitch"/>
           <feColorMatrix type="saturate" values="0"/>
-          <feComponentTransfer><feFuncA type="linear" slope="0.30"/></feComponentTransfer>
+          <feComponentTransfer><feFuncA type="linear" slope="0.28"/></feComponentTransfer>
+        </filter>
+        <filter id="${idf("trav")}" x="0" y="0" width="100%" height="100%">
+          <feTurbulence type="fractalNoise" baseFrequency="0.003 0.09" numOctaves="3" seed="17" stitchTiles="stitch"/>
+          <feColorMatrix type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  2.4 0 0 0 -1.05"/>
+        </filter>
+        <filter id="${idf("silkL")}" x="0" y="0" width="100%" height="100%">
+          <feTurbulence type="fractalNoise" baseFrequency="0.004 0.035" numOctaves="3" seed="8" stitchTiles="stitch"/>
+          <feColorMatrix type="matrix" values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  2.6 0 0 0 -1.15"/>
+        </filter>
+        <filter id="${idf("silkD")}" x="0" y="0" width="100%" height="100%">
+          <feTurbulence type="fractalNoise" baseFrequency="0.004 0.035" numOctaves="3" seed="31" stitchTiles="stitch"/>
+          <feColorMatrix type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  2.4 0 0 0 -1.1"/>
+        </filter>
+        <filter id="${idf("tadL")}" x="0" y="0" width="100%" height="100%">
+          <feTurbulence type="fractalNoise" baseFrequency="0.02" numOctaves="4" seed="13" stitchTiles="stitch"/>
+          <feColorMatrix type="matrix" values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  2.0 0 0 0 -0.85"/>
+        </filter>
+        <filter id="${idf("tadD")}" x="0" y="0" width="100%" height="100%">
+          <feTurbulence type="fractalNoise" baseFrequency="0.02" numOctaves="4" seed="27" stitchTiles="stitch"/>
+          <feColorMatrix type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  2.0 0 0 0 -0.85"/>
+        </filter>
+        <filter id="${idf("vnL")}" x="0" y="0" width="100%" height="100%">
+          <feTurbulence type="fractalNoise" baseFrequency="0.009 0.014" numOctaves="5" seed="3" stitchTiles="stitch"/>
+          <feColorMatrix type="matrix" values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  2.8 0 0 0 -1.2"/>
+        </filter>
+        <filter id="${idf("vnD")}" x="0" y="0" width="100%" height="100%">
+          <feTurbulence type="fractalNoise" baseFrequency="0.009 0.014" numOctaves="5" seed="19" stitchTiles="stitch"/>
+          <feColorMatrix type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  2.8 0 0 0 -1.2"/>
         </filter>
         <filter id="${idf("wood")}" x="0" y="0" width="100%" height="100%">
           <feTurbulence type="fractalNoise" baseFrequency="0.012 0.42" numOctaves="3" seed="11" stitchTiles="stitch"/>
@@ -8907,131 +8976,267 @@ const DB = {
   }
 
   // Наложение выбранной текстуры на стену (поверх базового цвета, до виньетки).
-  // Цвет стены остаётся выбранным — текстура лишь модулирует его.
-  function wallTextureSVG(W, floorY, wallColor, texture, idf) {
+  // Цвет стены остаётся выбранным — текстура лишь модулирует его. У каждой
+  // текстуры есть подвиды (WALL_TEXTURES[].vars) — variant их id; пустой или
+  // неизвестный — первый подвид. Узоры строятся тут же, без картинок.
+  function wallTextureSVG(W, floorY, wallColor, texture, idf, variant) {
     const noise = (filt, op) => `<rect x="0" y="0" width="${W}" height="${floorY}" filter="url(#${idf(filt)})" opacity="${op}"/>`;
+    const full = (fill, op) => `<rect x="0" y="0" width="${W}" height="${floorY}" fill="${fill}"${op != null ? ` opacity="${op}"` : ""}/>`;
+    // Повторяемые «случайные» числа: узор не прыгает при каждой перерисовке.
+    let seed = 12345;
+    const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+    const grp = WALL_TEXTURES.find((t) => t.id === texture) || WALL_TEXTURES[0];
+    const v = (grp.vars.find((x) => x.id === variant) || grp.vars[0]).id;
+    const clipId = idf("wclip");
+    const clip = `<clipPath id="${clipId}"><rect x="0" y="0" width="${W}" height="${floorY}"/></clipPath>`;
 
-    if (texture === "plaster") {
-      // Штукатурка: выраженное мелко-среднее зерно + мягкие наплывы «кельмой».
-      let g = noise("plaster", 0.9);
-      for (let i = 0; i < 5; i++) {
-        const y = floorY * (0.12 + i * 0.19);
-        g += `<path d="M -10 ${y} Q ${W * 0.5} ${y - 26} ${W + 10} ${y}" fill="none" stroke="#ffffff" stroke-width="10" opacity="0.05" filter="url(#${idf("soft6")})"/>`;
-        g += `<path d="M -10 ${y + 12} Q ${W * 0.5} ${y - 8} ${W + 10} ${y + 12}" fill="none" stroke="#000000" stroke-width="9" opacity="0.05" filter="url(#${idf("soft6")})"/>`;
+    if (grp.id === "putty") {
+      // Декоративная шпаклёвка: светлые и тёмные «облака» шпателя.
+      if (v === "travertine") {
+        // Травертин: слоистые горизонтальные прожилки, поры и швы плит.
+        let g = noise("trav", 0.35) + noise("paint", 0.3);
+        const sw = W / 4, sh = floorY / 3;
+        for (let r = 0; r < 3; r++) {
+          const off = (r % 2) * sw * 0.5;
+          g += `<rect x="0" y="${r * sh}" width="${W}" height="1.2" fill="rgba(0,0,0,0.16)"/>`;
+          for (let x = off; x < W; x += sw) g += `<rect x="${x}" y="${r * sh}" width="1.2" height="${sh}" fill="rgba(0,0,0,0.14)"/>`;
+        }
+        for (let i = 0; i < 90; i++) {
+          const x = rnd() * W, y = rnd() * floorY, rx = 0.8 + rnd() * 2.6;
+          g += `<ellipse cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" rx="${rx.toFixed(1)}" ry="${(rx * 0.45).toFixed(1)}" fill="${shade(wallColor, -28)}" opacity="0.35"/>`;
+        }
+        return g;
       }
-      return g;
+      if (v === "silk") {
+        // Мокрый шёлк: длинные косые блики, как у перламутровой краски.
+        return clip + `<g clip-path="url(#${clipId})"><g transform="rotate(-28 ${W / 2} ${floorY / 2})">` +
+          `<rect x="${-W}" y="${-floorY}" width="${W * 3}" height="${floorY * 3}" filter="url(#${idf("silkL")})" opacity="0.5"/>` +
+          `<rect x="${-W}" y="${-floorY}" width="${W * 3}" height="${floorY * 3}" filter="url(#${idf("silkD")})" opacity="0.28"/>` +
+          `</g></g>` + noise("paint", 0.1);
+      }
+      if (v === "tadelakt") {
+        // Марокканская (тадел акт): мягкие пятна и ровный восковой блеск.
+        const gid = idf("tadGl");
+        return `<linearGradient id="${gid}" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffffff" stop-opacity="0.14"/><stop offset="0.5" stop-color="#ffffff" stop-opacity="0"/><stop offset="1" stop-color="#000000" stop-opacity="0.06"/></linearGradient>` +
+          noise("tadL", 0.3) + noise("tadD", 0.22) + full(`url(#${gid})`) + noise("paint", 0.12);
+      }
+      if (v === "sand") {
+        // Песчаная: мелкое зерно и плавные волны мазков.
+        let g = noise("shagreen", 0.85) + noise("paint", 0.6);
+        for (let i = 0; i < 7; i++) {
+          const y = floorY * (0.06 + i * 0.14);
+          g += `<path d="M -10 ${y} Q ${W * 0.25} ${y - 14} ${W * 0.5} ${y} T ${W + 10} ${y}" fill="none" stroke="#ffffff" stroke-width="6" opacity="0.07" filter="url(#${idf("soft")})"/>`;
+          g += `<path d="M -10 ${y + 7} Q ${W * 0.25} ${y - 7} ${W * 0.5} ${y + 7} T ${W + 10} ${y + 7}" fill="none" stroke="#000000" stroke-width="5" opacity="0.06" filter="url(#${idf("soft")})"/>`;
+        }
+        return g;
+      }
+      if (v === "craquelure") {
+        // Кракелюр: сетка тонких трещин поверх мягких пятен.
+        let g = noise("tadL", 0.18) + noise("tadD", 0.15);
+        let d = "";
+        for (let i = 0; i < 140; i++) {
+          let x = rnd() * W, y = rnd() * floorY;
+          d += `M ${x.toFixed(1)} ${y.toFixed(1)}`;
+          for (let k = 0; k < 4; k++) {
+            x += (rnd() - 0.5) * 16; y += (rnd() - 0.5) * 16;
+            d += ` L ${x.toFixed(1)} ${y.toFixed(1)}`;
+          }
+        }
+        g += `<path d="${d}" fill="none" stroke="${shade(wallColor, -35)}" stroke-width="0.6" opacity="0.35"/>`;
+        return g + noise("paint", 0.15);
+      }
+      // Венецианская: глубокие разводы и мраморный блеск.
+      let g = noise("vnL", 0.38) + noise("vnD", 0.28);
+      for (let i = 0; i < 6; i++) {
+        const x = rnd() * W, y = rnd() * floorY, r = 20 + rnd() * 50;
+        g += `<ellipse cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" rx="${r.toFixed(1)}" ry="${(r * 0.35).toFixed(1)}" transform="rotate(${(-30 + rnd() * 60).toFixed(0)} ${x.toFixed(1)} ${y.toFixed(1)})" fill="#ffffff" opacity="0.10" filter="url(#${idf("soft6")})"/>`;
+      }
+      return g + noise("paint", 0.1);
     }
 
-    if (texture === "concrete") {
-      // Бетон: холодный серый подтон, крупные разводы, потёки, швы плит и
-      // отверстия от опалубки — явно «промышленный» вид.
-      let g = `<rect x="0" y="0" width="${W}" height="${floorY}" fill="#8b9298" opacity="0.16"/>`;
-      g += noise("concrete", 0.85);
-      // крупные пятна
-      const spots = [[W * 0.18, floorY * 0.28, 60, -12], [W * 0.6, floorY * 0.5, 80, 8], [W * 0.85, floorY * 0.2, 46, -8], [W * 0.4, floorY * 0.78, 66, 7], [W * 0.75, floorY * 0.8, 52, -6]];
-      spots.forEach((sp) => {
-        g += `<ellipse cx="${sp[0]}" cy="${sp[1]}" rx="${sp[2]}" ry="${sp[2] * 0.7}" fill="${shade(wallColor, sp[3])}" opacity="0.28" filter="url(#${idf("soft6")})"/>`;
-      });
-      // вертикальные потёки
-      [W * 0.3, W * 0.55, W * 0.9].forEach((dx, i) => {
-        g += `<rect x="${dx}" y="0" width="${3 + i}" height="${floorY * (0.5 + 0.15 * i)}" fill="#000000" opacity="0.07" filter="url(#${idf("soft")})"/>`;
-      });
-      // швы плит опалубки
-      const seamsX = [W / 3, (2 * W) / 3];
-      const seamsY = [floorY * 0.5];
-      seamsX.forEach((sx) => {
-        g += `<rect x="${sx}" y="0" width="1.5" height="${floorY}" fill="rgba(0,0,0,0.18)"/>`;
-        g += `<rect x="${sx + 1.5}" y="0" width="1" height="${floorY}" fill="rgba(255,255,255,0.08)"/>`;
-      });
-      seamsY.forEach((sy) => {
-        g += `<rect x="0" y="${sy}" width="${W}" height="1.5" fill="rgba(0,0,0,0.16)"/>`;
-      });
-      // отверстия от стяжек опалубки на пересечениях
-      seamsX.forEach((sx) => seamsY.concat([floorY * 0.16, floorY * 0.84]).forEach((sy) => {
-        g += `<circle cx="${sx}" cy="${sy}" r="2.4" fill="rgba(0,0,0,0.28)"/>`;
-        g += `<circle cx="${sx - 0.6}" cy="${sy - 0.6}" r="1" fill="rgba(255,255,255,0.15)"/>`;
-      }));
-      return g;
-    }
-
-    if (texture === "stripes") {
+    if (grp.id === "stripes") {
+      // Обои: полоски, ромбы, дамаск — узор темнее цвета стены.
+      const dark = shade(wallColor, -8);
       let g = "";
-      const stripeW = 16;
-      const dark = shade(wallColor, -7);
-      for (let sx = 0; sx < W; sx += stripeW * 2) {
-        g += `<rect x="${sx}" y="0" width="${stripeW}" height="${floorY}" fill="${dark}" opacity="0.5"/>`;
+      if (v === "rhomb" || v === "damask") {
+        const pid = idf("wp");
+        let tile;
+        if (v === "rhomb") {
+          tile = `<pattern id="${pid}" width="26" height="38" patternUnits="userSpaceOnUse">` +
+            `<path d="M13 0 L26 19 L13 38 L0 19 Z" fill="none" stroke="${shade(wallColor, -18)}" stroke-width="1"/>` +
+            `<path d="M13 9 L19.5 19 L13 29 L6.5 19 Z" fill="${dark}" opacity="0.5"/></pattern>`;
+        } else {
+          // Дамаск: медальон из лепестков, как у классических обоев.
+          const c = shade(wallColor, -12);
+          const motif = (cx, cy) =>
+            `<g transform="translate(${cx} ${cy})" fill="${c}">` +
+            `<ellipse cx="0" cy="0" rx="4" ry="7"/>` +
+            `<path d="M0 -18 C 7 -12 7 -6 0 -9 C -7 -6 -7 -12 0 -18 Z"/>` +
+            `<path d="M0 18 C 7 12 7 6 0 9 C -7 6 -7 12 0 18 Z"/>` +
+            `<path d="M-14 0 C -10 -7 -5 -6 -6 0 C -5 6 -10 7 -14 0 Z"/>` +
+            `<path d="M14 0 C 10 -7 5 -6 6 0 C 5 6 10 7 14 0 Z"/>` +
+            `<circle cx="-8" cy="-11" r="1.6"/><circle cx="8" cy="-11" r="1.6"/><circle cx="-8" cy="11" r="1.6"/><circle cx="8" cy="11" r="1.6"/></g>`;
+          tile = `<pattern id="${pid}" width="44" height="60" patternUnits="userSpaceOnUse">` +
+            motif(22, 30) + motif(0, 0) + motif(44, 0) + motif(0, 60) + motif(44, 60) + `</pattern>`;
+        }
+        g = tile + full(`url(#${pid})`, v === "damask" ? 0.55 : 0.8);
+        return g + noise("paint", 0.3);
+      }
+      if (v === "narrow") {
+        for (let sx = 0; sx < W; sx += 12) g += `<rect x="${sx}" y="0" width="6" height="${floorY}" fill="${dark}" opacity="0.5"/>`;
+      } else if (v === "double") {
+        for (let sx = 0; sx < W; sx += 40) {
+          g += `<rect x="${sx}" y="0" width="3" height="${floorY}" fill="${shade(wallColor, -16)}" opacity="0.55"/>`;
+          g += `<rect x="${sx + 6}" y="0" width="3" height="${floorY}" fill="${shade(wallColor, -16)}" opacity="0.55"/>`;
+        }
+      } else if (v === "duo") {
+        // Двухцветная: широкая полоса светлее, узкая темнее.
+        for (let sx = 0; sx < W; sx += 36) {
+          g += `<rect x="${sx}" y="0" width="20" height="${floorY}" fill="${shade(wallColor, 10)}" opacity="0.55"/>`;
+          g += `<rect x="${sx + 24}" y="0" width="8" height="${floorY}" fill="${shade(wallColor, -12)}" opacity="0.5"/>`;
+        }
+      } else {
+        for (let sx = 0; sx < W; sx += 32) g += `<rect x="${sx}" y="0" width="16" height="${floorY}" fill="${dark}" opacity="0.5"/>`;
       }
       return g + noise("paint", 0.3);
     }
 
-    if (texture === "brick") {
+    if (grp.id === "brick") {
+      // Размеры кирпича — в мм с расшивкой (шаг ряда 70–100 мм), в масштабе
+      // стены: высота стены на сцене = WALL_MM, дверь 2000 мм рядом с ней.
+      // Бетонный блок — прежняя крупная кладка в единицах сцены.
+      const k = floorY / WALL_MM;
+      const mm = (bw, bh, m) => ({ bw: bw * k, bh: bh * k, m: Math.max(0.8, m * k) });
+      const P = {
+        classic: { ...mm(260, 75, 10), ma: 0.2, tone: 5, op: 0.25 },
+        oneandhalf: { ...mm(260, 98, 10), ma: 0.2, tone: 5, op: 0.25 },
+        clinker: { ...mm(262, 77, 12), ma: 0.3, tone: 14, op: 0.45 },
+        riegel: { ...mm(500, 70, 10), ma: 0.22, tone: 7, op: 0.35 },
+        aged: { ...mm(262, 77, 12), ma: 0.24, tone: 12, op: 0.4, chips: true },
+        white: { ...mm(260, 75, 10), ma: 0.08, tone: 3, op: 0.18, light: true }
+      }[v] || null;
+      const p = P || { bw: 52, bh: 24, m: 2, ma: 0.16, tone: 4, op: 0.22 };
+      const mortar = p.light ? "rgba(255,255,255,0.35)" : `rgba(0,0,0,${p.ma})`;
+      const hi = "rgba(255,255,255,0.10)";
       let g = "";
-      const bh = 24, bw = 52, mortar = "rgba(0,0,0,0.16)", hi = "rgba(255,255,255,0.10)";
       let course = 0;
-      for (let by = 0; by < floorY; by += bh) {
-        g += `<rect x="0" y="${by}" width="${W}" height="2" fill="${mortar}"/>`;
-        g += `<rect x="0" y="${by + 2}" width="${W}" height="1" fill="${hi}"/>`;
-        const off = (course % 2) * (bw / 2);
-        for (let bx = off - bw; bx < W; bx += bw) {
-          g += `<rect x="${bx}" y="${by}" width="2" height="${bh}" fill="${mortar}"/>`;
-          const v = ((Math.abs(bx) + by) % 3) - 1;
-          if (v) g += `<rect x="${bx + 2}" y="${by + 2}" width="${bw - 2}" height="${bh - 2}" fill="${shade(wallColor, v * 4)}" opacity="0.22"/>`;
+      for (let by = 0; by < floorY; by += p.bh) {
+        g += `<rect x="0" y="${by}" width="${W}" height="${p.m}" fill="${mortar}"/>`;
+        g += `<rect x="0" y="${by + p.m}" width="${W}" height="${Math.min(1, p.m * 0.5)}" fill="${p.light ? "rgba(0,0,0,0.07)" : hi}"/>`;
+        const off = (course % 2) * (p.bw / 2);
+        for (let bx = off - p.bw; bx < W; bx += p.bw) {
+          g += `<rect x="${bx}" y="${by}" width="${p.m}" height="${p.bh}" fill="${mortar}"/>`;
+          const t = P ? Math.round((rnd() * 2 - 1) * p.tone) : (((Math.abs(bx) + by) % 3) - 1) * p.tone;
+          if (t) g += `<rect x="${bx + p.m}" y="${by + p.m}" width="${p.bw - p.m}" height="${p.bh - p.m}" fill="${shade(wallColor, t)}" opacity="${p.op}"/>`;
+          if (p.chips && rnd() < 0.35) {
+            const cx = bx + p.m + rnd() * (p.bw - p.m), cy = rnd() < 0.5 ? by + p.m + p.bh * 0.08 : by + p.bh - p.bh * 0.08;
+            g += `<ellipse cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" rx="${(p.bh * (0.15 + rnd() * 0.3)).toFixed(1)}" ry="${(p.bh * (0.08 + rnd() * 0.1)).toFixed(1)}" fill="${shade(wallColor, -30)}" opacity="0.4"/>`;
+          }
         }
         course++;
       }
+      if (v === "aged") g += noise("plaster", 0.45);
       return g + noise("paint", 0.22);
     }
 
-    if (texture === "wood") {
-      // Вагонка: вертикальные доски с V-образным пазом, объёмом и волокном.
-      let g = "";
-      const bw = 22;
-      let b = 0;
-      for (let bx = 0; bx < W; bx += bw, b++) {
-        // объём доски: блик слева, тень справа
-        g += `<rect x="${bx}" y="0" width="${bw * 0.5}" height="${floorY}" fill="#ffffff" opacity="0.05"/>`;
-        g += `<rect x="${bx + bw * 0.6}" y="0" width="${bw * 0.4}" height="${floorY}" fill="#000000" opacity="0.07"/>`;
-        // паз между досками (тень + блик)
-        g += `<rect x="${bx}" y="0" width="1.6" height="${floorY}" fill="rgba(0,0,0,0.3)"/>`;
-        g += `<rect x="${bx + 1.6}" y="0" width="1" height="${floorY}" fill="rgba(255,255,255,0.14)"/>`;
-        // волокна дерева (слегка волнистые вертикальные линии)
-        const gc = shade(wallColor, -12);
-        for (let k = 1; k <= 2; k++) {
-          const gx = bx + bw * (0.35 * k);
-          g += `<path d="M ${gx} 0 q 3 ${floorY * 0.33} 0 ${floorY * 0.66} q -3 ${floorY * 0.2} 0 ${floorY}" fill="none" stroke="${gc}" stroke-width="0.8" opacity="0.18"/>`;
+    if (grp.id === "wood") {
+      // Вагонка: доски с V-образным пазом, объёмом и волокном. Доски рисуются
+      // вертикально в полосе span × len; горизонталь и диагональ — поворотом.
+      const boards = (span, len, bw, flat) => {
+        let g = "";
+        let b = 0;
+        for (let bx = 0; bx < span; bx += bw, b++) {
+          if (!flat) {
+            g += `<rect x="${bx}" y="0" width="${bw * 0.5}" height="${len}" fill="#ffffff" opacity="0.05"/>`;
+            g += `<rect x="${bx + bw * 0.6}" y="0" width="${bw * 0.4}" height="${len}" fill="#000000" opacity="0.07"/>`;
+            g += `<rect x="${bx}" y="0" width="1.6" height="${len}" fill="rgba(0,0,0,0.3)"/>`;
+            g += `<rect x="${bx + 1.6}" y="0" width="1" height="${len}" fill="rgba(255,255,255,0.14)"/>`;
+          } else {
+            // Штиль: доски стыкуются почти без зазора, поверхность ровная.
+            g += `<rect x="${bx}" y="0" width="0.8" height="${len}" fill="rgba(0,0,0,0.22)"/>`;
+            if (b % 2) g += `<rect x="${bx}" y="0" width="${bw}" height="${len}" fill="#000000" opacity="0.025"/>`;
+          }
+          const gc = shade(wallColor, -12);
+          for (let k = 1; k <= 2; k++) {
+            const gx = bx + bw * (0.35 * k);
+            g += `<path d="M ${gx} 0 q 3 ${len * 0.33} 0 ${len * 0.66} q -3 ${len * 0.2} 0 ${len}" fill="none" stroke="${gc}" stroke-width="0.8" opacity="0.18"/>`;
+          }
+          if (b % 4 === 2) {
+            const step = Math.max(floorY, 200);
+            for (let ky = step * (0.2 + (b % 3) * 0.25); ky < len; ky += step) {
+              g += `<ellipse cx="${bx + bw * 0.5}" cy="${ky}" rx="2.4" ry="3.4" fill="${shade(wallColor, -24)}" opacity="0.4"/>`;
+            }
+          }
         }
-        // редкий сучок
-        if (b % 4 === 2) {
-          const ky = floorY * (0.2 + (b % 3) * 0.25);
-          g += `<ellipse cx="${bx + bw * 0.5}" cy="${ky}" rx="2.4" ry="3.4" fill="${shade(wallColor, -24)}" opacity="0.4"/>`;
-        }
+        return g;
+      };
+      let g;
+      if (v === "horizontal") {
+        g = `<g transform="translate(${W} 0) rotate(90)">${boards(floorY, W, 22, false)}</g>`;
+      } else if (v === "diagonal") {
+        const D = Math.ceil(Math.hypot(W, floorY));
+        g = clip + `<g clip-path="url(#${clipId})"><g transform="rotate(45 ${W / 2} ${floorY / 2}) translate(${W / 2 - D / 2} ${floorY / 2 - D / 2})">${boards(D, D, 22, false)}</g></g>`;
+      } else {
+        g = boards(W, floorY, v === "wide" ? 40 : 22, v === "shtil");
       }
       return g + noise("paint", 0.2);
     }
 
-    if (texture === "logs") {
+    if (grp.id === "logs") {
       // Бревна круглые (сруб): горизонтальные брёвна с цилиндрическим объёмом.
+      const lh0 = v === "thin" ? 24 : v === "thick" ? 46 : 34;
+      // тон по сечению цилиндра: доля высоты → сдвиг яркости; у блок-хауса
+      // профиль площе (это доска под бревно), а стыки досок видны.
+      const bands = v === "blockhouse"
+        ? [[0.0, 0.06, -20], [0.06, 0.35, 10], [0.35, 0.7, 4], [0.7, 0.92, -4], [0.92, 1.0, -18]]
+        : [[0.0, 0.08, -26], [0.08, 0.3, 14], [0.3, 0.55, 4], [0.55, 0.8, -8], [0.8, 1.0, -24]];
       let g = "";
-      const lh = 34;
-      // тон по сечению цилиндра: доля высоты → сдвиг яркости
-      const bands = [[0.0, 0.08, -26], [0.08, 0.3, 14], [0.3, 0.55, 4], [0.55, 0.8, -8], [0.8, 1.0, -24]];
-      for (let ly = 0; ly < floorY; ly += lh) {
+      let row = 0;
+      for (let ly = 0; ly < floorY; row++) {
+        const lh = v === "hewn" ? lh0 * (0.82 + rnd() * 0.36) : lh0;
         bands.forEach((bd) => {
           const y0 = ly + lh * bd[0];
           const hh = lh * (bd[1] - bd[0]);
-          g += `<rect x="0" y="${y0}" width="${W}" height="${hh}" fill="${shade(wallColor, bd[2])}"/>`;
+          g += `<rect x="0" y="${y0.toFixed(1)}" width="${W}" height="${hh.toFixed(1)}" fill="${shade(wallColor, bd[2])}"/>`;
         });
-        // тонкий блик вдоль верхней трети
-        g += `<rect x="0" y="${ly + lh * 0.22}" width="${W}" height="1.4" fill="#ffffff" opacity="0.18"/>`;
-        // паз-стык между брёвнами
-        g += `<rect x="0" y="${ly + lh - 1.5}" width="${W}" height="1.5" fill="rgba(0,0,0,0.35)"/>`;
-        // продольные волокна
-        g += `<path d="M 0 ${ly + lh * 0.5} q ${W * 0.5} 3 ${W} 0" fill="none" stroke="${shade(wallColor, -18)}" stroke-width="0.7" opacity="0.2"/>`;
+        g += `<rect x="0" y="${(ly + lh * 0.22).toFixed(1)}" width="${W}" height="1.4" fill="#ffffff" opacity="0.18"/>`;
+        if (v === "hewn") {
+          // Рубленые: неровный стык и следы топора.
+          let d = `M 0 ${(ly + lh - 1).toFixed(1)}`;
+          for (let x = 0; x <= W; x += 18) d += ` L ${x} ${(ly + lh - 1 + (rnd() - 0.5) * 3).toFixed(1)}`;
+          g += `<path d="${d}" fill="none" stroke="rgba(0,0,0,0.4)" stroke-width="2"/>`;
+          for (let i = 0; i < W / 40; i++) {
+            const x = rnd() * W, y = ly + lh * (0.3 + rnd() * 0.4);
+            g += `<path d="M ${x.toFixed(1)} ${y.toFixed(1)} q 6 -2 12 0" fill="none" stroke="${shade(wallColor, -22)}" stroke-width="0.8" opacity="0.35"/>`;
+          }
+        } else {
+          g += `<rect x="0" y="${(ly + lh - 1.5).toFixed(1)}" width="${W}" height="1.5" fill="rgba(0,0,0,0.35)"/>`;
+        }
+        if (v === "blockhouse") {
+          const step = W * 0.42, off = (row % 3) * step * 0.33;
+          for (let x = off + step * 0.5; x < W; x += step) g += `<rect x="${x.toFixed(1)}" y="${ly.toFixed(1)}" width="1.2" height="${lh.toFixed(1)}" fill="rgba(0,0,0,0.3)"/>`;
+        }
+        g += `<path d="M 0 ${(ly + lh * 0.5).toFixed(1)} q ${W * 0.5} 3 ${W} 0" fill="none" stroke="${shade(wallColor, -18)}" stroke-width="0.7" opacity="0.2"/>`;
+        ly += lh;
       }
       return g + noise("paint", 0.15);
     }
 
-    return noise("paint", 0.15); // smooth (гладкая окраска) — почти без фактуры
+    // Гладкая окраска.
+    if (v === "satin") {
+      const gid = idf("satGl");
+      return `<linearGradient id="${gid}" x1="0" y1="0" x2="1" y2="0.6"><stop offset="0" stop-color="#ffffff" stop-opacity="0.12"/><stop offset="0.45" stop-color="#ffffff" stop-opacity="0.02"/><stop offset="1" stop-color="#ffffff" stop-opacity="0"/></linearGradient>` +
+        full(`url(#${gid})`) + noise("paint", 0.1);
+    }
+    if (v === "gloss") {
+      const gid = idf("glGl");
+      return `<radialGradient id="${gid}" cx="30%" cy="22%" r="45%"><stop offset="0" stop-color="#ffffff" stop-opacity="0.32"/><stop offset="1" stop-color="#ffffff" stop-opacity="0"/></radialGradient>` +
+        full(`url(#${gid})`) +
+        `<rect x="${W * 0.62}" y="0" width="${W * 0.06}" height="${floorY}" fill="#ffffff" opacity="0.07" filter="url(#${idf("soft6")})"/>` + noise("paint", 0.05);
+    }
+    if (v === "shagreen") return noise("shagreen", 0.7) + noise("paint", 0.2);
+    if (v === "velvet") return noise("tadD", 0.06) + noise("paint", 0.3) + full("#000000", 0.04);
+    return noise("paint", 0.15); // матовая — почти без фактуры
   }
 
   // Патина на картинке — та же, что считается в расчёте (щитовые + эмаль).
@@ -9239,7 +9444,7 @@ const DB = {
     } else {
       s += `<rect x="0" y="0" width="${W}" height="${floorY}" fill="url(#${idf("wall")})"/>`;
       s += `<rect x="0" y="0" width="${W}" height="${floorY}" fill="url(#${idf("wallGlow")})"/>`;
-      s += wallTextureSVG(W, floorY, wallColor, wallTexture, idf);
+      s += wallTextureSVG(W, floorY, wallColor, wallTexture, idf, (state.wallTexVar || {})[wallTexture]);
       s += `<rect x="0" y="0" width="${W}" height="${floorY}" fill="url(#${idf("vignette")})"/>`;
     }
     s += `</g>`;
@@ -12054,6 +12259,8 @@ const DB = {
     });
     el.sceneWallSwatches.addEventListener("click", onWallSwatchClick);
     el.sceneWallTextures.addEventListener("click", (e) => {
+      const vb = e.target.closest(".wall-tex-var");
+      if (vb) return setWallTexVar(vb.dataset.var);
       const btn = e.target.closest(".wall-texture");
       if (btn) setWallTexture(btn.dataset.tex);
     });
@@ -12395,23 +12602,53 @@ const DB = {
   function setWallTexture(id) {
     state.wallTexture = id;
     renderWallTextures();
+    renderWallSwatches();
     render();
   }
 
+  // Свой цвет выбранного подвида текстуры (сложные обои и шпаклёвка) или null.
+  function wallTexVariant() {
+    const grp = WALL_TEXTURES.find((t) => t.id === state.wallTexture) || WALL_TEXTURES[0];
+    const id = (state.wallTexVar || {})[grp.id];
+    return grp.vars.find((x) => x.id === id) || grp.vars[0];
+  }
+  function wallTexOwnHex() {
+    return wallTexVariant().hex || null;
+  }
+
   function renderWallSwatches() {
-    const cur = state.wallColor.toLowerCase();
+    const own = wallTexOwnHex();
+    const cur = own ? "" : state.wallColor.toLowerCase();
     const html = WALL_PRESETS.map(
       (p) =>
         `<button type="button" class="wall-swatch${p.hex.toLowerCase() === cur ? " active" : ""}" data-hex="${p.hex}" style="background:${p.hex}" title="${p.name}" aria-label="${p.name}"></button>`
     ).join("");
     el.sceneWallSwatches.innerHTML = html;
+    const note = document.getElementById("s_wallOwnNote");
+    if (note) {
+      note.hidden = !own;
+      note.textContent = own ? `У текстуры «${wallTexVariant().name}» свой цвет — образцы его не меняют. Подстроить можно в «Настроить тон стены».` : "";
+    }
   }
 
+  function setWallTexVar(id) {
+    state.wallTexVar = { ...(state.wallTexVar || {}), [state.wallTexture]: id };
+    renderWallTextures();
+    renderWallSwatches();
+    render();
+  }
+
+  // Под кнопками текстур — подвиды выбранной (чипсы помельче).
   function renderWallTextures() {
+    const grp = WALL_TEXTURES.find((t) => t.id === state.wallTexture) || WALL_TEXTURES[0];
+    const cur = (state.wallTexVar || {})[grp.id] || grp.vars[0].id;
     el.sceneWallTextures.innerHTML = WALL_TEXTURES.map(
       (t) =>
-        `<button type="button" class="wall-texture${t.id === state.wallTexture ? " active" : ""}" data-tex="${t.id}">${t.name}</button>`
-    ).join("");
+        `<button type="button" class="wall-texture${t.id === grp.id ? " active" : ""}" data-tex="${t.id}">${t.name}</button>`
+    ).join("") +
+      `<div class="wall-tex-vars">${grp.vars.map(
+        (x) => `<button type="button" class="wall-tex-var${x.id === cur ? " active" : ""}" data-var="${x.id}">${x.name}</button>`
+      ).join("")}</div>`;
   }
 
   // --- Вкладки (меню) --------------------------------------------------
