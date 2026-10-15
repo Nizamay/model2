@@ -7191,6 +7191,9 @@ const DB = {
     }
     const pct = (v) => (v * 100).toFixed(3) + "%";
     if (els) {
+      // Метки, что легли в одну точку (вложенные зоны с общим центром):
+      // у самой большой детали — в середине, остальные — вокруг неё.
+      { const r = els.stage.getBoundingClientRect(); partsBadgeOff = partsBadgeOffsets(parts, r.width, r.height); }
       els.layer.innerHTML = parts.map((p, i) => {
         // В «Рельефе и тенях» собранный каркас виден тонким пунктиром, без
         // букв и заливки, и пальцем не берётся — по нему ставят фрезеровку и тени.
@@ -7207,7 +7210,7 @@ const DB = {
             return z ? `<i class="zin" style="left:${z.l}%;right:${z.r}%;top:${z.t}%;bottom:${z.b}%">${ih}</i>` : "";
           })() : "")
           + (p.q ? partsQuadInner(p, sel) : "")
-          + `<span>${PART_KINDS[p.k].short}</span>${handles}</div>`
+          + `<span${partsBadgeOff[i] && (partsBadgeOff[i][0] || partsBadgeOff[i][1]) ? ` style="transform:translate(${partsBadgeOff[i][0]}px,${partsBadgeOff[i][1]}px)"` : ""}>${p.k === "z" && p.v === "patina" ? "Пт" : p.k === "z" && p.v === "photo" ? "Фт" : PART_KINDS[p.k].short}</span>${handles}</div>`
           + (() => {
             const t = zoneTail(p);
             if (!t) return "";
@@ -7448,7 +7451,8 @@ const DB = {
       let best = null;
       doc.parts.forEach((p, i) => {
         if (p.k === "d" || !partsVisible(p)) return;
-        const dx = fx * box.width - (p.x + p.w / 2) * box.width, dy = fy * box.height - (p.y + p.h / 2) * box.height;
+        const off = partsBadgeOff[i] || [0, 0];
+        const dx = fx * box.width - ((p.x + p.w / 2) * box.width + off[0]), dy = fy * box.height - ((p.y + p.h / 2) * box.height + off[1]);
         const dist = Math.sqrt(dx * dx + dy * dy);
         if (dist <= PARTS_BADGE_REACH && (!best || dist <= best.dist)) best = { i: i, dist: dist };
       });
@@ -7627,6 +7631,27 @@ const DB = {
     const pts = p.q.map((c) => [c[0] * box.width, c[1] * box.height]);
     const x = fx * box.width, y = fy * box.height, sp = quadSpan(pts, y, true);
     return (sp && x >= sp[0] && x <= sp[1]) || quadEdgeDist(pts, x, y) <= tolPx;
+  }
+
+  // Сдвиг меток деталей (точки экрана), чтобы метки с общим центром не
+  // ложились одна на другую: самая большая деталь — в середине, остальные
+  // по кругу вокруг неё (сверху, справа, снизу, слева, затем по диагоналям).
+  let partsBadgeOff = [];
+  function partsBadgeOffsets(parts, W, H) {
+    const out = parts.map(() => [0, 0]);
+    const vis = parts.map((p, i) => ({ p, i })).filter((q) => q.p.k !== "d" && partsVisible(q.p))
+      .sort((a, b) => b.p.w * b.p.h - a.p.w * a.p.h);
+    const groups = [];
+    const SLOTS = [[0, -1], [1, 0], [0, 1], [-1, 0], [0.71, -0.71], [0.71, 0.71], [-0.71, 0.71], [-0.71, -0.71]];
+    vis.forEach((q) => {
+      const cx = (q.p.x + q.p.w / 2) * W, cy = (q.p.y + q.p.h / 2) * H;
+      const g = groups.find((g0) => Math.hypot(g0.cx - cx, g0.cy - cy) < 22);
+      if (!g) { groups.push({ cx, cy, n: 1 }); return; }
+      const k = g.n - 1, ring = 1 + Math.floor(k / SLOTS.length), sl = SLOTS[k % SLOTS.length];
+      out[q.i] = [Math.round(g.cx - cx + sl[0] * 30 * ring), Math.round(g.cy - cy + sl[1] * 24 * ring)];
+      g.n++;
+    });
+    return out;
   }
 
   // Радиус захвата угла, точек, — от центра квадратика. Квадратик 22 точки.
