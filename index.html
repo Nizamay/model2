@@ -1796,6 +1796,23 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
              влияют, и их место рядом с дверью (просьба заказчика). Наценки
              категорий (это цены) остались в «Изменении цен». Содержимое строит
              renderFilmPanel. -->
+        <details class="scene-group" id="s_groupFloor">
+          <summary>Пол</summary>
+          <div class="scene-group-body">
+            <details class="adjust-panel" id="s_floorColorPanel">
+              <summary>Цвет пола</summary>
+              <div class="adjust-body"><div class="wall-swatches floor-swatches" id="s_floorSwatches"></div></div>
+            </details>
+            <details class="adjust-panel" id="s_floorTypePanel">
+              <summary>Покрытие</summary>
+              <div class="adjust-body"><div class="wall-textures" id="s_floorTypes"></div></div>
+            </details>
+            <details class="adjust-panel" id="s_plinthPanel">
+              <summary>Плинтус</summary>
+              <div class="adjust-body"><div class="wall-textures" id="s_plinthKinds"></div></div>
+            </details>
+          </div>
+        </details>
         <details class="scene-group" id="s_groupFilm">
           <summary>Плёнка <button type="button" class="info-btn" data-info="s_filmInfo" aria-label="Пояснение" aria-expanded="false">i</button></summary>
           <div class="scene-group-body">
@@ -2574,6 +2591,11 @@ const DB = {
     wallTexture: "smooth",
     // Выбранный подвид для каждой текстуры: { brick: "clinker", ... }.
     wallTexVar: {},
+    // Пол: покрытие, подвид по покрытиям, цвет; плинтус — white/floor/door.
+    floorType: "laminate",
+    floorVar: {},
+    floorColor: "#c69a62",
+    plinth: "white",
     // Наличник в 2D: "" — обычный (три доски), "///" — с тремя полосками из
     // деталей со снимков; к «///» — капитель и банкетка (см. casingSceneSvg).
     casingStyle: "",
@@ -8849,7 +8871,7 @@ const DB = {
   function initSceneGroups() {
     let saved = {};
     try { saved = JSON.parse(localStorage.getItem(SCENE_GROUPS_KEY) || "{}") || {}; } catch (err) { }
-    [["s_groupWall", "wall"], ["s_groupDoor", "door"], ["s_groupFilm", "film"], ["s_groupGlass", "glass"]].forEach(([id, key]) => {
+    [["s_groupWall", "wall"], ["s_groupFloor", "floor"], ["s_groupDoor", "door"], ["s_groupFilm", "film"], ["s_groupGlass", "glass"]].forEach(([id, key]) => {
       const g = document.getElementById(id);
       if (!g) return;
       if (saved[key]) g.open = true;
@@ -8902,6 +8924,10 @@ const DB = {
         <linearGradient id="${idf("floor")}" x1="0" y1="0" x2="0" y2="1">
           <stop offset="0" stop-color="#d7b57d"/>
           <stop offset="1" stop-color="#a2703f"/>
+        </linearGradient>
+        <linearGradient id="${idf("floorShade")}" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#ffffff" stop-opacity="0.06"/>
+          <stop offset="1" stop-color="#1a1006" stop-opacity="0.22"/>
         </linearGradient>
         <linearGradient id="${idf("gloss")}" x1="0" y1="0" x2="0" y2="1">
           <stop offset="0" stop-color="#ffffff" stop-opacity="0.30"/>
@@ -8973,6 +8999,176 @@ const DB = {
   function softShadow(cx, cy, rx, ry, alpha, big, pfx) {
     const f = pfx + "sc-" + (big ? "soft6" : "soft");
     return `<ellipse cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}" fill="rgba(28,18,8,${alpha})" filter="url(#${f})"/>`;
+  }
+
+  // --- Пол ---------------------------------------------------------------
+  // Цвета пола (дерево): от беленого дуба до графита.
+  const FLOOR_PRESETS = [
+    { name: "Беленый дуб", hex: "#e2d5bf" },
+    { name: "Светлый дуб", hex: "#d6bc90" },
+    { name: "Натуральный дуб", hex: "#c69a62" },
+    { name: "Медовый дуб", hex: "#b7813f" },
+    { name: "Дуб коньяк", hex: "#985f30" },
+    { name: "Орех", hex: "#785034" },
+    { name: "Венге", hex: "#4a3427" },
+    { name: "Серый дуб", hex: "#aaa296" },
+    { name: "Дымчатый дуб", hex: "#8a7e70" },
+    { name: "Графит", hex: "#5b5752" }
+  ];
+  // Покрытия и подвиды. Размеры — мм реальной доски (L — длина, B — ширина),
+  // в масштабе двери: стена на сцене = WALL_MM, пол в перспективе к двери.
+  const FLOOR_TYPES = [
+    { id: "laminate", name: "Ламинат", vars: [
+      { id: "std", name: "Стандарт 1380×193", L: 1380, B: 193 },
+      { id: "narrow", name: "Узкая 1200×140", L: 1200, B: 140 },
+      { id: "wide", name: "Широкая 1800×240", L: 1800, B: 240 },
+      { id: "across", name: "Поперёк", L: 1380, B: 193, across: true },
+      { id: "3strip", name: "Трёхполосная", L: 2200, B: 200, strips: 3 }] },
+    { id: "parquet", name: "Паркет", vars: [
+      { id: "herring", name: "Ёлочка", L: 600, B: 100 },
+      { id: "herring2", name: "Двойная ёлочка", L: 600, B: 200, split: true },
+      { id: "chevron", name: "Французская ёлка", L: 600, B: 100 },
+      { id: "squares", name: "Квадраты", L: 400, B: 100 },
+      { id: "deck", name: "Палубная", L: 490, B: 70 }] }
+  ];
+  const PLINTH_KINDS = [
+    { id: "white", name: "Белый" },
+    { id: "floor", name: "В цвет пола" },
+    { id: "door", name: "В цвет двери" }
+  ];
+
+  function floorVariant() {
+    const t = FLOOR_TYPES.find((x) => x.id === state.floorType) || FLOOR_TYPES[0];
+    const id = (state.floorVar || {})[t.id];
+    return { type: t, v: t.vars.find((x) => x.id === id) || t.vars[0] };
+  }
+
+  // Пол в перспективе: глаз на высоте 1500 мм в 3000 мм от стены (D — мм от
+  // стены к зрителю, до зрителя z = C − D), точка схода —
+  // над серединой двери. Доски задаются в мм на плоскости пола (X — поперёк,
+  // D — от стены к зрителю) и проецируются: у стены масштаб тот же, что у
+  // стены и двери. Каждая доска — многоугольник своего тона, швы — обводка.
+  function floorSVG(W, H, floorY, cx, color, idf) {
+    const k = floorY / WALL_MM;
+    const E = 1500, C = 3000;
+    const hY = floorY - E * k;
+    const zNear = (k * E * C) / Math.max(1e-6, H - hY);
+    const Dn = C - zNear + 40;
+    const Xm = (Math.max(cx, W - cx) * zNear) / (k * C) + 300;
+    const P = (X, D) => {
+      const z = C - D;
+      return [(cx + (X * k * C) / z).toFixed(1), (hY + (k * E * C) / z).toFixed(1)];
+    };
+    let seed = 777;
+    const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+    const seam = "rgba(40,24,10,0.38)";
+    const grain = shade(color, -16);
+    const { v } = floorVariant();
+    let g = "";
+    // Доска — четырёхугольник по углам [X,D]; ось — направление волокон.
+    const board = (pts, tone, grainLines) => {
+      if (pts.every((p) => p[1] < -60) || pts.every((p) => p[1] > Dn) || pts.every((p) => p[0] > Xm) || pts.every((p) => p[0] < -Xm)) return;
+      const q = pts.map((p) => P(p[0], p[1]).join(",")).join(" ");
+      g += `<polygon points="${q}" fill="${shade(color, tone)}" stroke="${seam}" stroke-width="0.5"/>`;
+      (grainLines || []).forEach((ln) => {
+        const a = P(ln[0][0], ln[0][1]), b = P(ln[1][0], ln[1][1]);
+        g += `<line x1="${a[0]}" y1="${a[1]}" x2="${b[0]}" y2="${b[1]}" stroke="${grain}" stroke-width="0.4" opacity="0.35"/>`;
+      });
+    };
+    const tone = () => Math.round((rnd() * 2 - 1) * 7);
+    // Прямоугольная доска со сторонами вдоль осей: x0..x1 поперёк, d0..d1 вглубь.
+    const rectBoard = (x0, x1, d0, d1, alongD) => {
+      const lines = [];
+      const n = 2;
+      for (let i = 1; i <= n; i++) {
+        const f = i / (n + 1) + (rnd() - 0.5) * 0.12;
+        lines.push(alongD ? [[x0 + (x1 - x0) * f, d0], [x0 + (x1 - x0) * f, d1]] : [[x0, d0 + (d1 - d0) * f], [x1, d0 + (d1 - d0) * f]]);
+      }
+      board([[x0, d0], [x1, d0], [x1, d1], [x0, d1]], tone(), lines);
+    };
+
+    if (v.id === "herring" || v.id === "herring2") {
+      // Ёлочка: решётка (B,B) и (L,−L), повёрнутая на 45° — «ёлки» бегут к зрителю.
+      const L = v.L, B = v.B, r2 = Math.SQRT1_2;
+      const rot = (px, py) => [(px - py) * r2, (px + py) * r2];
+      const ext = Xm + Dn + L;
+      const nI = Math.ceil((ext * 1.5) / B), nJ = Math.ceil((ext * 1.5) / L);
+      for (let j = -nJ; j <= nJ; j++) for (let i = -nI; i <= nI; i++) {
+        const ox = i * B + j * L, oy = i * B - j * L;
+        const c0 = rot(ox, oy);
+        if (Math.abs(c0[0]) > Xm + L || c0[1] < -L * 1.5 || c0[1] > Dn + L) continue;
+        // горизонтальная доска L×B и вертикальная B×L
+        [[ox, oy, L, B], [ox, oy + B, B, L]].forEach(([x, y, w, h]) => {
+          const pts = [rot(x, y), rot(x + w, y), rot(x + w, y + h), rot(x, y + h)];
+          const lines = [];
+          if (v.split) lines.push(w > h ? [rot(x, y + h / 2), rot(x + w, y + h / 2)] : [rot(x + w / 2, y), rot(x + w / 2, y + h)]);
+          const t = tone();
+          board(pts, t, []);
+          if (lines.length) {
+            const a = P(lines[0][0][0], lines[0][0][1]), b = P(lines[0][1][0], lines[0][1][1]);
+            g += `<line x1="${a[0]}" y1="${a[1]}" x2="${b[0]}" y2="${b[1]}" stroke="${seam}" stroke-width="0.5"/>`;
+          }
+        });
+      }
+    } else if (v.id === "chevron") {
+      // Французская ёлка: колонки параллелограммов под 45°, соседние — зеркально.
+      const B = v.B, wc = v.L * Math.SQRT1_2, Bp = B * Math.SQRT2;
+      for (let x0 = -Math.ceil(Xm / wc) * wc, j = 0; x0 < Xm; x0 += wc, j++) {
+        const s = j % 2 ? -1 : 1;
+        const off = j % 2 ? wc : 0;
+        for (let d = -wc - Bp; d < Dn + wc; d += Bp) {
+          const y0 = d + off;
+          board([[x0, y0], [x0 + wc, y0 + s * wc], [x0 + wc, y0 + s * wc + Bp], [x0, y0 + Bp]], tone(), []);
+        }
+      }
+    } else if (v.id === "squares") {
+      // Квадраты: модуль L×L из L/B планок, направление чередуется шахматкой.
+      const L = v.L, n = Math.round(L / v.B), b = L / n;
+      for (let mx = -Math.ceil(Xm / L); mx * L < Xm; mx++) for (let md = -1; md * L < Dn; md++) {
+        const x0 = mx * L, d0 = md * L;
+        const along = (mx + md) % 2 === 0;
+        for (let i = 0; i < n; i++) {
+          if (along) rectBoard(x0 + i * b, x0 + (i + 1) * b, d0, d0 + L, true);
+          else rectBoard(x0, x0 + L, d0 + i * b, d0 + (i + 1) * b, false);
+        }
+      }
+    } else if (v.across) {
+      // Доски вдоль стены, ряды уходят к зрителю, стыки вразбежку.
+      for (let d = 0; d < Dn; d += v.B) {
+        const off = -rnd() * v.L;
+        for (let x = -Xm + off; x < Xm; x += v.L) rectBoard(x, x + v.L, d, d + v.B, false);
+      }
+    } else {
+      // Доски к зрителю (ламинат, трёхполосная, палубная), стыки вразбежку.
+      const B = v.B, L = v.L;
+      for (let x = -Math.ceil(Xm / B) * B; x < Xm; x += B) {
+        const off = -(v.id === "deck" ? ((Math.round(x / B) % 3 + 3) % 3) / 3 : rnd()) * L;
+        for (let d = off; d < Dn; d += L) {
+          if (v.strips) {
+            // три узкие планки в доске, у каждой свой тон и свои стыки
+            const sw = B / v.strips;
+            for (let k2 = 0; k2 < v.strips; k2++) {
+              const pl = L / 4;
+              const so = rnd() * pl;
+              for (let dd = d - so; dd < d + L; dd += pl) {
+                rectBoard(x + k2 * sw, x + (k2 + 1) * sw, Math.max(d, dd), Math.min(d + L, dd + pl), true);
+              }
+            }
+            const a = P(x, d), b = P(x, Math.min(Dn, d + L));
+            g += `<line x1="${a[0]}" y1="${a[1]}" x2="${b[0]}" y2="${b[1]}" stroke="${seam}" stroke-width="0.9"/>`;
+          } else {
+            rectBoard(x, x + B, d, d + L, true);
+          }
+        }
+      }
+    }
+    const clipId = idf("floorClip");
+    return `<clipPath id="${clipId}"><rect x="0" y="${floorY}" width="${W}" height="${H - floorY}"/></clipPath>` +
+      `<rect x="0" y="${floorY}" width="${W}" height="${H - floorY}" fill="${color}"/>` +
+      `<g clip-path="url(#${clipId})">${g}` +
+      `<rect x="0" y="${floorY}" width="${W}" height="${H - floorY}" filter="url(#${idf("wood")})" opacity="0.35"/>` +
+      `<rect x="0" y="${floorY}" width="${W}" height="${H - floorY}" fill="url(#${idf("floorShade")})"/>` +
+      `<rect x="0" y="${floorY}" width="${W}" height="${H - floorY}" fill="url(#${idf("gloss")})"/></g>`;
   }
 
   // Наложение выбранной текстуры на стену (поверх базового цвета, до виньетки).
@@ -9449,34 +9645,15 @@ const DB = {
     }
     s += `</g>`;
 
-    // --- Пол: паркетная доска в перспективе. Ряды сгущаются к линии пола
-    //     (даль), швы между досками смещены. Поверх — волокна дерева и глянец.
-    s += `<rect x="0" y="${floorY}" width="${W}" height="${floorH}" fill="url(#${idf("floor")})"/>`;
-    const rows = 4;
-    let plankY = floorY;
-    for (let r = 0; r < rows; r++) {
-      // Ближние ряды выше (перспектива): высота растёт к низу.
-      const rowH = floorH * (0.12 + 0.16 * r);
-      const y0 = plankY;
-      const y1 = Math.min(H, plankY + rowH);
-      // Шов вдоль доски (горизонтальный).
-      s += `<line x1="0" y1="${y1}" x2="${W}" y2="${y1}" stroke="rgba(60,38,18,0.35)" stroke-width="0.8"/>`;
-      s += `<line x1="0" y1="${y1 + 0.9}" x2="${W}" y2="${y1 + 0.9}" stroke="rgba(255,232,190,0.18)" stroke-width="0.6"/>`;
-      // Поперечные швы между досками (в шахматном порядке).
-      const seamStep = 74 + r * 16;
-      const seamOff = (r % 2) * (seamStep / 2);
-      for (let sx = seamOff; sx < W; sx += seamStep) {
-        s += `<line x1="${sx}" y1="${y0}" x2="${sx}" y2="${y1}" stroke="rgba(60,38,18,0.28)" stroke-width="0.7"/>`;
-      }
-      plankY = y1;
-    }
-    s += `<rect x="0" y="${floorY}" width="${W}" height="${floorH}" filter="url(#${idf("wood")})" opacity="0.6"/>`;
-    s += `<rect x="0" y="${floorY}" width="${W}" height="${floorH}" fill="url(#${idf("gloss")})"/>`;
+    // --- Пол: ламинат или паркет в перспективе (см. floorSVG).
+    s += floorSVG(W, H, floorY, door.x + door.w / 2, state.floorColor || FLOOR_PRESETS[2].hex, idf);
     // Мягкое затемнение в стыке стены и пола (ambient occlusion).
     s += `<rect x="0" y="${floorY - 3}" width="${W}" height="6" fill="rgba(20,12,4,0.16)" filter="url(#${idf("soft")})"/>`;
 
     // --- Плинтус с лёгким профилем.
-    s += `<rect x="0" y="${floorY - 9}" width="${W}" height="9" fill="#f4f0e7"/>`;
+    const plinthHex = state.plinth === "floor" ? shade(state.floorColor || FLOOR_PRESETS[2].hex, -6)
+      : state.plinth === "door" ? baseHex : "#f4f0e7";
+    s += `<rect x="0" y="${floorY - 9}" width="${W}" height="9" fill="${plinthHex}"/>`;
     s += `<rect x="0" y="${floorY - 9}" width="${W}" height="2" fill="#ffffff" opacity="0.6"/>`;
     s += `<rect x="0" y="${floorY - 2}" width="${W}" height="2" fill="rgba(0,0,0,0.14)"/>`;
 
@@ -12606,6 +12783,41 @@ const DB = {
     render();
   }
 
+  function renderFloorPanels() {
+    const sw = document.getElementById("s_floorSwatches");
+    if (!sw) return;
+    const cur = (state.floorColor || "").toLowerCase();
+    sw.innerHTML = FLOOR_PRESETS.map((p) =>
+      `<button type="button" class="wall-swatch${p.hex.toLowerCase() === cur ? " active" : ""}" data-hex="${p.hex}" style="background:${p.hex}" title="${p.name}" aria-label="${p.name}"></button>`).join("");
+    const { type, v } = floorVariant();
+    document.getElementById("s_floorTypes").innerHTML = FLOOR_TYPES.map((t) =>
+      `<button type="button" class="wall-texture${t.id === type.id ? " active" : ""}" data-tex="${t.id}">${t.name}</button>`).join("") +
+      `<div class="wall-tex-vars">${type.vars.map((x) =>
+        `<button type="button" class="wall-tex-var${x.id === v.id ? " active" : ""}" data-var="${x.id}">${x.name}</button>`).join("")}</div>`;
+    document.getElementById("s_plinthKinds").innerHTML = PLINTH_KINDS.map((x) =>
+      `<button type="button" class="wall-texture${x.id === (state.plinth || "white") ? " active" : ""}" data-plinth="${x.id}">${x.name}</button>`).join("");
+  }
+  function initFloorPanels() {
+    const on = (id, fn) => { const n = document.getElementById(id); if (n) n.addEventListener("click", fn); };
+    on("s_floorSwatches", (e) => {
+      const b = e.target.closest(".wall-swatch");
+      if (b) { state.floorColor = b.dataset.hex; renderFloorPanels(); render(); }
+    });
+    on("s_floorTypes", (e) => {
+      const vb = e.target.closest(".wall-tex-var");
+      const tb = e.target.closest(".wall-texture");
+      if (vb) state.floorVar = { ...(state.floorVar || {}), [state.floorType]: vb.dataset.var };
+      else if (tb) state.floorType = tb.dataset.tex;
+      else return;
+      renderFloorPanels(); render();
+    });
+    on("s_plinthKinds", (e) => {
+      const b = e.target.closest("[data-plinth]");
+      if (b) { state.plinth = b.dataset.plinth; renderFloorPanels(); render(); }
+    });
+    renderFloorPanels();
+  }
+
   // Свой цвет выбранного подвида текстуры (сложные обои и шпаклёвка) или null.
   function wallTexVariant() {
     const grp = WALL_TEXTURES.find((t) => t.id === state.wallTexture) || WALL_TEXTURES[0];
@@ -15423,6 +15635,7 @@ const DB = {
     el.quantity.value = state.quantity;
     renderWallSwatches();
     renderWallTextures();
+    initFloorPanels();
     updateEditBanner();
     bind();
 
