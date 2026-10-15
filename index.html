@@ -648,6 +648,9 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 .parts-menu-h.cur { color: #b8860b; }
 .relief-light { margin-top: 8px; }
 .casing-opt { display: flex; align-items: center; gap: 8px; margin: 8px 0; font-size: 14px; }
+.casing-sub { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 14px; }
+.casing-sub[hidden] { display: none; }
+.casing-sub select { flex: 1; }
 .casing-opt input:disabled + * , .casing-opt:has(input:disabled) { opacity: .45; }
 .light-btn { padding: 6px 10px; font-size: 13px; border-radius: 6px; border: 1px solid var(--line); background: #fff; }
 .light-btn.on { background: #fff4cc; border-color: #e0b400; }
@@ -1442,6 +1445,19 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
       <select id="trimPatina"></select>
     </div>
 
+    <!-- Наличник на 2D картинке двери (см. casingSceneSvg): выбирается здесь,
+         в «Погонаж» → «Наличник», — его тут и ищут, когда комплектуют дверь
+         (заказчик). Дверь на картинке — последняя выбранная в своём разделе. -->
+    <div class="field casing-field" id="casingField">
+      <label for="s_casingStyle">Наличник на 2D картинке</label>
+      <select id="s_casingStyle"><option value="">Обычный</option><option value="///">«///»</option></select>
+      <div class="casing-sub" id="s_casingJointRow"><span>Соединение</span>
+        <select id="s_casingJoint"><option value="ус">На ус</option><option value="прямо">Прямое</option></select>
+      </div>
+      <label class="casing-opt"><input type="checkbox" id="s_casingCap"> Капитель</label>
+      <label class="casing-opt"><input type="checkbox" id="s_casingBank"> Банкетка (с квадратными элементами)</label>
+    </div>
+
     <div class="field" id="trimWidthModeField">
       <label for="trimWidthMode">Ширина</label>
       <select id="trimWidthMode">
@@ -1714,22 +1730,6 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
             <div class="adjust-actions">
               <button type="button" id="s_doorShadeReset">Сбросить</button>
             </div>
-          </div>
-        </details>
-        <!-- Наличник на картинке: обычный или «///», к «///» — капитель и
-             банкетка (детали со снимков, см. casingSceneSvg). Картинку двери
-             при этой панели не прячем — по ней и смотрят (data-keep-preview). -->
-        <details class="adjust-panel" id="s_casingPanel" data-keep-preview>
-          <summary>Наличник</summary>
-          <div class="adjust-body">
-            <div class="arow"><span>Вид</span>
-              <select id="s_casingStyle"><option value="">Обычный</option><option value="///">«///»</option></select>
-            </div>
-            <div class="arow" id="s_casingJointRow"><span>Соединение</span>
-              <select id="s_casingJoint"><option value="ус">На ус</option><option value="прямо">Прямое</option></select>
-            </div>
-            <label class="casing-opt"><input type="checkbox" id="s_casingCap"> Капитель</label>
-            <label class="casing-opt"><input type="checkbox" id="s_casingBank"> Банкетка (с квадратными элементами)</label>
           </div>
         </details>
                   </div>
@@ -2914,6 +2914,7 @@ const DB = {
     el.trimTenonField.hidden = !isTrim;
     el.trimVariantField.hidden = !isTrim;
     el.trimPatinaField.hidden = !isTrim;
+    { const cf = document.getElementById("casingField"); if (cf) cf.hidden = !isTrim; }
     el.trimWidthModeField.hidden = !isTrim;
     el.trimWidthStdField.hidden = !isTrim;
     el.trimWidthFreeField.hidden = !isTrim;
@@ -2969,6 +2970,7 @@ const DB = {
       el.trimVariantField.hidden = true;
       el.trimPatinaField.hidden = true;
       state.trimPatinaId = "none";
+      { const cf = document.getElementById("casingField"); if (cf) cf.hidden = true; }
       el.trimWidthModeField.hidden = true;
       el.trimWidthStdField.hidden = true;
       el.trimWidthFreeField.hidden = true;
@@ -2988,6 +2990,7 @@ const DB = {
     const isExtra = isTrimExtra(vid);
     // У капители и банкетки нет длины и толщины — только ширина.
     el.trimLengthThicknessRow.hidden = isExtra;
+    { const cf = document.getElementById("casingField"); if (cf) cf.hidden = !isNal; }
 
     el.trimThicknessField.hidden = isDob;
     el.trimDoor42Field.hidden = !isBox;
@@ -11620,8 +11623,13 @@ const DB = {
   }
 
   function bind() {
+    // Своя последняя модель у каждого раздела: сходили в «Погонаж» за
+    // наличником — вернулись к той же двери, а не к первой в списке.
+    const modelBySection = {};
     el.section.addEventListener("change", () => {
+      if (state.modelId) modelBySection[state.section] = state.modelId;
       state.section = el.section.value;
+      if (modelBySection[state.section]) state.modelId = modelBySection[state.section];
       applySectionUI();
       populateModels();
       populateMaterial();
@@ -12129,10 +12137,28 @@ const DB = {
       if (casCap) casCap.checked = state.casingCap;
       if (casBank) casBank.checked = state.casingBank;
     };
-    if (casStyle) casStyle.addEventListener("change", () => { state.casingStyle = casStyle.value; casSync(); drawDoor(sceneCtx, true); });
-    if (casCap) casCap.addEventListener("change", () => { state.casingCap = casCap.checked; casSync(); drawDoor(sceneCtx, true); });
-    if (casBank) casBank.addEventListener("change", () => { state.casingBank = casBank.checked; casSync(); drawDoor(sceneCtx, true); });
-    if (casJoint) casJoint.addEventListener("change", () => { state.casingJoint = casJoint.value; drawDoor(sceneCtx, true); });
+    // Выбор наличника запоминается: он на странице расчёта, а смотрят его
+    // на картинке двери, после перехода в другой раздел.
+    const CASING_KEY = "doorcalc_casing_v1";
+    try {
+      const sv = JSON.parse(localStorage.getItem(CASING_KEY) || "null");
+      if (sv) {
+        state.casingStyle = sv.style === "///" ? "///" : "";
+        state.casingCap = !!sv.cap; state.casingBank = !!sv.bank;
+        state.casingJoint = sv.joint === "прямо" ? "прямо" : "ус";
+      }
+    } catch (err) { }
+    const casSave = () => {
+      try { localStorage.setItem(CASING_KEY, JSON.stringify({ style: state.casingStyle, cap: state.casingCap, bank: state.casingBank, joint: state.casingJoint })); } catch (err) { }
+    };
+    const casChanged = () => { casSync(); casSave(); drawDoor(sceneCtx, true); };
+    if (casStyle) casStyle.addEventListener("change", () => { state.casingStyle = casStyle.value; casChanged(); });
+    if (casCap) casCap.addEventListener("change", () => { state.casingCap = casCap.checked; casChanged(); });
+    if (casBank) casBank.addEventListener("change", () => { state.casingBank = casBank.checked; casChanged(); });
+    if (casJoint) casJoint.addEventListener("change", () => { state.casingJoint = casJoint.value; casChanged(); });
+    // «Вид наличника» в расчёте (обычный / «///») сразу ставит такой же
+    // наличник и на картинку.
+    if (el.trimVariant) el.trimVariant.addEventListener("change", () => { state.casingStyle = el.trimVariant.value === "///" ? "///" : ""; casChanged(); });
     casSync();
     // «Засветка»: кнопка показывает и прячет движок; значение — у разметки модели.
     const lightBtn = document.getElementById("s_lightBtn"), lightRow = document.getElementById("s_lightRow");
