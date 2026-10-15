@@ -2647,8 +2647,10 @@ const DB = {
       { id: "double", name: "Двойная полоска" }, { id: "duo", name: "Двухцветная полоска" },
       { id: "rhomb", name: "Ромбы" }, { id: "damask", name: "Дамаск" }] },
     { id: "brick", name: "Кирпич", vars: [
-      { id: "classic", name: "Классический" }, { id: "clinker", name: "Клинкер" },
-      { id: "riegel", name: "Ригель (длинный)" }, { id: "aged", name: "Состаренный" }, { id: "white", name: "Белёный" }] },
+      { id: "classic", name: "Одинарный" }, { id: "oneandhalf", name: "Полуторный" },
+      { id: "clinker", name: "Клинкер" }, { id: "riegel", name: "Ригель (длинный)" },
+      { id: "aged", name: "Состаренный" }, { id: "white", name: "Белёный" },
+      { id: "block", name: "Бетонный блок" }] },
     { id: "wood", name: "Вагонка", vars: [
       { id: "vertical", name: "Вертикальная" }, { id: "horizontal", name: "Горизонтальная" },
       { id: "wide", name: "Широкая доска" }, { id: "shtil", name: "Штиль" }, { id: "diagonal", name: "Диагональ" }] },
@@ -9096,12 +9098,18 @@ const DB = {
     }
 
     if (grp.id === "brick") {
+      // Размеры кирпича — в мм с расшивкой (шаг ряда 70–100 мм), в масштабе
+      // стены: высота стены на сцене = WALL_MM, дверь 2000 мм рядом с ней.
+      // Бетонный блок — прежняя крупная кладка в единицах сцены.
+      const k = floorY / WALL_MM;
+      const mm = (bw, bh, m) => ({ bw: bw * k, bh: bh * k, m: Math.max(0.8, m * k) });
       const P = {
-        classic: { bw: 52, bh: 24, m: 2, ma: 0.16, tone: 4, op: 0.22 },
-        clinker: { bw: 52, bh: 22, m: 2.6, ma: 0.28, tone: 14, op: 0.45 },
-        riegel: { bw: 90, bh: 13, m: 1.8, ma: 0.2, tone: 7, op: 0.35 },
-        aged: { bw: 50, bh: 24, m: 2.4, ma: 0.22, tone: 12, op: 0.4, chips: true },
-        white: { bw: 52, bh: 24, m: 2, ma: 0.08, tone: 3, op: 0.18, light: true }
+        classic: { ...mm(260, 75, 10), ma: 0.2, tone: 5, op: 0.25 },
+        oneandhalf: { ...mm(260, 98, 10), ma: 0.2, tone: 5, op: 0.25 },
+        clinker: { ...mm(262, 77, 12), ma: 0.3, tone: 14, op: 0.45 },
+        riegel: { ...mm(500, 70, 10), ma: 0.22, tone: 7, op: 0.35 },
+        aged: { ...mm(262, 77, 12), ma: 0.24, tone: 12, op: 0.4, chips: true },
+        white: { ...mm(260, 75, 10), ma: 0.08, tone: 3, op: 0.18, light: true }
       }[v] || null;
       const p = P || { bw: 52, bh: 24, m: 2, ma: 0.16, tone: 4, op: 0.22 };
       const mortar = p.light ? "rgba(255,255,255,0.35)" : `rgba(0,0,0,${p.ma})`;
@@ -9110,15 +9118,15 @@ const DB = {
       let course = 0;
       for (let by = 0; by < floorY; by += p.bh) {
         g += `<rect x="0" y="${by}" width="${W}" height="${p.m}" fill="${mortar}"/>`;
-        g += `<rect x="0" y="${by + p.m}" width="${W}" height="1" fill="${p.light ? "rgba(0,0,0,0.07)" : hi}"/>`;
+        g += `<rect x="0" y="${by + p.m}" width="${W}" height="${Math.min(1, p.m * 0.5)}" fill="${p.light ? "rgba(0,0,0,0.07)" : hi}"/>`;
         const off = (course % 2) * (p.bw / 2);
         for (let bx = off - p.bw; bx < W; bx += p.bw) {
           g += `<rect x="${bx}" y="${by}" width="${p.m}" height="${p.bh}" fill="${mortar}"/>`;
-          const t = P && v !== "classic" ? Math.round((rnd() * 2 - 1) * p.tone) : (((Math.abs(bx) + by) % 3) - 1) * p.tone;
+          const t = P ? Math.round((rnd() * 2 - 1) * p.tone) : (((Math.abs(bx) + by) % 3) - 1) * p.tone;
           if (t) g += `<rect x="${bx + p.m}" y="${by + p.m}" width="${p.bw - p.m}" height="${p.bh - p.m}" fill="${shade(wallColor, t)}" opacity="${p.op}"/>`;
           if (p.chips && rnd() < 0.35) {
-            const cx = bx + p.m + rnd() * (p.bw - p.m), cy = rnd() < 0.5 ? by + p.m + 1 : by + p.bh - 1;
-            g += `<ellipse cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" rx="${(2 + rnd() * 4).toFixed(1)}" ry="${(1 + rnd() * 1.5).toFixed(1)}" fill="${shade(wallColor, -30)}" opacity="0.4"/>`;
+            const cx = bx + p.m + rnd() * (p.bw - p.m), cy = rnd() < 0.5 ? by + p.m + p.bh * 0.08 : by + p.bh - p.bh * 0.08;
+            g += `<ellipse cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" rx="${(p.bh * (0.15 + rnd() * 0.3)).toFixed(1)}" ry="${(p.bh * (0.08 + rnd() * 0.1)).toFixed(1)}" fill="${shade(wallColor, -30)}" opacity="0.4"/>`;
           }
         }
         course++;
