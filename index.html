@@ -1380,6 +1380,9 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
         <button type="button" class="menu-item" data-view="tag">Ценник</button>
         <button type="button" class="menu-item" data-view="tagList">Сохранённые ценники</button>
         <button type="button" class="menu-item" data-view="prices">Изменение цен</button>
+        <!-- Файл со всеми настройками этого телефона — чтобы сделать их
+             заводскими (см. exportSettings). -->
+        <button type="button" class="menu-item" id="exportSettingsBtn">📤 Выгрузить настройки</button>
         <!-- Версия страницы: чтобы при разборе «у меня не так» сразу было
              видно, свежая ли она открыта или браузер подсунул старую из
              памяти. Дата подставляется сама, из ответа сервера
@@ -14017,6 +14020,48 @@ const DB = {
       tx.onerror = () => reject(tx.error);
     }));
   }
+  // «📤 Выгрузить настройки»: всё, что программа помнит на этом телефоне,
+  // кроме спецификаций и ценников, — одним файлом .json. Заказчик пересылает
+  // его разработчику, и эти значения становятся заводскими. В файле: записи
+  // localStorage doorcalc_*, свои фото плёнок и моделей из IndexedDB и
+  // текущие настройки 2D-картинки (стена, пол, свет, декор — они не
+  // сохраняются между сеансами, поэтому берём их как есть сейчас).
+  const EXPORT_SKIP_KEYS = ["doorcalc_order_v1", "doorcalc_spec_seq_v1", "doorcalc_spec_history_v1", "doorcalc_tagdraft_v1", "doorcalc_pricetags_v1"];
+  const EXPORT_SCENE_FIELDS = ["wallColor", "wallTexture", "wallTexVar", "floorType", "floorVar", "floorColor", "floorStone", "floorLino", "plinth", "plinthH",
+    "light", "decor", "furniture", "decorColor", "twoDoors", "handleSide", "roomLight", "casingStyle", "casingCap", "casingJoint", "casingBank", "wallAdjust"];
+  async function exportSettings() {
+    const out = { app: "doorcalc", kind: "settings", v: 1, at: new Date().toISOString(), ls: {}, idb: {}, scene: {} };
+    try {
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && k.startsWith("doorcalc_") && !EXPORT_SKIP_KEYS.includes(k)) out.ls[k] = localStorage.getItem(k);
+      }
+    } catch (e) {}
+    for (const st of [PHOTO_STORE_COLOR, PHOTO_STORE_MODEL]) {
+      try {
+        const all = await idbGetAll(st);
+        out.idb[st] = {};
+        all.keys.forEach((k, i) => { out.idb[st][String(k)] = all.values[i]; });
+      } catch (e) {}
+    }
+    EXPORT_SCENE_FIELDS.forEach((f) => { out.scene[f] = state[f]; });
+    const d = new Date(), pad = (n) => String(n).padStart(2, "0");
+    const name = `doorcalc-nastroiki-${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}.json`;
+    const blob = new Blob([JSON.stringify(out)], { type: "application/json" });
+    const file = typeof File === "function" ? new File([blob], name, { type: "application/json" }) : null;
+    if (file && navigator.canShare && navigator.canShare({ files: [file] })) {
+      try { await navigator.share({ files: [file], title: "Настройки DoorCalc" }); return; }
+      catch (e) { if (e && e.name === "AbortError") return; }
+    }
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob); a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+  }
+  {
+    const b = document.getElementById("exportSettingsBtn");
+    if (b) b.addEventListener("click", () => { exportSettings(); });
+  }
   function idbGetAll(storeName) {
     return openPhotoDb().then((db) => new Promise((resolve, reject) => {
       const tx = db.transaction(storeName, "readonly");
@@ -16615,7 +16660,7 @@ const DB = {
     el.menuBtn.addEventListener("click", (e) => { e.stopPropagation(); toggleMenu(); });
     el.menu.addEventListener("click", (e) => {
       const btn = e.target.closest(".menu-item");
-      if (!btn) return;
+      if (!btn || !btn.dataset.view) { if (btn) toggleMenu(false); return; }
       // Прямой переход в «Спецификацию»/«Ценник» из меню — всегда живой
       // черновик, а не то, что могло остаться открытым через
       // «Просмотреть»/«Открыть» из истории/списка сохранённых.
