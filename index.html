@@ -437,6 +437,8 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 
 .wall-swatch.active { outline: 2px solid var(--accent); outline-offset: 1px; }
 .scene-group.solo-off { display: none; }
+.light-label { animation: lightLabel 2.2s ease forwards; }
+@keyframes lightLabel { 0% { opacity: 0; } 12% { opacity: 1; } 75% { opacity: 1; } 100% { opacity: 0; } }
 .wall-own-note { margin: 8px 0 0; font-size: 12px; color: var(--muted, #6b7280); }
 
 .wall-color-row input[type="color"] {
@@ -1578,6 +1580,9 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
             </filter>
           </defs>
           <g id="s_doorSceneGroup"></g>
+          <!-- Полотно целиком — в группе: у варианта «две двери» вторая дверь
+               повторяет её через <use> (s_doorClone). -->
+          <g id="s_doorLeafAll">
           <g clip-path="url(#s_doorClip)">
             <rect id="s_doorLeafRect" fill="#c9cbcd"></rect>
             <rect id="s_doorVaryRect" filter="url(#s_doorVary)" opacity="0.55"></rect>
@@ -1586,8 +1591,12 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
           <rect id="s_doorOutlineRect" fill="none" stroke="rgba(0,0,0,.22)" stroke-width="0.6"></rect>
           <g id="s_doorGlassGroup"></g>
           <g id="s_doorHandleGroup"></g>
+          </g>
+          <use id="s_doorClone" href="#s_doorLeafAll" style="display:none" pointer-events="none"/>
           <!-- Свет комнаты — поверх всего (см. lightSVG). -->
           <g id="s_doorLightGroup" pointer-events="none"></g>
+          <!-- Название света на полу на пару секунд (выключатель). -->
+          <g id="s_doorLabelGroup" pointer-events="none"></g>
         </svg>
       </div>
       <button type="button" id="s_fsBtn" class="fs-btn">⛶ Во весь экран</button>
@@ -1821,13 +1830,18 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
         <details class="scene-group" id="s_groupRoom">
           <summary>Свет и декор</summary>
           <div class="scene-group-body">
+            <details class="adjust-panel" id="s_viewPanel" open>
+              <summary>Картинка</summary>
+              <div class="adjust-body"><div class="wall-textures" id="s_viewKinds"></div></div>
+            </details>
             <details class="adjust-panel" id="s_lightPanel" open>
               <summary>Свет</summary>
               <div class="adjust-body"><div class="wall-textures" id="s_lightModes"></div></div>
             </details>
             <details class="adjust-panel" id="s_decorPanel" open>
               <summary>Декор у стены</summary>
-              <div class="adjust-body"><div class="wall-textures" id="s_decorItems"></div></div>
+              <div class="adjust-body"><div class="wall-textures" id="s_decorItems"></div>
+                <p class="wall-own-note">Нажмите на тумбочку, кресло или горшок на картинке — сменится цвет; на выключатель — свет.</p></div>
             </details>
           </div>
         </details>
@@ -2619,6 +2633,11 @@ const DB = {
     plinthH: 80,
     light: "day",
     decor: {},
+    // мебель у стены: "" | "chest" | "chair"; цвета предметов — индексы
+    // пастельного ряда; twoDoors — вариант картинки «две двери рядом»
+    furniture: "",
+    decorColor: {},
+    twoDoors: false,
     // Наличник в 2D: "" — обычный (три доски), "///" — с тремя полосками из
     // деталей со снимков; к «///» — капитель и банкетка (см. casingSceneSvg).
     casingStyle: "",
@@ -3668,6 +3687,9 @@ const DB = {
     plain: { vbW: 220, vbH: 400, padTop: 18, floorY: 382, doorCenterX: 110, doorMaxW: 184 },
     scene: { vbW: 360, vbH: 400, padTop: 28, floorY: 330, doorCenterX: 118, doorMaxW: 120 }
   };
+  // Середина двери на сцене — правее середины стены (180): слева от двери
+  // место для мебели и декора.
+  const SCENE_DOOR_CX = 228;
 
   // Контекст рисования — набор ссылок на элементы конкретного SVG и его
   // id-строки (используются в url(#...)). Позволяет рисовать одну и ту же
@@ -3690,6 +3712,7 @@ const DB = {
       handleGroup: q("doorHandleGroup"),
       sceneGroup: q("doorSceneGroup"),
       lightGroup: q("doorLightGroup"),
+      doorClone: q("doorClone"),
       patternId: prefix + "doorTexturePattern",
       textureImageId: prefix + "doorTextureImage",
       shadeGradId: prefix + "doorShadeGradient",
@@ -8425,7 +8448,14 @@ const DB = {
     // высокая выглядели на картинке одинаково. Если дверь в кадр всё же не
     // входит (высокая или двустворчатая) — ужимаем целиком, пропорции
     // сохраняются.
-    const availW = sceneMode ? Math.min(layout.vbW * 0.6, layout.doorCenterX * 2 - 8) : layout.doorMaxW;
+    // На сцене дверь стоит правее середины стены (слева — мебель и декор);
+    // у варианта «две двери» обе двери с наличниками и 150 мм между ними
+    // должны поместиться на стене.
+    const twoDoors = sceneMode && !!state.twoDoors;
+    const casMmU = CASING_MM * (layout.floorY / WALL_MM);
+    const availW = !sceneMode ? layout.doorMaxW
+      : twoDoors ? (layout.vbW - 12 - 150 * (layout.floorY / WALL_MM)) / 2 - 2 * casMmU
+      : Math.min(layout.vbW * 0.6, 2 * (layout.vbW - SCENE_DOOR_CX) - 2 * casMmU - 12);
     const availH = layout.floorY - layout.padTop;
     let w, h;
     if (sceneMode && photoBox) {
@@ -8479,7 +8509,12 @@ const DB = {
     // ставится на пол целиком.
     let gap = photoAsIsModel ? 0 : Math.max(1, h / 200);
     if (h + gap > availH) { h = availH - gap; w = h * aspect; }
-    const x = layout.doorCenterX - w / 2;
+    // Вторая дверь — правее на ширину двери, два наличника и 150 мм.
+    const casU = Math.max(3, CASING_MM * (w / width));
+    const dx2 = w + 2 * casU + 150 * (layout.floorY / WALL_MM);
+    const x = !sceneMode ? layout.doorCenterX - w / 2
+      : twoDoors ? layout.vbW / 2 - (dx2 + w) / 2
+      : Math.min(SCENE_DOOR_CX, layout.vbW - 6 - casU - w / 2) - w / 2;
     const y = layout.floorY - gap - h; // низ полотна — на gap выше пола
     // Скруглённые углы и обводка — приметы нарисованного полотна. У снимка
     // «как есть» края свои, трогать их нечем.
@@ -8731,6 +8766,10 @@ const DB = {
       ? buildScene(layout, { x: x, y: y, w: w, h: h }, baseHex, casingFill, sceneWallColor, state.wallTexture, c.pfx, doorFilter, gap, photoCasing, Math.max(3, CASING_MM * unitsPerMm))
       : "";
     if (c.lightGroup) c.lightGroup.innerHTML = sceneMode ? lightSVG(layout.vbW, layout.vbH, state.light || "day", c.pfx) : "";
+    if (c.doorClone) {
+      c.doorClone.setAttribute("transform", `translate(${dx2} 0)`);
+      c.doorClone.style.display = twoDoors ? "" : "none";
+    }
     // Пока стена повторяет фон снимка, менять её нечем: свой цвет, фактура и
     // тон вернули бы прямоугольник вокруг двери. Панели прячем, чтобы не
     // тыкать в ползунки, которые ничего не делают.
@@ -9339,13 +9378,23 @@ const DB = {
     { id: "bright", name: "Светлая комната" },
     { id: "dim", name: "Полумрак" }
   ];
+  // Мебель — что-то одно: тумбочка или кресло; остальное включается отдельно.
+  const DECOR_FURNITURE = [
+    { id: "chest", name: "Тумбочка" },
+    { id: "chair", name: "Кресло" }
+  ];
   const DECOR_ITEMS = [
-    { id: "chest", name: "Комод" },
     { id: "picture", name: "Картина" },
     { id: "plant", name: "Растение" },
     { id: "switch", name: "Выключатель" }
   ];
-  const PLINTH_HEIGHTS = [60, 80, 100];
+  const PLINTH_HEIGHTS = [60, 80, 100, 120, 150];
+  // Цвет тумбочки, кресла и горшка — пастельный ряд образцов стены; меняется
+  // нажатием на сам предмет на картинке.
+  // Начальные цвета: тумбочка — шалфей, кресло — пудровый розовый, горшок —
+  // тёплый белый.
+  const DECOR_COLOR0 = { chest: 3, chair: 7, pot: 0 };
+  const decorHex = (key) => WALL_PRESETS[(((state.decorColor || {})[key] || 0) + (DECOR_COLOR0[key] || 0)) % 10].hex;
 
   // Свет — слой поверх всей картинки (стена, пол, дверь, декор): тон и
   // перепад яркости, как в комнате при таком освещении. «Дневной» — как есть.
@@ -9357,8 +9406,15 @@ const DB = {
         rect("#ffb25e", "multiply", 0.22) + rect(`url(#${id("lamp")})`, "soft-light", 1);
     }
     if (mode === "window") {
-      return `<defs><linearGradient id="${id("win")}" x1="0" y1="0" x2="1" y2="0.25"><stop offset="0" stop-color="#ffffff" stop-opacity="0.65"/><stop offset="0.55" stop-color="#ffffff" stop-opacity="0"/><stop offset="1" stop-color="#1c2a3c" stop-opacity="0.5"/></linearGradient></defs>` +
-        rect("#d6e4ff", "multiply", 0.16) + rect(`url(#${id("win")})`, "soft-light", 1);
+      // Окно слева: сильный холодный свет с края, тень к правому краю и
+      // световые «пятна окна» на стене и на полу.
+      return `<defs><linearGradient id="${id("win")}" x1="0" y1="0" x2="1" y2="0.2"><stop offset="0" stop-color="#ffffff" stop-opacity="0.95"/><stop offset="0.45" stop-color="#ffffff" stop-opacity="0.1"/><stop offset="1" stop-color="#14202f" stop-opacity="0.75"/></linearGradient>` +
+        `<linearGradient id="${id("beam")}" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#ffffff" stop-opacity="0.75"/><stop offset="1" stop-color="#ffffff" stop-opacity="0"/></linearGradient>` +
+        `<filter id="${id("blur")}" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="6"/></filter></defs>` +
+        rect("#c9dbff", "multiply", 0.22) + rect(`url(#${id("win")})`, "soft-light", 1) +
+        `<g style="mix-blend-mode:screen" opacity="0.5" filter="url(#${id("blur")})">` +
+        `<polygon points="0,${H * 0.12} ${W * 0.3},${H * 0.2} ${W * 0.3},${H * 0.62} 0,${H * 0.72}" fill="url(#${id("beam")})"/>` +
+        `<polygon points="0,${H * 0.86} ${W * 0.42},${H * 0.85} ${W * 0.62},${H} 0,${H}" fill="url(#${id("beam")})"/></g>`;
     }
     if (mode === "bright") return rect("#ffffff", "screen", 0.14);
     if (mode === "dim") {
@@ -9368,53 +9424,119 @@ const DB = {
     return "";
   }
 
-  // Декор у стены — в мм и в той же перспективе, что пол (см. floorSVG):
-  // комод 800×850×450 справа от двери, над ним картина 600×450, растение в
-  // горшке слева, выключатель на высоте 900 мм у наличника.
-  function decorSVG(W, H, floorY, door, casingW, idf) {
-    const on = state.decor || {};
-    if (!Object.keys(on).some((k) => on[k])) return "";
+  // Потолок — узкая белая полоса сверху (в перспективе) и потолочный плинтус
+  // 80 мм. Потолок на 2500 мм от пола.
+  function ceilingSVG(W, floorY, idf) {
+    const k = floorY / WALL_MM, yC = floorY - 2500 * k, m = 80 * k;
+    const gid = idf("ceil"), cid = idf("cornice");
+    return `<defs><linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fbfbfa"/><stop offset="1" stop-color="#e6e5e1"/></linearGradient>` +
+      `<linearGradient id="${cid}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="0.55" stop-color="#f1f0ec"/><stop offset="0.8" stop-color="#d9d7d1"/><stop offset="1" stop-color="#f6f5f2"/></linearGradient></defs>` +
+      `<rect x="0" y="0" width="${W}" height="${yC}" fill="url(#${gid})"/>` +
+      `<rect x="0" y="${yC}" width="${W}" height="${m}" fill="url(#${cid})"/>` +
+      `<rect x="0" y="${yC + m}" width="${W}" height="2.2" fill="rgba(0,0,0,0.10)" filter="url(#${idf("soft")})"/>`;
+  }
+
+  // Декор у стены — в мм и в той же перспективе, что пол (см. floorSVG).
+  // Дверь стоит правее середины стены, мебель и растение — слева от неё;
+  // выключатель — со стороны ручки, на её высоте. vpX — точка схода.
+  // Тумбочка, кресло, горшок и выключатель нажимаются (data-act, см.
+  // onSceneDecorClick): цвет меняется, выключатель переключает свет.
+  function decorSVG(W, H, floorY, door, casingW, idf, vpX, onlySwitch) {
+    const on = onlySwitch ? { switch: true } : (state.decor || {});
+    const furn = onlySwitch ? "" : (state.furniture || "");
+    if (!furn && !Object.keys(on).some((k) => on[k])) return "";
     const k = floorY / WALL_MM;
-    const E = 1500, C = 3000, cx = door.x + door.w / 2;
+    const E = 1500, C = 3000, cx = vpX;
     const hY = floorY - E * k;
     // X — мм от точки схода поперёк, D — мм от стены, Z — высота над полом
     const P = (X, D, Z) => {
       const z = C - D;
-      return [+(cx + (X * k * C) / z).toFixed(1), +(hY + (k * (E - Z) * C) / z).toFixed(1)];
+      return [+(cx + (X * k * C) / z).toFixed(2), +(hY + (k * (E - Z) * C) / z).toFixed(2)];
     };
-    const poly = (pts, fill, extra) => `<polygon points="${pts.map((p) => p.join(",")).join(" ")}" fill="${fill}"${extra || ""}/>`;
-    const right = (door.x + door.w + casingW - cx) / k; // правый край наличника, мм
-    const left = (door.x - casingW - cx) / k;
-    const wallR = (W - cx) / k, wallL = -cx / k;
+    const pts = (a) => a.map((p) => p.join(",")).join(" ");
+    const poly = (a, fill, extra) => `<polygon points="${pts(a)}" fill="${fill}"${extra || ""}/>`;
+    const sc = (D) => (k * C) / (C - D); // единиц на мм в плоскости D
+    const left = (door.x - casingW - cx) / k; // левый край наличника, мм
+    const right = (door.x + door.w + casingW - cx) / k;
+    const wallL = -cx / k;
+    let seed = 4242;
+    const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
     let g = "";
-    let chestL = null;
-    if (on.chest) {
-      const l = right + 350, r = l + 800;
-      if (P(r, 450, 0)[0] < W + 40) {
-        chestL = l;
-        const body = "#efebe4", top = "#e2dccf", side = "#d3ccbf";
-        // тень на полу и на стене
-        g += `<ellipse cx="${(P(l, 300, 0)[0] + P(r, 300, 0)[0]) / 2}" cy="${P(0, 460, 0)[1]}" rx="${(P(r, 450, 0)[0] - P(l, 450, 0)[0]) * 0.56}" ry="${3}" fill="rgba(20,12,4,0.3)" filter="url(#${idf("soft")})"/>`;
-        g += `<rect x="${P(l, 0, 0)[0] + 2}" y="${P(0, 0, 860)[1]}" width="${P(r, 0, 0)[0] - P(l, 0, 0)[0] + 4}" height="${P(0, 0, 0)[1] - P(0, 0, 860)[1]}" fill="rgba(20,12,4,0.14)" filter="url(#${idf("soft")})"/>`;
-        g += poly([P(l, 0, 60), P(l, 450, 60), P(l, 450, 850), P(l, 0, 850)], side);
-        g += poly([P(l, 0, 850), P(r, 0, 850), P(r, 450, 850), P(l, 450, 850)], top);
-        g += poly([P(l, 450, 60), P(r, 450, 60), P(r, 450, 850), P(l, 450, 850)], body, ` stroke="rgba(0,0,0,0.12)" stroke-width="0.5"`);
-        // ножки
-        [l + 40, r - 70].forEach((x) => { g += poly([P(x, 430, 0), P(x + 30, 430, 0), P(x + 30, 430, 60), P(x, 430, 60)], "#8a7b68"); });
-        // три ящика с ручками
-        for (let i = 0; i < 3; i++) {
-          const z0 = 90 + i * 250, z1 = z0 + 230;
-          g += poly([P(l + 25, 451, z0), P(r - 25, 451, z0), P(r - 25, 451, z1), P(l + 25, 451, z1)], "none", ` stroke="rgba(0,0,0,0.18)" stroke-width="0.6"`);
-          const hm = (z0 + z1) / 2, hx = (l + r) / 2;
-          g += poly([P(hx - 70, 452, hm - 8), P(hx + 70, 452, hm - 8), P(hx + 70, 452, hm + 8), P(hx - 70, 452, hm + 8)], "#9a8f80");
-        }
+    let top = null; // [центр X, D, Z] — куда поставить цветок, если некуда на пол
+    let furnL = null, furnR = null;
+
+    if (furn === "chest") {
+      // Дизайнерская тумбочка: рифлёный фасад со скруглёнными углами, тонкие
+      // золотые ножки, круглая латунная ручка.
+      const r = left - 220, l = r - 820, Dd = 420, z0 = 170, z1 = 760;
+      furnL = l; furnR = r;
+      const col = decorHex("chest"), sideC = shade(col, -14), topC = shade(col, 6);
+      const gL = "#c9a45c", gD = "#8e6f33";
+      let h = `<g data-act="chest" style="cursor:pointer">`;
+      h += `<ellipse cx="${(P(l, 300, 0)[0] + P(r, 300, 0)[0]) / 2}" cy="${P(0, Dd + 10, 0)[1]}" rx="${(P(r, Dd, 0)[0] - P(l, Dd, 0)[0]) * 0.55}" ry="3" fill="rgba(20,12,4,0.28)" filter="url(#${idf("soft")})"/>`;
+      h += `<rect x="${P(l, 0, 0)[0]}" y="${P(0, 0, z1 + 15)[1]}" width="${P(r, 0, 0)[0] - P(l, 0, 0)[0] + 4}" height="${P(0, 0, 0)[1] - P(0, 0, z1 + 15)[1]}" fill="rgba(20,12,4,0.12)" filter="url(#${idf("soft")})"/>`;
+      // ножки: задние, потом передние (тонкие, сужаются книзу)
+      [[l + 60, 40], [r - 60, 40], [l + 60, Dd - 40], [r - 60, Dd - 40]].forEach(([x, d]) => {
+        h += poly([P(x - 14, d, z0), P(x + 14, d, z0), P(x + 6, d, 0), P(x - 6, d, 0)], d < 100 ? gD : gL);
+      });
+      h += poly([P(r, 0, z0), P(r, Dd, z0), P(r, Dd, z1), P(r, 0, z1)], sideC);
+      h += poly([P(l, 0, z1), P(r, 0, z1), P(r, Dd, z1), P(l, Dd, z1)], topC);
+      const fx = P(l, Dd, z1), fw = P(r, Dd, z1)[0] - fx[0], fh = P(l, Dd, z0)[1] - fx[1], rr = 35 * sc(Dd);
+      h += `<rect x="${fx[0]}" y="${fx[1]}" width="${fw}" height="${fh}" rx="${rr}" fill="${col}"/>`;
+      // рифление: вертикальные ламели с бликом и тенью
+      const n = Math.round(820 / 45);
+      for (let i = 0; i < n; i++) {
+        const xa = fx[0] + (fw * i) / n, wd = fw / n;
+        h += `<rect x="${xa + wd * 0.08}" y="${fx[1] + rr * 0.6}" width="${wd * 0.3}" height="${fh - rr * 1.2}" fill="#ffffff" opacity="0.18"/>`;
+        h += `<rect x="${xa + wd * 0.72}" y="${fx[1] + rr * 0.6}" width="${wd * 0.22}" height="${fh - rr * 1.2}" fill="#000000" opacity="0.08"/>`;
       }
+      // две створки и ручка
+      h += `<line x1="${fx[0] + fw / 2}" y1="${fx[1] + 2}" x2="${fx[0] + fw / 2}" y2="${fx[1] + fh - 2}" stroke="rgba(0,0,0,0.22)" stroke-width="0.6"/>`;
+      [fx[0] + fw / 2 - 5, fx[0] + fw / 2 + 5].forEach((hx) => {
+        h += `<circle cx="${hx}" cy="${fx[1] + fh * 0.5}" r="${22 * sc(Dd) / 2 + 0.6}" fill="${gL}" stroke="${gD}" stroke-width="0.4"/>`;
+      });
+      h += `<rect x="${fx[0]}" y="${fx[1]}" width="${fw}" height="${fh}" rx="${rr}" fill="none" stroke="rgba(0,0,0,0.14)" stroke-width="0.5"/>`;
+      h += `</g>`;
+      g += h;
+      top = [l + 160, 180, z1];
+    } else if (furn === "chair") {
+      // Дизайнерское кресло-«ракушка» в букле: округлая спинка, мягкие
+      // подлокотники, подушка сиденья, деревянные ножки.
+      // кресло отодвинуто от двери: между ним и наличником встаёт растение
+      const r = left - 400, l = r - 680, D = 380;
+      furnL = l; furnR = r;
+      const col = decorHex("chair"), s = sc(D);
+      const X = (x) => cx + x * s, Y = (z) => hY + k * (E - z) * C / (C - D);
+      const pid = idf("boucle"), shd = idf("chairShade");
+      let h = `<defs><pattern id="${pid}" width="2.2" height="2.2" patternUnits="userSpaceOnUse"><circle cx="0.6" cy="0.6" r="0.55" fill="#ffffff" opacity="0.28"/><circle cx="1.7" cy="1.6" r="0.5" fill="#000000" opacity="0.12"/></pattern>` +
+        `<linearGradient id="${shd}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff" stop-opacity="0.22"/><stop offset="1" stop-color="#000000" stop-opacity="0.18"/></linearGradient></defs>`;
+      h += `<g data-act="chair" style="cursor:pointer">`;
+      h += `<ellipse cx="${X((l + r) / 2)}" cy="${Y(0) + 1}" rx="${(r - l) * s * 0.55}" ry="3.2" fill="rgba(20,12,4,0.3)" filter="url(#${idf("soft")})"/>`;
+      const shape = (d) => [col, `url(#${shd})`, `url(#${pid})`].map((f) => `<path d="${d}" fill="${f}"/>`).join("");
+      const rrect = (x0, z0, x1, z1, rad) => {
+        const a = X(x0), b = X(x1), t = Y(z1), u = Y(z0), q = Math.min(rad * s, (b - a) / 2, (u - t) / 2);
+        return `M ${a + q} ${t} H ${b - q} Q ${b} ${t} ${b} ${t + q} V ${u - q} Q ${b} ${u} ${b - q} ${u} H ${a + q} Q ${a} ${u} ${a} ${u - q} V ${t + q} Q ${a} ${t} ${a + q} ${t} Z`;
+      };
+      // ножки
+      [l + 90, r - 110].forEach((x) => {
+        h += `<path d="M ${X(x)} ${Y(130)} L ${X(x + 20)} ${Y(130)} L ${X(x + 14)} ${Y(0)} L ${X(x + 6)} ${Y(0)} Z" fill="#6b4a2f"/>`;
+      });
+      // спинка (дальше, темнее) — округлый верх
+      const back = `M ${X(l + 60)} ${Y(430)} L ${X(l + 60)} ${Y(600)} Q ${X(l + 60)} ${Y(800)} ${X((l + r) / 2)} ${Y(800)} Q ${X(r - 60)} ${Y(800)} ${X(r - 60)} ${Y(600)} L ${X(r - 60)} ${Y(430)} Z`;
+      h += `<g opacity="1">${shape(back)}<path d="${back}" fill="#000000" opacity="0.08"/></g>`;
+      h += shape(rrect(l + 30, 120, r - 30, 410, 70)); // основание
+      h += shape(rrect(l + 150, 360, r - 150, 470, 45)); // подушка
+      h += shape(rrect(l, 120, l + 190, 640, 95)); // подлокотники
+      h += shape(rrect(r - 190, 120, r, 640, 95));
+      h += `</g>`;
+      g += h;
     }
+
     if (on.picture) {
-      // над комодом, иначе — посередине свободной стены справа
-      const w = 600, h = 450, c0 = chestL != null ? chestL + 400 : Math.min(right + 700, wallR - 400);
-      const x0 = cx + (c0 - w / 2) * k, y0 = floorY - 1780 * k, pw = w * k, ph = h * k, fr = 30 * k, mt = 45 * k;
-      if (x0 + pw < W && x0 > door.x + door.w + casingW) {
+      // над мебелью, иначе — посередине стены слева от двери
+      const w = 600, hgt = 450, c0 = furnL != null ? (furnL + furnR) / 2 : (wallL + left) / 2;
+      const x0 = cx + (c0 - w / 2) * k, y0 = floorY - 1800 * k, pw = w * k, ph = hgt * k, fr = 30 * k, mt = 45 * k;
+      if (x0 > 2 && x0 + pw < door.x - casingW - 2) {
         const gid = idf("pic");
         g += `<defs><linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#bcd3e6"/><stop offset="1" stop-color="#f1e3c8"/></linearGradient></defs>`;
         g += `<rect x="${x0 + 2}" y="${y0 + 3}" width="${pw}" height="${ph}" fill="rgba(0,0,0,0.18)" filter="url(#${idf("soft")})"/>`;
@@ -9427,34 +9549,67 @@ const DB = {
         g += `<circle cx="${ix + iw * 0.75}" cy="${iy + ih * 0.28}" r="${ih * 0.1}" fill="#fff4d6"/>`;
       }
     }
+
     if (on.plant) {
-      // слева от двери, если там хватает места; иначе — небольшой цветок на
-      // комоде, а без комода — справа от двери
-      let pcx = left - 380, D = 260, pr = 150, ph = 320, z0 = 0, sc = 1;
-      if (pcx - 200 < wallL) {
-        if (chestL != null) { pcx = chestL + 600; D = 200; pr = 85; ph = 170; z0 = 850; sc = 0.5; }
-        else pcx = Math.min(wallR - 260, right + 500);
+      // живое растение в горшке: на полу слева от мебели (или от двери), на
+      // тумбочке — небольшое, если на полу места нет
+      let pcx, D = 300, scl = 1, z0 = 0;
+      if (furn === "chest" && furnL - 420 < wallL + 120) { pcx = top[0]; D = top[1]; z0 = top[2]; scl = 0.42; }
+      else if (furn === "chair") { pcx = left - 280; D = 200; scl = 0.75; }
+      else pcx = (furnL != null ? furnL : left) - 330;
+      const potR = 170 * scl, potH = 330 * scl, s = sc(D);
+      const X = (x) => cx + x * s, Y = (z) => hY + k * (E - z) * C / (C - D);
+      const leafG = idf("leaf"), potG = idf("potShade");
+      let h = `<defs><radialGradient id="${leafG}" cx="40%" cy="35%" r="75%"><stop offset="0" stop-color="#8fbd5f"/><stop offset="0.55" stop-color="#4e8a3a"/><stop offset="1" stop-color="#2c5626"/></radialGradient>` +
+        `<linearGradient id="${potG}" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#ffffff" stop-opacity="0.35"/><stop offset="0.45" stop-color="#ffffff" stop-opacity="0"/><stop offset="1" stop-color="#000000" stop-opacity="0.25"/></linearGradient></defs>`;
+      if (!z0) h += `<ellipse cx="${X(pcx)}" cy="${Y(0) + 1}" rx="${potR * 1.3 * s}" ry="2.6" fill="rgba(20,12,4,0.3)" filter="url(#${idf("soft")})"/>`;
+      // стебли и листья (фикус): три-четыре стебля, на каждом по 7–9 листьев
+      const baseX = X(pcx), baseY = Y(z0 + potH * 0.92);
+      const leaves = [];
+      const stems = 4;
+      for (let i = 0; i < stems; i++) {
+        const hgt = (750 + rnd() * 650) * scl * s, lean = (i - (stems - 1) / 2) * 0.22 + (rnd() - 0.5) * 0.15;
+        const ex = baseX + Math.sin(lean) * hgt, ey = baseY - Math.cos(lean) * hgt;
+        h += `<path d="M ${baseX + (i - 1.5) * 1.2} ${baseY} Q ${baseX + Math.sin(lean) * hgt * 0.4} ${baseY - hgt * 0.5} ${ex} ${ey}" fill="none" stroke="#5b4a32" stroke-width="${0.7 * Math.max(0.5, scl)}"/>`;
+        const nl = 7 + Math.floor(rnd() * 3);
+        for (let j = 0; j < nl; j++) {
+          const t = 0.35 + (0.65 * j) / nl + rnd() * 0.05;
+          const px = baseX + (ex - baseX) * t, py = baseY + (ey - baseY) * t;
+          const side = j % 2 ? 1 : -1;
+          const ang = lean * 57 + side * (35 + rnd() * 35) - (t > 0.9 ? side * 30 : 0);
+          leaves.push([px, py, ang, (130 + rnd() * 110) * scl * s * (1.15 - t * 0.35)]);
+        }
       }
-      g += `<ellipse cx="${P(pcx, D, z0)[0]}" cy="${P(pcx, D + 40, z0)[1]}" rx="${pr * 1.15 * k}" ry="2.5" fill="rgba(20,12,4,0.3)" filter="url(#${idf("soft")})"/>`;
-      // листья — веер вытянутых эллипсов
-      let seed = 4242;
-      const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
-      const base = P(pcx, D, z0 + ph);
-      for (let i = 0; i < 16; i++) {
-        const a = -Math.PI / 2 + (rnd() - 0.5) * 2.2, len = (380 + rnd() * 520) * k * sc;
-        const ex = base[0] + Math.cos(a) * len * 0.5, ey = base[1] + Math.sin(a) * len * 0.5;
-        const col = ["#4f7a3f", "#5f8f49", "#3f6634", "#6c9d52"][i % 4];
-        g += `<ellipse cx="${ex.toFixed(1)}" cy="${ey.toFixed(1)}" rx="${(len * 0.5).toFixed(1)}" ry="${(len * 0.09).toFixed(1)}" transform="rotate(${(a * 180 / Math.PI).toFixed(0)} ${ex.toFixed(1)} ${ey.toFixed(1)})" fill="${col}"/>`;
-      }
-      g += poly([P(pcx - pr, D, z0 + ph), P(pcx + pr, D, z0 + ph), P(pcx + pr * 0.75, D, z0), P(pcx - pr * 0.75, D, z0)], "#b9b4ab", ` stroke="rgba(0,0,0,0.15)" stroke-width="0.5"`);
-      g += poly([P(pcx - pr, D, z0 + ph), P(pcx + pr, D, z0 + ph), P(pcx + pr, D, z0 + ph - 35 * sc), P(pcx - pr, D, z0 + ph - 35 * sc)], "#cdc8bf");
+      // листья: дальние темнее, ближние светлее; у каждого — центральная жилка
+      leaves.sort((a, b) => a[1] - b[1]).forEach(([px, py, ang, L], i) => {
+        const wv = L * 0.42;
+        const d = `M 0 0 C ${wv} ${-L * 0.18} ${wv * 0.9} ${-L * 0.85} 0 ${-L} C ${-wv * 0.9} ${-L * 0.85} ${-wv} ${-L * 0.18} 0 0 Z`;
+        h += `<g transform="translate(${px.toFixed(1)} ${py.toFixed(1)}) rotate(${ang.toFixed(0)})">` +
+          `<path d="${d}" fill="url(#${leafG})"/>` +
+          `<path d="${d}" fill="${["#000000", "#ffffff"][i % 2]}" opacity="${(0.06 + rnd() * 0.1).toFixed(2)}"/>` +
+          `<path d="M 0 0 Q ${wv * 0.08} ${-L * 0.5} 0 ${-L * 0.96}" fill="none" stroke="#b9d68f" stroke-width="${Math.max(0.25, L * 0.025)}" opacity="0.7"/></g>`;
+      });
+      // горшок — круглый, на тонком поддоне; цвет меняется нажатием
+      const pc = decorHex("pot");
+      const potD = `M ${X(pcx - potR)} ${Y(z0 + potH)} L ${X(pcx + potR)} ${Y(z0 + potH)} Q ${X(pcx + potR * 1.05)} ${Y(z0 + potH * 0.25)} ${X(pcx + potR * 0.55)} ${Y(z0 + potH * 0.05)} L ${X(pcx - potR * 0.55)} ${Y(z0 + potH * 0.05)} Q ${X(pcx - potR * 1.05)} ${Y(z0 + potH * 0.25)} ${X(pcx - potR)} ${Y(z0 + potH)} Z`;
+      h += `<g data-act="pot" style="cursor:pointer">` +
+        `<path d="${potD}" fill="${pc}" stroke="rgba(0,0,0,0.12)" stroke-width="0.4"/><path d="${potD}" fill="url(#${potG})"/>` +
+        `<rect x="${X(pcx - potR * 1.02)}" y="${Y(z0 + potH) - 0.8}" width="${potR * 2.04 * s}" height="${Math.max(1, 25 * scl * s)}" rx="0.6" fill="${shade(pc, 8)}"/>` +
+        `<rect x="${X(pcx - potR * 0.5)}" y="${Y(z0 + potH * 0.05)}" width="${potR * s}" height="${Math.max(0.8, 30 * scl * s)}" fill="${shade(pc, -18)}"/></g>`;
+      g += h;
     }
+
     if (on.switch) {
-      // выключатель 80×80 мм, центр на 900 мм, в 150 мм от наличника
-      const sx = door.x + door.w + casingW + 150 * k, sy = floorY - 940 * k, s = 80 * k;
-      g += `<rect x="${sx + 0.6}" y="${sy + 0.8}" width="${s}" height="${s}" rx="${6 * k}" fill="rgba(0,0,0,0.18)" filter="url(#${idf("soft")})"/>`;
-      g += `<rect x="${sx}" y="${sy}" width="${s}" height="${s}" rx="${6 * k}" fill="#f8f7f4" stroke="rgba(0,0,0,0.15)" stroke-width="0.4"/>`;
-      g += `<rect x="${sx + s * 0.22}" y="${sy + s * 0.22}" width="${s * 0.56}" height="${s * 0.56}" rx="${3 * k}" fill="#ffffff" stroke="rgba(0,0,0,0.12)" stroke-width="0.3"/>`;
+      // выключатель 80×80 мм — со стороны ручки (справа), на высоте ручки,
+      // в 150 мм от наличника; нажатие переключает свет
+      const handleZ = (floorY - (door.y + door.h * 0.47)) / k;
+      const s = 80 * k, sx = door.x + door.w + casingW + 150 * k, sy = floorY - handleZ * k - s / 2;
+      g += `<g data-act="switch" style="cursor:pointer">` +
+        `<rect x="${sx - 3}" y="${sy - 3}" width="${s + 6}" height="${s + 6}" fill="transparent"/>` +
+        `<rect x="${sx + 0.6}" y="${sy + 0.8}" width="${s}" height="${s}" rx="${6 * k}" fill="rgba(0,0,0,0.18)" filter="url(#${idf("soft")})"/>` +
+        `<rect x="${sx}" y="${sy}" width="${s}" height="${s}" rx="${6 * k}" fill="#f8f7f4" stroke="rgba(0,0,0,0.15)" stroke-width="0.4"/>` +
+        `<rect x="${sx + s * 0.22}" y="${sy + s * 0.22}" width="${s * 0.56}" height="${s * 0.56}" rx="${3 * k}" fill="#ffffff" stroke="rgba(0,0,0,0.12)" stroke-width="0.3"/>` +
+        `<rect x="${sx + s * 0.42}" y="${sy + s * (state.light && state.light !== "day" ? 0.3 : 0.55)}" width="${s * 0.16}" height="${s * 0.15}" rx="${k}" fill="#d6d3cc"/></g>`;
     }
     return g;
   }
@@ -9941,9 +10096,16 @@ const DB = {
       s += `<rect x="0" y="0" width="${W}" height="${floorY}" fill="url(#${idf("vignette")})"/>`;
     }
     s += `</g>`;
+    if (!flatWall) s += ceilingSVG(W, floorY, idf);
+
+    // Вариант «две двери рядом» (санузел): вторая дверь правее на ширину
+    // двери, два наличника и 150 мм между ними; точка схода — между дверями.
+    const two = !!state.twoDoors;
+    const dx2 = door.w + 2 * (casingW || 12) + 150 * (floorY / WALL_MM);
+    const vp = two ? door.x + (dx2 + door.w) / 2 : door.x + door.w / 2;
 
     // --- Пол: ламинат или паркет в перспективе (см. floorSVG).
-    s += floorSVG(W, H, floorY, door.x + door.w / 2, floorColorNow(), idf);
+    s += floorSVG(W, H, floorY, vp, floorColorNow(), idf);
     // Мягкое затемнение в стыке стены и пола (ambient occlusion).
     s += `<rect x="0" y="${floorY - 3}" width="${W}" height="6" fill="rgba(20,12,4,0.16)" filter="url(#${idf("soft")})"/>`;
 
@@ -9957,96 +10119,105 @@ const DB = {
     s += `<rect x="0" y="${floorY - pH * 0.22}" width="${W}" height="${pH * 0.22}" fill="rgba(0,0,0,0.14)"/>`;
 
     // --- Декор у стены (комод, картина, растение, выключатель).
-    s += decorSVG(W, H, floorY, door, casingW || 0, idf);
+    // у двух дверей — только выключатель (у правой двери)
+    s += decorSVG(W, H, floorY, two ? { x: door.x + dx2, y: door.y, w: door.w, h: door.h } : door, casingW || 0, idf, vp, two);
 
     // Отражение полотна на полу убрано: оно выглядело нереалистично и
     // создавало ложное ощущение «выпуклости» двери снизу (см. отчёт
     // заказчика). Достаточно узкой щели под полотном и лёгкой тени.
 
-    // --- Зазор под полотном: полотно висит на gap выше пола (см. drawDoor).
-    //     Рисуем в этой щели тёмную полосу (тень порога) — так читается, что
-    //     низ двери приподнят над полом, а не шоркает по нему.
-    if (gap > 0) {
-      const gapY = door.y + door.h; // низ полотна
-      s += `<rect x="${door.x}" y="${gapY}" width="${door.w}" height="${gap}" fill="rgba(20,14,6,0.55)"/>`;
-      // Мягкая контактная тень на полу прямо под щелью — совсем лёгкая.
-      s += `<rect x="${door.x}" y="${floorY}" width="${door.w}" height="3" fill="rgba(20,12,4,0.22)" filter="url(#${idf("soft")})"/>`;
-    }
+    // Щель под полотном и наличник — для каждой двери; вторая дверь — та же,
+    // сдвинутая вправо (полотно повторяет <use> в render).
+    const surround = (door) => {
+      let s = "";
+      // --- Зазор под полотном: полотно висит на gap выше пола (см. drawDoor).
+      //     Рисуем в этой щели тёмную полосу (тень порога) — так читается, что
+      //     низ двери приподнят над полом, а не шоркает по нему.
+      if (gap > 0) {
+        const gapY = door.y + door.h; // низ полотна
+        s += `<rect x="${door.x}" y="${gapY}" width="${door.w}" height="${gap}" fill="rgba(20,14,6,0.55)"/>`;
+        // Мягкая контактная тень на полу прямо под щелью — совсем лёгкая.
+        s += `<rect x="${door.x}" y="${floorY}" width="${door.w}" height="3" fill="rgba(20,12,4,0.22)" filter="url(#${idf("soft")})"/>`;
+      }
 
-    // --- Наличник со снимка модели: у настоящей двери коробка своя, с той
-    //     же фрезеровкой и тем же рисунком плёнки, и на фотографии она уже
-    //     есть. Если её обвели деталями «Нал. ↕/↔», показываем именно её, а
-    //     свою рамку не рисуем — двух коробок на двери не бывает.
-    //
-    //     У «Матрицы» снимок показан целиком и коробка на нём своя — рисовать
-    //     поверх нечего, просто выходим.
-    if (photoCasing && photoCasing.asIs) return s;
-    // Наличник «///» из деталей: вместо своих трёх досок и вместо наличника
-    // со снимка (тогда со снимка — только полотно).
-    const casPieces = casingSceneSvg(door, casingW || 12, gap, baseHex, idf);
-    if (photoCasing && photoCasing.href) {
-      const cl = casPieces != null ? { x: door.x, y: door.y, w: door.w, h: door.h } : photoCasing.clip;
-      s += `<defs><clipPath id="${idf("photoCasing")}"><rect x="${cl.x}" y="${cl.y}" width="${cl.w}" height="${cl.h}"/></clipPath></defs>`;
+      // --- Наличник со снимка модели: у настоящей двери коробка своя, с той
+      //     же фрезеровкой и тем же рисунком плёнки, и на фотографии она уже
+      //     есть. Если её обвели деталями «Нал. ↕/↔», показываем именно её, а
+      //     свою рамку не рисуем — двух коробок на двери не бывает.
+      //
+      //     У «Матрицы» снимок показан целиком и коробка на нём своя — рисовать
+      //     поверх нечего, просто выходим.
+      if (photoCasing && photoCasing.asIs) return s;
+      // Наличник «///» из деталей: вместо своих трёх досок и вместо наличника
+      // со снимка (тогда со снимка — только полотно).
+      const casPieces = casingSceneSvg(door, casingW || 12, gap, baseHex, idf);
+      if (photoCasing && photoCasing.href) {
+        const cl = casPieces != null ? { x: door.x, y: door.y, w: door.w, h: door.h } : photoCasing.clip;
+        s += `<defs><clipPath id="${idf("photoCasing")}"><rect x="${cl.x}" y="${cl.y}" width="${cl.w}" height="${cl.h}"/></clipPath></defs>`;
+        // Тени на стену нет: наличник прижат к стене вплотную.
+        // Фильтр тон-коррекции тут не нужен и его тут нет: коробка со снимка
+        // — часть той же перекрашенной картинки, что и полотно, а поправка
+        // цвета плёнки наложена ещё в перекраске, на саму плёнку (см.
+        // paintPartsLeaf). Пока её накладывали фильтром поверх, наличник её не
+        // получал вовсе — отсюда и была жалоба «наличник темнее полотна» на
+        // тех плёнках, которым крутили ползунки.
+        s += `<g clip-path="url(#${idf("photoCasing")})">`;
+        s += `<image href="${photoCasing.href}" x="${photoCasing.x}" y="${photoCasing.y}" width="${photoCasing.w}" height="${photoCasing.h}" preserveAspectRatio="none"/>`;
+        s += `</g>`;
+        return s + (casPieces || "");
+      }
+      if (casPieces != null) {
+        s += casPieces;
+        s += `<rect x="${door.x - 1}" y="${door.y - 1}" width="${door.w + 2}" height="${door.h + 1}" fill="none" stroke="rgba(0,0,0,0.22)" stroke-width="0.6"/>`;
+        return s;
+      }
+
+      // --- Наличник (дверная коробка) с объёмным профилем. Рисуется до
+      //     полотна, поэтому виден только выступающий кант. Ширина — настоящие
+      //     70 мм в масштабе сцены (см. CASING_MM).
+      const casing = casingW || 12;
+      const ox = door.x - casing, oy = door.y - casing;
+      const ow = door.w + casing * 2, oh = door.h + casing;
+      // Боковые доски коробки достают до пола (полотно приподнято на gap, а
+      // коробка стоит на полу) — поэтому по высоте они длиннее полотна на gap.
+      const ohSide = oh + gap;
       // Тени на стену нет: наличник прижат к стене вплотную.
-      // Фильтр тон-коррекции тут не нужен и его тут нет: коробка со снимка
-      // — часть той же перекрашенной картинки, что и полотно, а поправка
-      // цвета плёнки наложена ещё в перекраске, на саму плёнку (см.
-      // paintPartsLeaf). Пока её накладывали фильтром поверх, наличник её не
-      // получал вовсе — отсюда и была жалоба «наличник темнее полотна» на
-      // тех плёнках, которым крутили ползунки.
-      s += `<g clip-path="url(#${idf("photoCasing")})">`;
-      s += `<image href="${photoCasing.href}" x="${photoCasing.x}" y="${photoCasing.y}" width="${photoCasing.w}" height="${photoCasing.h}" preserveAspectRatio="none"/>`;
+      // Наличник — не одна рамка, а ТРИ отдельные доски. Соединение не на ус:
+      // боковые доски идут во всю длину, сверху донизу, а верхняя примыкает
+      // между ними встык. Плёнка на каждой доске лежит вдоль неё, как и на
+      // настоящем наличнике: на боковых прожилки вертикально, на верхней —
+      // поперёк, повёрнуты на 90° (см. grainFills).
+      const df = doorFilter || "none";
+      const rightX = door.x + door.w;
+      const topX = ox + casing;
+      const topW = ow - casing * 2;
+      s += `<g style="filter:${df}">`;
+      s += `<rect x="${ox}" y="${oy}" width="${casing}" height="${ohSide}" fill="${casingFill.v}"/>`;
+      s += `<rect x="${rightX}" y="${oy}" width="${casing}" height="${ohSide}" fill="${casingFill.v}"/>`;
+      s += `<rect x="${topX}" y="${oy}" width="${topW}" height="${casing}" fill="${casingFill.h}"/>`;
       s += `</g>`;
-      return s + (casPieces || "");
-    }
-    if (casPieces != null) {
-      s += casPieces;
+      // Лёгкий, мягкий рельеф профиля у каждой доски отдельно (без сильных
+      // перепадов тона): свет слева-сверху.
+      s += `<rect x="${ox}" y="${oy}" width="${casing}" height="${ohSide}" fill="#ffffff" opacity="0.05"/>`;
+      s += `<rect x="${topX}" y="${oy}" width="${topW}" height="${casing}" fill="#ffffff" opacity="0.035"/>`;
+      s += `<rect x="${rightX}" y="${oy}" width="${casing}" height="${ohSide}" fill="#000000" opacity="0.07"/>`;
+      // Тонкий чёткий кант на внешней грани (свет) и внутренней (тень).
+      s += `<rect x="${ox}" y="${oy}" width="0.6" height="${ohSide}" fill="#ffffff" opacity="0.55" shape-rendering="crispEdges"/>`;
+      s += `<rect x="${ox}" y="${oy}" width="${ow}" height="0.6" fill="#ffffff" opacity="0.55" shape-rendering="crispEdges"/>`;
+      s += `<rect x="${ox + ow - 0.6}" y="${oy}" width="0.6" height="${ohSide}" fill="rgba(0,0,0,0.18)" shape-rendering="crispEdges"/>`;
+      // Стыки верхней доски с боковыми — вертикальные, тень и тонкий блик
+      // рядом, чтобы доски читались как отдельные детали.
+      [topX, topX + topW].forEach((sx) => {
+        s += `<rect x="${sx - 0.35}" y="${oy}" width="0.7" height="${casing}" fill="rgba(0,0,0,0.28)"/>`;
+        s += `<rect x="${sx + 0.35}" y="${oy}" width="0.5" height="${casing}" fill="rgba(255,255,255,0.20)"/>`;
+      });
+      // Тонкая чёткая теневая четверть между коробкой и полотном.
       s += `<rect x="${door.x - 1}" y="${door.y - 1}" width="${door.w + 2}" height="${door.h + 1}" fill="none" stroke="rgba(0,0,0,0.22)" stroke-width="0.6"/>`;
+
       return s;
-    }
-
-    // --- Наличник (дверная коробка) с объёмным профилем. Рисуется до
-    //     полотна, поэтому виден только выступающий кант. Ширина — настоящие
-    //     70 мм в масштабе сцены (см. CASING_MM).
-    const casing = casingW || 12;
-    const ox = door.x - casing, oy = door.y - casing;
-    const ow = door.w + casing * 2, oh = door.h + casing;
-    // Боковые доски коробки достают до пола (полотно приподнято на gap, а
-    // коробка стоит на полу) — поэтому по высоте они длиннее полотна на gap.
-    const ohSide = oh + gap;
-    // Тени на стену нет: наличник прижат к стене вплотную.
-    // Наличник — не одна рамка, а ТРИ отдельные доски. Соединение не на ус:
-    // боковые доски идут во всю длину, сверху донизу, а верхняя примыкает
-    // между ними встык. Плёнка на каждой доске лежит вдоль неё, как и на
-    // настоящем наличнике: на боковых прожилки вертикально, на верхней —
-    // поперёк, повёрнуты на 90° (см. grainFills).
-    const df = doorFilter || "none";
-    const rightX = door.x + door.w;
-    const topX = ox + casing;
-    const topW = ow - casing * 2;
-    s += `<g style="filter:${df}">`;
-    s += `<rect x="${ox}" y="${oy}" width="${casing}" height="${ohSide}" fill="${casingFill.v}"/>`;
-    s += `<rect x="${rightX}" y="${oy}" width="${casing}" height="${ohSide}" fill="${casingFill.v}"/>`;
-    s += `<rect x="${topX}" y="${oy}" width="${topW}" height="${casing}" fill="${casingFill.h}"/>`;
-    s += `</g>`;
-    // Лёгкий, мягкий рельеф профиля у каждой доски отдельно (без сильных
-    // перепадов тона): свет слева-сверху.
-    s += `<rect x="${ox}" y="${oy}" width="${casing}" height="${ohSide}" fill="#ffffff" opacity="0.05"/>`;
-    s += `<rect x="${topX}" y="${oy}" width="${topW}" height="${casing}" fill="#ffffff" opacity="0.035"/>`;
-    s += `<rect x="${rightX}" y="${oy}" width="${casing}" height="${ohSide}" fill="#000000" opacity="0.07"/>`;
-    // Тонкий чёткий кант на внешней грани (свет) и внутренней (тень).
-    s += `<rect x="${ox}" y="${oy}" width="0.6" height="${ohSide}" fill="#ffffff" opacity="0.55" shape-rendering="crispEdges"/>`;
-    s += `<rect x="${ox}" y="${oy}" width="${ow}" height="0.6" fill="#ffffff" opacity="0.55" shape-rendering="crispEdges"/>`;
-    s += `<rect x="${ox + ow - 0.6}" y="${oy}" width="0.6" height="${ohSide}" fill="rgba(0,0,0,0.18)" shape-rendering="crispEdges"/>`;
-    // Стыки верхней доски с боковыми — вертикальные, тень и тонкий блик
-    // рядом, чтобы доски читались как отдельные детали.
-    [topX, topX + topW].forEach((sx) => {
-      s += `<rect x="${sx - 0.35}" y="${oy}" width="0.7" height="${casing}" fill="rgba(0,0,0,0.28)"/>`;
-      s += `<rect x="${sx + 0.35}" y="${oy}" width="0.5" height="${casing}" fill="rgba(255,255,255,0.20)"/>`;
-    });
-    // Тонкая чёткая теневая четверть между коробкой и полотном.
-    s += `<rect x="${door.x - 1}" y="${door.y - 1}" width="${door.w + 2}" height="${door.h + 1}" fill="none" stroke="rgba(0,0,0,0.22)" stroke-width="0.6"/>`;
-
+    };
+    s += surround(door);
+    if (two) s += `<g transform="translate(${dx2} 0)">${surround(door)}</g>`;
     return s;
   }
 
@@ -13102,8 +13273,15 @@ const DB = {
         `<button type="button" class="wall-tex-var${h === (state.plinthH || 80) ? " active" : ""}" data-plinth-h="${h}">${h} мм</button>`).join("")}</div>`;
     document.getElementById("s_lightModes").innerHTML = LIGHT_MODES.map((x) =>
       `<button type="button" class="wall-texture${x.id === (state.light || "day") ? " active" : ""}" data-light="${x.id}">${x.name}</button>`).join("");
-    document.getElementById("s_decorItems").innerHTML = DECOR_ITEMS.map((x) =>
-      `<button type="button" class="wall-texture${(state.decor || {})[x.id] ? " active" : ""}" data-decor="${x.id}">${(state.decor || {})[x.id] ? "✓ " : ""}${x.name}</button>`).join("");
+    document.getElementById("s_viewKinds").innerHTML = [["one", "Одна дверь"], ["two", "Две двери рядом (санузел)"]].map(([id, nm]) =>
+      `<button type="button" class="wall-texture${(state.twoDoors ? "two" : "one") === id ? " active" : ""}" data-view-kind="${id}">${nm}</button>`).join("");
+    // у двух дверей — только выключатель: мебель и декор прячем
+    const dp = document.getElementById("s_decorPanel");
+    if (dp) dp.hidden = !!state.twoDoors;
+    document.getElementById("s_decorItems").innerHTML = DECOR_FURNITURE.map((x) =>
+      `<button type="button" class="wall-texture${state.furniture === x.id ? " active" : ""}" data-furn="${x.id}">${state.furniture === x.id ? "✓ " : ""}${x.name}</button>`).join("") +
+      `<div class="wall-tex-vars">${DECOR_ITEMS.map((x) =>
+        `<button type="button" class="wall-tex-var${(state.decor || {})[x.id] ? " active" : ""}" data-decor="${x.id}">${(state.decor || {})[x.id] ? "✓ " : ""}${x.name}</button>`).join("")}</div>`;
   }
   function initFloorPanels() {
     const on = (id, fn) => { const n = document.getElementById(id); if (n) n.addEventListener("click", fn); };
@@ -13132,13 +13310,53 @@ const DB = {
       if (b) { state.light = b.dataset.light; renderFloorPanels(); render(); }
     });
     on("s_decorItems", (e) => {
+      const f = e.target.closest("[data-furn]");
+      if (f) {
+        // тумбочка или кресло — что-то одно; повторное нажатие убирает
+        state.furniture = state.furniture === f.dataset.furn ? "" : f.dataset.furn;
+        renderFloorPanels(); render(); return;
+      }
       const b = e.target.closest("[data-decor]");
       if (!b) return;
       const id = b.dataset.decor;
       state.decor = { ...(state.decor || {}), [id]: !(state.decor || {})[id] };
       renderFloorPanels(); render();
     });
+    on("s_viewKinds", (e) => {
+      const b = e.target.closest("[data-view-kind]");
+      if (b) { state.twoDoors = b.dataset.viewKind === "two"; renderFloorPanels(); render(); }
+    });
+    // Нажатия по предметам на самой картинке: цвет мебели и горшка по кругу
+    // пастельного ряда, выключатель — следующий свет и его название на полу.
+    const svg = document.getElementById("s_doorPreview");
+    if (svg) svg.addEventListener("click", (e) => {
+      const t = e.target.closest && e.target.closest("[data-act]");
+      if (!t) return;
+      const act = t.dataset.act;
+      if (act === "switch") {
+        const i = LIGHT_MODES.findIndex((m) => m.id === (state.light || "day"));
+        const m = LIGHT_MODES[(i + 1) % LIGHT_MODES.length];
+        state.light = m.id;
+        showLightLabel(m.name);
+      } else {
+        const dc = { ...(state.decorColor || {}) };
+        dc[act] = ((dc[act] || 0) + 1) % 10;
+        state.decorColor = dc;
+      }
+      renderFloorPanels(); render();
+    });
     renderFloorPanels();
+  }
+
+  // Название света крупно на полу на ~2 с, потом гаснет.
+  let lightLabelTimer = 0;
+  function showLightLabel(name) {
+    const g = document.getElementById("s_doorLabelGroup");
+    if (!g) return;
+    const L = LAYOUTS.scene, y = L.floorY + (L.vbH - L.floorY) * 0.62;
+    g.innerHTML = `<text class="light-label" x="${L.vbW / 2}" y="${y}" text-anchor="middle" font-size="18" font-weight="700" fill="#ffffff" stroke="rgba(0,0,0,0.45)" stroke-width="3" paint-order="stroke">${name}</text>`;
+    clearTimeout(lightLabelTimer);
+    lightLabelTimer = setTimeout(() => { g.innerHTML = ""; }, 2300);
   }
 
   // Свой цвет выбранного подвида текстуры (сложные обои и шпаклёвка) или null.
