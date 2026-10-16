@@ -437,6 +437,14 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 
 .wall-swatch.active { outline: 2px solid var(--accent); outline-offset: 1px; }
 .scene-group.solo-off, .scene-group.tab-off { display: none; }
+.spec-pics-btn { margin-left: 10px; vertical-align: middle; height: 30px; padding: 0 10px; border-radius: 8px; border: 2px solid var(--accent); background: var(--bg); color: var(--accent); font-weight: 800; font-size: 14px; cursor: pointer; }
+.pic-viewer img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.pic-viewer .pv-nav { position: fixed; top: 50%; transform: translateY(-50%); z-index: 10000; width: 44px; height: 64px; border: none; border-radius: 10px; background: rgba(255,255,255,.75); font-size: 34px; line-height: 1; cursor: pointer; }
+.pic-viewer .pv-prev { left: 8px; } .pic-viewer .pv-next { right: 8px; }
+.pic-viewer .pv-bar { position: fixed; left: 0; right: 0; bottom: 14px; z-index: 10000; display: flex; gap: 12px; justify-content: center; align-items: center; color: #fff; font-weight: 700; }
+.pic-viewer .pv-bar button { padding: 8px 12px; border-radius: 8px; border: none; background: rgba(255,255,255,.9); font-weight: 700; }
+.fs-row .fs-btn.icon-btn { flex: 0 0 auto; width: 44px; padding: 2px 0; font-size: 18px; display: inline-flex; align-items: center; justify-content: center; }
+.fs-row #s_fsBtn { white-space: nowrap; }
 .fs-row { display: flex; gap: 6px; align-items: stretch; }
 .fs-row .fs-btn { width: auto; flex: 1; }
 .fs-row .two-btn { flex: 0 0 auto; padding: 2px 10px; display: inline-flex; align-items: center; justify-content: center; }
@@ -1331,9 +1339,18 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
        страницу — фильтры создаются/переиспользуются по значению каналов
        (одинаковые каналы у разных цветов используют один и тот же узел). -->
   <svg width="0" height="0" style="position:absolute;overflow:hidden" aria-hidden="true"><defs id="colorAdjustDefs"></defs></svg>
+  <!-- Просмотр картинок: 2D-снимки спецификации и фото из галереи. -->
+  <div id="picViewer" class="fs-overlay pic-viewer" hidden>
+    <button type="button" class="fs-close" id="picViewerClose" aria-label="Закрыть">✕</button>
+    <img id="picViewerImg" alt="">
+    <button type="button" class="pv-nav pv-prev" id="picViewerPrev" aria-label="Назад">‹</button>
+    <button type="button" class="pv-nav pv-next" id="picViewerNext" aria-label="Вперёд">›</button>
+    <div class="pv-bar"><span id="picViewerCount"></span><button type="button" id="picViewerDel" hidden>🗑 Удалить из спецификации</button></div>
+  </div>
+  <input type="file" id="galleryInput" accept="image/*" multiple hidden>
   <main class="calc-card">
     <div class="topbar" id="topbar">
-      <h1 id="viewTitle"><span id="viewTitleText">Расчет — межком&shy;натные двери</span><button type="button" class="info-btn" id="viewInfoBtn" aria-label="Пояснение к странице" aria-expanded="false" hidden>i</button></h1>
+      <h1 id="viewTitle"><span id="viewTitleText">Расчет — межком&shy;натные двери</span><button type="button" class="info-btn" id="viewInfoBtn" aria-label="Пояснение к странице" aria-expanded="false" hidden>i</button><button type="button" class="spec-pics-btn" id="specPicsBtn" hidden aria-label="2D-картинки спецификации">2D</button></h1>
       <!-- Быстрый переход к 2D-картинке: дверь там рисуется с текущими
            параметрами расчёта (модель, цвет, стекло, размеры), отдельно
            ничего выбирать не нужно. Обратно — кнопкой «Возврат на страницу
@@ -1613,12 +1630,18 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
           <use id="s_doorClone" href="#s_doorLeafAll" style="display:none" pointer-events="none"/>
           <!-- Свет комнаты — поверх всего (см. lightSVG). -->
           <g id="s_doorLightGroup" pointer-events="none"></g>
+          <!-- Свет из комнаты за дверью — на стёклах (см. roomGlow в render);
+               поверх света комнаты: в полумраке стекло светится ярче всего. -->
+          <g id="s_doorRoomGlow" pointer-events="none"></g>
           <!-- Название света на полу на пару секунд (выключатель). -->
           <g id="s_doorLabelGroup" pointer-events="none"></g>
         </svg>
       </div>
       <div class="fs-row">
         <button type="button" id="s_twoBtn" class="fs-btn two-btn" title="Две двери рядом (санузел)" aria-label="Две двери рядом (санузел)"><svg viewBox="0 0 24 16" width="26" height="17" aria-hidden="true"><rect x="2" y="2" width="8" height="13" rx="0.8" fill="none" stroke="currentColor" stroke-width="1.6"/><rect x="14" y="2" width="8" height="13" rx="0.8" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="8" cy="9" r="0.9" fill="currentColor"/><circle cx="20" cy="9" r="0.9" fill="currentColor"/></svg></button>
+        <button type="button" id="s_roomLightBtn" class="fs-btn icon-btn" title="Свет в комнате за дверью" aria-label="Свет в комнате за дверью">💡</button>
+        <button type="button" id="s_toSpecBtn" class="fs-btn icon-btn" title="Сохранить картинку в спецификацию" aria-label="Сохранить картинку в спецификацию">📋</button>
+        <button type="button" id="s_galleryBtn" class="fs-btn icon-btn" title="Фото из галереи" aria-label="Фото из галереи">🖼️</button>
         <button type="button" id="s_fsBtn" class="fs-btn">⛶ Во весь экран</button>
       </div>
       <!-- Команды разметки — под плавающей кнопкой ☰ (см. partsFabSync): под
@@ -2665,6 +2688,8 @@ const DB = {
     twoDoors: false,
     // сторона ручки на сцене: "left" | "right"; выключатель — с той же стороны
     handleSide: "left",
+    // свет в комнате за дверью (кнопка 💡 у «Во весь экран»)
+    roomLight: false,
     // Наличник в 2D: "" — обычный (три доски), "///" — с тремя полосками из
     // деталей со снимков; к «///» — капитель и банкетка (см. casingSceneSvg).
     casingStyle: "",
@@ -3741,6 +3766,7 @@ const DB = {
       sceneGroup: q("doorSceneGroup"),
       lightGroup: q("doorLightGroup"),
       doorClone: q("doorClone"),
+      roomGlow: q("doorRoomGlow"),
       patternId: prefix + "doorTexturePattern",
       textureImageId: prefix + "doorTextureImage",
       shadeGradId: prefix + "doorShadeGradient",
@@ -8813,6 +8839,39 @@ const DB = {
       <circle cx="${plateX}" cy="${handleY + plateH * 0.32}" r="${handleThickness * 0.55}" fill="#6f7377"/>
     `;
 
+    // Свет в комнате за дверью (кнопка 💡): стекло светится тёплым светом,
+    // из щели под полотном на пол падает полоса света. Стекло — у
+    // нарисованной двери это её стёкла (c.glassGroup), у двери со снимка —
+    // детали «Стекло» разметки (в долях кадра → координаты сцены через
+    // photoFrame).
+    if (c.roomGlow) {
+      let glow = "";
+      if (sceneMode && state.roomLight) {
+        const shapes = [];
+        if (!modelPhoto && c.glassGroup) {
+          c.glassGroup.querySelectorAll("rect").forEach((r) => shapes.push(`<rect x="${r.getAttribute("x")}" y="${r.getAttribute("y")}" width="${r.getAttribute("width")}" height="${r.getAttribute("height")}"/>`));
+        } else if (partsDoc && photoFrame) {
+          partsDoc.parts.filter((pt) => pt.k === "g").forEach((pt) => {
+            const X = (fx) => photoFrame.x + fx * photoFrame.w, Y = (fy) => photoFrame.y + fy * photoFrame.h;
+            if (pt.q) shapes.push(`<polygon points="${pt.q.map((q) => X(q[0]) + "," + Y(q[1])).join(" ")}"/>`);
+            else shapes.push(`<rect x="${X(pt.x)}" y="${Y(pt.y)}" width="${pt.w * photoFrame.w}" height="${pt.h * photoFrame.h}"/>`);
+          });
+        }
+        if (shapes.length) {
+          const gid = c.pfx + "roomGlowG", fid = c.pfx + "roomGlowF";
+          // свет «просвечивает» стекло (screen): рисунок стекла остаётся
+          // виден, вокруг — мягкий ореол
+          const one = (dx) => `<g transform="translate(${dx} 0)">` +
+            `<g filter="url(#${fid})" opacity="0.35" fill="#ffcf73" style="mix-blend-mode:screen">${shapes.join("")}</g>` +
+            `<g style="mix-blend-mode:screen" fill="url(#${gid})">${shapes.join("")}</g></g>`;
+          glow = `<defs><radialGradient id="${gid}" cx="50%" cy="40%" r="75%"><stop offset="0" stop-color="#ffe9b0" stop-opacity="0.85"/><stop offset="1" stop-color="#ffb24a" stop-opacity="0.45"/></radialGradient>` +
+            `<filter id="${fid}" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="3"/></filter></defs>` +
+            one(0) + (twoDoors ? one(dx2) : "");
+        }
+      }
+      c.roomGlow.innerHTML = glow;
+    }
+
     // Сцена «на стене» рисуется ПОЗАДИ полотна (группа сцены идёт раньше в
     // DOM), поэтому стена и наличник не перекрывают дверь.
     // Наличник со снимка: рисуется вместо своего, если он на фото обведён.
@@ -10240,7 +10299,12 @@ const DB = {
       // --- Зазор под полотном: полотно висит на gap выше пола (см. drawDoor).
       //     Рисуем в этой щели тёмную полосу (тень порога) — так читается, что
       //     низ двери приподнят над полом, а не шоркает по нему.
-      if (gap > 0) {
+      if (gap > 0 && state.roomLight) {
+        // свет в комнате за дверью: из щели — тёплая полоса и пятно на полу
+        const gapY = door.y + door.h;
+        s += `<rect x="${door.x}" y="${gapY}" width="${door.w}" height="${gap}" fill="#ffe2a0"/>`;
+        s += `<ellipse cx="${door.x + door.w / 2}" cy="${floorY + 3}" rx="${door.w * 0.62}" ry="${Math.max(4, (H - floorY) * 0.12)}" fill="#ffd27a" opacity="0.55" style="mix-blend-mode:screen" filter="url(#${idf("soft6")})"/>`;
+      } else if (gap > 0) {
         const gapY = door.y + door.h; // низ полотна
         s += `<rect x="${door.x}" y="${gapY}" width="${door.w}" height="${gap}" fill="rgba(20,14,6,0.55)"/>`;
         // Мягкая контактная тень на полу прямо под щелью — совсем лёгкая.
@@ -10789,6 +10853,8 @@ const DB = {
   // orderDiscountPercent/orderSummaryBreakdown/orderFinalTotal ниже). Те же
   // правила ввода, что и у калькулятора: 0–100%, округление до рубля.
   let orderDiscount = 0;
+  // id снимков 2D-картинки в черновике («Сохранить в спецификацию» на 2D).
+  let orderPics = [];
   let specHistory = [];
   // Не null, когда открыт просмотр одной из сохранённых спецификаций (через
   // «Сохранённые спецификации» → «Просмотреть») — тогда страница
@@ -10811,6 +10877,7 @@ const DB = {
         orderMeta = (parsed.meta && typeof parsed.meta === "object") ? parsed.meta : { number: null, date: null };
         orderCustomer = (parsed.customer && typeof parsed.customer === "object") ? parsed.customer : { lastName: "", firstName: "", phone: "" };
         orderDiscount = (typeof parsed.discount === "number") ? parsed.discount : 0;
+        orderPics = Array.isArray(parsed.pics) ? parsed.pics : [];
       } else {
         orderItems = [];
         orderMeta = { number: null, date: null };
@@ -10827,7 +10894,7 @@ const DB = {
 
   function saveOrderItems() {
     try {
-      localStorage.setItem(ORDER_STORE_KEY, JSON.stringify({ items: orderItems, meta: orderMeta, customer: orderCustomer, discount: orderDiscount }));
+      localStorage.setItem(ORDER_STORE_KEY, JSON.stringify({ items: orderItems, meta: orderMeta, customer: orderCustomer, discount: orderDiscount, pics: orderPics }));
     } catch (e) {}
   }
 
@@ -10920,11 +10987,11 @@ const DB = {
       if (entry) {
         return {
           items: entry.items, meta: { number: entry.number, date: entry.date },
-          customer: entry.customer, discount: entry.discount || 0, readOnly: true
+          customer: entry.customer, discount: entry.discount || 0, readOnly: true, pics: entry.pics || []
         };
       }
     }
-    return { items: orderItems, meta: orderMeta, customer: orderCustomer, discount: orderDiscount, readOnly: false };
+    return { items: orderItems, meta: orderMeta, customer: orderCustomer, discount: orderDiscount, readOnly: false, pics: orderPics };
   }
 
   function flashSaved(btn, label) {
@@ -11225,7 +11292,8 @@ const DB = {
       customer: { ...orderCustomer },
       discount: orderDiscount,
       items: orderItems.map((it) => ({ ...it, rows: it.rows.slice() })),
-      grandTotal: orderFinalTotal({ items: orderItems, discount: orderDiscount })
+      grandTotal: orderFinalTotal({ items: orderItems, discount: orderDiscount }),
+      pics: orderPics.slice()
     };
     const idx = specHistory.findIndex((e) => e.number === entry.number);
     const prevEntry = idx >= 0 ? specHistory[idx] : null;
@@ -11247,6 +11315,7 @@ const DB = {
     orderMeta = { number: null, date: null };
     orderCustomer = { lastName: "", firstName: "", phone: "" };
     orderDiscount = 0;
+    orderPics = [];
     saveOrderItems();
     renderOrderPage();
     flashSaved(el.saveSpecBtn, "✓ Спецификация сохранена");
@@ -11254,6 +11323,7 @@ const DB = {
 
   function startNewSpecification() {
     if (!confirm("Начать новую спецификацию? Текущий черновик будет очищен (уже сохранённые спецификации не пострадают).")) return;
+    orderPics = [];
     orderItems = [];
     orderMeta = { number: null, date: null };
     orderCustomer = { lastName: "", firstName: "", phone: "" };
@@ -11276,6 +11346,7 @@ const DB = {
     orderMeta = { number: entry.number, date: entry.date };
     orderCustomer = { ...entry.customer };
     orderDiscount = entry.discount || 0;
+    orderPics = (entry.pics || []).slice();
     viewingHistoryNumber = null;
     saveOrderItems();
     setView("order");
@@ -11283,8 +11354,11 @@ const DB = {
 
   function deleteHistoryEntry(number) {
     if (!confirm("Удалить сохранённую спецификацию из списка? Действие необратимо.")) return;
+    const gone = specHistory.find((e) => e.number === number);
     specHistory = specHistory.filter((e) => e.number !== number);
     saveSpecHistory();
+    // снимки удалённой спецификации больше не нужны (если их нет в черновике)
+    ((gone && gone.pics) || []).forEach((id) => { if (!orderPics.includes(id)) idbDelete(SPEC_PIC_STORE, id).catch(() => {}); });
     renderSpecHistoryPage();
   }
 
@@ -11295,6 +11369,7 @@ const DB = {
     document.title = specFileBaseName(view);
 
     el.specNumber.textContent = specNumberText(view.meta);
+    updateSpecPicsBtn();
     el.draftActions.hidden = view.readOnly;
     el.historyViewActions.hidden = !view.readOnly;
     el.specCustomerEdit.hidden = view.readOnly;
@@ -11416,11 +11491,25 @@ const DB = {
 
   function shareOrder() {
     const text = buildOrderShareText();
-    if (navigator.share) {
-      navigator.share({ title: `Спецификация ${specNumberText(currentSpecView().meta)}`, text }).catch(() => {});
-    } else {
-      shareOrderViaWhatsApp();
+    const view = currentSpecView();
+    const title = `Спецификация ${specNumberText(view.meta)}`;
+    if (!navigator.share) { shareOrderViaWhatsApp(); return; }
+    // Есть 2D-картинки — отправляем их вместе с текстом (если телефон умеет
+    // делиться файлами), иначе — только текст.
+    const ids = view.pics || [];
+    if (!ids.length || !navigator.canShare) {
+      navigator.share({ title, text }).catch(() => {});
+      return;
     }
+    Promise.all(ids.map((id) => idbGet(SPEC_PIC_STORE, id).catch(() => null)))
+      .then((urls) => Promise.all(urls.filter(Boolean).map((u, i) => fetch(u).then((r) => r.blob())
+        .then((b) => new File([b], `2D-${specNumberText(view.meta).replace(/[^\w\d№-]+/g, "_")}-${i + 1}.jpg`, { type: "image/jpeg" })))))
+      .then((files) => {
+        const data = { title, text, files };
+        if (files.length && navigator.canShare(data)) return navigator.share(data);
+        return navigator.share({ title, text });
+      })
+      .catch(() => {});
   }
 
   function shareOrderViaWhatsApp() {
@@ -13486,6 +13575,132 @@ const DB = {
     renderFloorPanels();
   }
 
+  // --- Просмотр картинок (2D-снимки спецификации, фото из галереи) -----
+  let pvList = [], pvIdx = 0, pvOnDelete = null;
+  function openPicViewer(urls, start, onDelete) {
+    pvList = urls; pvIdx = start || 0; pvOnDelete = onDelete || null;
+    if (!pvList.length) return;
+    document.getElementById("picViewer").hidden = false;
+    showPic();
+  }
+  function showPic() {
+    const n = pvList.length;
+    if (!n) { document.getElementById("picViewer").hidden = true; return; }
+    pvIdx = (pvIdx + n) % n;
+    document.getElementById("picViewerImg").src = pvList[pvIdx];
+    document.getElementById("picViewerCount").textContent = n > 1 ? `${pvIdx + 1} / ${n}` : "";
+    document.getElementById("picViewerPrev").hidden = n < 2;
+    document.getElementById("picViewerNext").hidden = n < 2;
+    document.getElementById("picViewerDel").hidden = !pvOnDelete;
+  }
+  function initPicViewer() {
+    const g = (id) => document.getElementById(id);
+    g("picViewerClose").addEventListener("click", () => { g("picViewer").hidden = true; });
+    g("picViewerPrev").addEventListener("click", () => { pvIdx--; showPic(); });
+    g("picViewerNext").addEventListener("click", () => { pvIdx++; showPic(); });
+    g("picViewerDel").addEventListener("click", () => {
+      if (!pvOnDelete || !confirm("Удалить эту картинку из спецификации?")) return;
+      pvOnDelete(pvIdx);
+      pvList.splice(pvIdx, 1);
+      showPic();
+    });
+    // листание пальцем
+    let sx = null;
+    g("picViewer").addEventListener("touchstart", (e) => { sx = e.touches[0].clientX; }, { passive: true });
+    g("picViewer").addEventListener("touchend", (e) => {
+      if (sx == null) return;
+      const dx = e.changedTouches[0].clientX - sx; sx = null;
+      if (Math.abs(dx) > 50 && pvList.length > 1) { pvIdx += dx < 0 ? 1 : -1; showPic(); }
+    });
+    // «2D» у заголовка спецификации — её сохранённые картинки
+    g("specPicsBtn").addEventListener("click", () => {
+      const view = currentSpecView();
+      const ids = (view.pics || []).slice();
+      Promise.all(ids.map((id) => idbGet(SPEC_PIC_STORE, id).catch(() => null))).then((urls) => {
+        const ok = ids.filter((id, i) => urls[i]), list = urls.filter(Boolean);
+        if (!list.length) { alert("Картинки этой спецификации не найдены в памяти телефона."); return; }
+        openPicViewer(list, 0, view.readOnly ? null : (i) => {
+          const id = ok[i];
+          orderPics = orderPics.filter((x) => x !== id);
+          ok.splice(i, 1);
+          saveOrderItems();
+          if (!specHistory.some((e) => (e.pics || []).includes(id))) idbDelete(SPEC_PIC_STORE, id).catch(() => {});
+          updateSpecPicsBtn();
+        });
+      });
+    });
+    // Галерея: телефон открывает свой выбор фото (папку — например,
+    // Pictures/ЩИТОВЫЕ/… — выбирают там же); выбранные фото листаются здесь.
+    g("s_galleryBtn").addEventListener("click", () => g("galleryInput").click());
+    g("galleryInput").addEventListener("change", (e) => {
+      const files = Array.from(e.target.files || []).filter((f) => /^image\//.test(f.type));
+      if (files.length) openPicViewer(files.map((f) => URL.createObjectURL(f)), 0, null);
+      e.target.value = "";
+    });
+    g("s_roomLightBtn").addEventListener("click", () => {
+      state.roomLight = !state.roomLight;
+      g("s_roomLightBtn").classList.toggle("active", state.roomLight);
+      showLightLabel(state.roomLight ? "Свет в комнате включён" : "Свет в комнате выключен");
+      render();
+    });
+    g("s_toSpecBtn").addEventListener("click", () => {
+      const btn = g("s_toSpecBtn");
+      btn.disabled = true;
+      captureSceneJpeg().then((url) => {
+        const id = "p" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+        return idbPut(SPEC_PIC_STORE, id, url).then(() => {
+          orderPics.push(id);
+          saveOrderItems();
+          updateSpecPicsBtn();
+          showLightLabel("Картинка в спецификации ✓");
+        });
+      }).catch(() => alert("Не удалось сохранить картинку в спецификацию."))
+        .finally(() => { btn.disabled = false; });
+    });
+  }
+  function updateSpecPicsBtn() {
+    const b = document.getElementById("specPicsBtn");
+    if (!b) return;
+    const n = (currentSpecView().pics || []).length;
+    b.hidden = !n || (el.viewOrder && el.viewOrder.hidden);
+    b.textContent = n > 1 ? `2D ×${n}` : "2D";
+  }
+  // Снимок 2D-картинки как есть (JPEG data URL): SVG сцены со всеми его
+  // картинками; фильтры тона из общего <defs> (#colorAdjustDefs) копируются
+  // внутрь, иначе в снимке они бы потерялись.
+  function captureSceneJpeg() {
+    return new Promise((resolve, reject) => {
+      const svg = document.getElementById("s_doorPreview");
+      const vb = (svg.getAttribute("viewBox") || "0 0 360 400").split(/\s+/).map(Number);
+      const sc = 3, W = Math.round(vb[2] * sc), H = Math.round(vb[3] * sc);
+      const clone = svg.cloneNode(true);
+      clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+      clone.setAttribute("xmlns:xlink", "http://www.w3.org/1999/xlink");
+      clone.setAttribute("width", W); clone.setAttribute("height", H);
+      clone.removeAttribute("class");
+      const lab = clone.querySelector("#s_doorLabelGroup");
+      if (lab) lab.innerHTML = "";
+      const extra = document.getElementById("colorAdjustDefs");
+      if (extra && extra.innerHTML) {
+        const d = document.createElementNS("http://www.w3.org/2000/svg", "defs");
+        d.innerHTML = extra.innerHTML;
+        clone.insertBefore(d, clone.firstChild);
+      }
+      const url = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(new XMLSerializer().serializeToString(clone));
+      const img = new Image();
+      img.onload = () => {
+        const cv = document.createElement("canvas");
+        cv.width = W; cv.height = H;
+        const cx = cv.getContext("2d");
+        cx.fillStyle = "#ffffff"; cx.fillRect(0, 0, W, H);
+        cx.drawImage(img, 0, 0, W, H);
+        try { resolve(cv.toDataURL("image/jpeg", 0.85)); } catch (err) { reject(err); }
+      };
+      img.onerror = reject;
+      img.src = url;
+    });
+  }
+
   // Название света крупно на полу на ~2 с, потом гаснет.
   let lightLabelTimer = 0;
   function showLightLabel(name) {
@@ -13648,6 +13863,8 @@ const DB = {
     // См. DEFAULT_DOCUMENT_TITLE — вне «Спецификации» заголовок обычный,
     // renderOrderPage сам выставит нужный при входе на страницу.
     if (view !== "order") document.title = DEFAULT_DOCUMENT_TITLE;
+    const spb = document.getElementById("specPicsBtn");
+    if (spb && view !== "order") spb.hidden = true;
     el.viewCalc.hidden = view !== "calc";
     el.viewScene.hidden = view !== "scene";
     el.viewPrices.hidden = view !== "prices";
@@ -13691,16 +13908,21 @@ const DB = {
   const PHOTO_DB_NAME = "doorcalc_photos_v1";
   const PHOTO_STORE_COLOR = "colorPhotos";
   const PHOTO_STORE_MODEL = "modelPhotos";
+  // Снимки 2D-картинки, сохранённые в спецификацию (ключ — id снимка, значение
+  // — JPEG data URL). В самой спецификации — только список id (pics).
+  const SPEC_PIC_STORE = "specPics";
   let photoDbPromise = null;
   function openPhotoDb() {
     if (!window.indexedDB) return Promise.reject(new Error("indexedDB unavailable"));
     if (!photoDbPromise) {
       photoDbPromise = new Promise((resolve, reject) => {
-        const req = indexedDB.open(PHOTO_DB_NAME, 1);
+        // v2: + картинки 2D для спецификаций (SPEC_PIC_STORE)
+        const req = indexedDB.open(PHOTO_DB_NAME, 2);
         req.onupgradeneeded = () => {
           const db = req.result;
           if (!db.objectStoreNames.contains(PHOTO_STORE_COLOR)) db.createObjectStore(PHOTO_STORE_COLOR);
           if (!db.objectStoreNames.contains(PHOTO_STORE_MODEL)) db.createObjectStore(PHOTO_STORE_MODEL);
+          if (!db.objectStoreNames.contains(SPEC_PIC_STORE)) db.createObjectStore(SPEC_PIC_STORE);
         };
         req.onsuccess = () => resolve(req.result);
         req.onerror = () => reject(req.error);
@@ -13713,6 +13935,14 @@ const DB = {
       const tx = db.transaction(storeName, "readwrite");
       tx.objectStore(storeName).put(value, key);
       tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    }));
+  }
+  function idbGet(storeName, key) {
+    return openPhotoDb().then((db) => new Promise((resolve, reject) => {
+      const tx = db.transaction(storeName, "readonly");
+      const rq = tx.objectStore(storeName).get(key);
+      tx.oncomplete = () => resolve(rq.result);
       tx.onerror = () => reject(tx.error);
     }));
   }
@@ -16315,6 +16545,7 @@ const DB = {
     renderWallSwatches();
     renderWallTextures();
     initFloorPanels();
+    initPicViewer();
     updateEditBanner();
     bind();
 
