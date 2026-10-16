@@ -587,22 +587,24 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 /* Цвет детали = её вид. Те же цвета у кнопок вида ниже. Заливка нарочно
    очень слабая: под ней фотография, по которой и ведётся разметка, — при
    плотной заливке дверь под ней пропадала и ориентиров не оставалось.
-   Вид детали читается по цветному кружку с буквой, а не по заливке. */
-.part.k-s { background: rgba(41,121,255,.10); }
+   Вид детали читается по цветному кружку с буквой, а не по заливке.
+   Заливка ещё вдвое слабее (0.05): границы деталей на снимке под ней было
+   тяжело разглядеть (просьба заказчика). */
+.part.k-s { background: rgba(41,121,255,.05); }
 .part.k-s > span { background: rgba(41,121,255,.85); }
-.part.k-p { background: rgba(0,150,90,.10); }
+.part.k-p { background: rgba(0,150,90,.05); }
 .part.k-p > span { background: rgba(0,150,90,.85); }
-.part.k-f { background: rgba(240,150,20,.10); }
+.part.k-f { background: rgba(240,150,20,.05); }
 .part.k-f > span { background: rgba(200,120,10,.85); }
-.part.k-g { background: rgba(0,190,215,.10); }
+.part.k-g { background: rgba(0,190,215,.05); }
 .part.k-g > span { background: rgba(0,150,175,.85); }
 /* Рамка полотна — ориентир, а не деталь: только пунктир, без заливки,
    чтобы не мешала смотреть на дверь. */
 .part.k-d { background: none; border-style: dashed; }
 .part.k-d > span { background: rgba(0,0,0,.7); }
-.part.k-rv, .part.k-rh { background: rgba(214,51,132,.10); }
+.part.k-rv, .part.k-rh { background: rgba(214,51,132,.05); }
 .part.k-rv > span, .part.k-rh > span { background: rgba(190,40,118,.85); }
-.part.k-nv, .part.k-nh { background: rgba(124,77,255,.10); }
+.part.k-nv, .part.k-nh { background: rgba(124,77,255,.05); }
 .part.k-nv > span, .part.k-nh > span { background: rgba(104,60,230,.85); }
 .parts-kinds, .parts-tools { display: flex; flex-wrap: wrap; gap: 4px; justify-content: center; align-items: center; }
 .parts-lead { font-size: 12px; color: var(--muted); }
@@ -610,8 +612,8 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 .parts-tools button:disabled { opacity: .45; }
 .parts-stage.dragging .part > span { opacity: 0; }
 .parts-stage.dragging .ph { opacity: .35; }
-.part.k-t { background: rgba(0,0,0,.18); }
-.part.k-z { background: rgba(255,120,0,.14); border-style: dashed; }
+.part.k-t { background: rgba(0,0,0,.09); }
+.part.k-z { background: rgba(255,120,0,.07); border-style: dashed; }
 .part .zin { position: absolute; border: 1px dashed rgba(160,60,0,.95); pointer-events: none; }
 /* Углы внутреннего края фрезеровки: квадратики стоят ВНУТРИ, касаясь угла. */
 .part .zin .phi-nw { left: 0; top: 0; }
@@ -651,9 +653,9 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 .parts-float .pf-del { margin-left: auto; width: 40px; height: 34px; padding: 0; font-size: 22px; line-height: 1; border-radius: 8px; border: 1px solid var(--border); background: #fff; box-shadow: 0 1px 4px rgba(0,0,0,.35); }
 .part.quad { background: none !important; border-color: transparent !important; }
 .part .pq { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
-.part .pq polygon { fill: rgba(0,190,215,.16); stroke: rgba(0,0,0,.75); stroke-width: 1px; vector-effect: non-scaling-stroke; }
-.part.k-t .pq polygon { fill: rgba(0,0,0,.18); }
-.part.k-z .pq polygon { fill: rgba(255,120,0,.22); stroke: rgba(210,90,0,.95); stroke-dasharray: 3 2; }
+.part .pq polygon { fill: rgba(0,190,215,.08); stroke: rgba(0,0,0,.75); stroke-width: 1px; vector-effect: non-scaling-stroke; }
+.part.k-t .pq polygon { fill: rgba(0,0,0,.09); }
+.part.k-z .pq polygon { fill: rgba(255,120,0,.11); stroke: rgba(210,90,0,.95); stroke-dasharray: 3 2; }
 .part .ph.phq { opacity: .85; }
 .part .ph.phq-0 { transform: translate(-100%, -100%); }
 .part .ph.phq-1 { transform: translate(0, -100%); }
