@@ -627,10 +627,17 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
     repeating-linear-gradient(90deg, var(--gc) 0 2px, transparent 2px 10px) left bottom / 100% .5px no-repeat,
     repeating-linear-gradient(180deg, var(--gc) 0 2px, transparent 2px 10px) left top / .5px 100% no-repeat,
     repeating-linear-gradient(180deg, var(--gc) 0 2px, transparent 2px 10px) right top / .5px 100% no-repeat; }
-.parts-float { position: fixed; top: 10px; left: 10px; right: 66px; z-index: 1000; display: flex; align-items: center; gap: 8px;
-  padding: 6px 8px; box-sizing: border-box; background: var(--bg); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,.25); }
+/* Плавающие кнопки активной детали: вверху посередине ВИДИМОЙ части экрана
+   и того же размера при любом увеличении страницы пальцами (см.
+   partsFloatPlace — следит за visualViewport). Без подложки и рамки — как
+   подписи расстояний у линий разметки. */
+.parts-float { position: fixed; top: 0; left: 0; z-index: 1000; display: flex; align-items: center; gap: 10px;
+  width: max-content; max-width: 94vw; padding: 0; box-sizing: border-box; background: none; border: 0; box-shadow: none;
+  transform-origin: 0 0; }
+.parts-float .pf-sl { width: 200px; }
+.parts-float .pf-sl b { text-shadow: 0 0 3px #fff, 0 0 3px #fff, 0 0 2px #fff; }
 .parts-float[hidden] { display: none; }
-.parts-float .pf-sl { flex: 1; display: flex; align-items: center; gap: 6px; min-width: 0; }
+.parts-float .pf-sl { flex: 0 0 auto; display: flex; align-items: center; gap: 6px; min-width: 0; }
 .parts-float .pf-sl b { min-width: 28px; text-align: right; font-size: 14px; }
 .parts-float .pf-sl input { flex: 1; min-width: 0; }
 .parts-float .pf-sq { margin-left: auto; flex: 0 0 auto; width: 30px; height: 30px; padding: 0; box-sizing: border-box; border-radius: 6px;
@@ -639,7 +646,7 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 .parts-float .pf-sq:disabled { opacity: .2; }
 .parts-float .pf-sq + .pf-del { margin-left: 0; }
 .parts-float .pf-del:disabled { opacity: .35; }
-.parts-float .pf-del { margin-left: auto; width: 40px; height: 34px; padding: 0; font-size: 22px; line-height: 1; border-radius: 8px; border: 1px solid var(--border); background: #fff; }
+.parts-float .pf-del { margin-left: auto; width: 40px; height: 34px; padding: 0; font-size: 22px; line-height: 1; border-radius: 8px; border: 1px solid var(--border); background: #fff; box-shadow: 0 1px 4px rgba(0,0,0,.35); }
 .part.quad { background: none !important; border-color: transparent !important; }
 .part .pq { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
 .part .pq polygon { fill: rgba(0,190,215,.16); stroke: rgba(0,0,0,.75); stroke-width: 1px; vector-effect: non-scaling-stroke; }
@@ -6178,8 +6185,23 @@ const DB = {
     fab.hidden = !on;
     if (!on) { menu.hidden = true; fab.classList.remove("on"); }
     const fl = document.getElementById("s_partsFloat");
-    if (fl) fl.hidden = !on || !fl.innerHTML;
+    if (fl) { fl.hidden = !on || !fl.innerHTML; if (!fl.hidden) partsFloatPlace(); }
   }
+  // Держит плавающие кнопки вверху посередине видимой части экрана: при
+  // увеличении страницы пальцами fixed-элементы остаются у краёв «большой»
+  // страницы и уходят за экран, поэтому сдвигаем их за visualViewport и
+  // ужимаем обратно на его масштаб — на экране они всегда одного размера.
+  function partsFloatPlace() {
+    const fl = document.getElementById("s_partsFloat"), vv = window.visualViewport;
+    if (!fl || fl.hidden) return;
+    const sc = vv ? vv.scale : 1, ox = vv ? vv.offsetLeft : 0, oy = vv ? vv.offsetTop : 0, vw = vv ? vv.width : window.innerWidth;
+    fl.style.transform = `translate(${ox + vw / 2}px, ${oy + 10 / sc}px) scale(${1 / sc}) translateX(-50%)`;
+  }
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener("resize", partsFloatPlace);
+    window.visualViewport.addEventListener("scroll", partsFloatPlace);
+  }
+  window.addEventListener("scroll", partsFloatPlace, { passive: true });
 
   function partsEditorCtx() {
     const m = getModel(state.modelId);
@@ -7503,7 +7525,9 @@ const DB = {
       // (нажатие снимает активность), блёклый — когда активной нет (нажатие
       // возвращает активность последней детали). Место — шкале (просьба заказчика).
       const sP = sel && sel.k === "z" && sel.v === "patina" ? sel : null;
-      fl.innerHTML = leafEdit ? "" : (sP ? `<label class="pf-sl"><b>${sP.a == null ? 50 : sP.a}</b><input type="range" min="0" max="100" step="1" value="${sP.a == null ? 50 : sP.a}" data-pzs aria-label="Чувствительность патины"></label>` : "") + (sT ? `<label class="pf-sl"><b>${sT.a == null ? 40 : sT.a}</b><input type="range" min="0" max="100" step="1" value="${sT.a == null ? 40 : sT.a}" data-shade aria-label="Сила тени"></label>` : "")
+      // Кнопки видны только пока деталь активна: сняли активность или закрыли
+      // панель — исчезают, активировали снова — появляются.
+      fl.innerHTML = leafEdit || !sel ? "" : (sP ? `<label class="pf-sl"><b>${sP.a == null ? 50 : sP.a}</b><input type="range" min="0" max="100" step="1" value="${sP.a == null ? 50 : sP.a}" data-pzs aria-label="Чувствительность патины"></label>` : "") + (sT ? `<label class="pf-sl"><b>${sT.a == null ? 40 : sT.a}</b><input type="range" min="0" max="100" step="1" value="${sT.a == null ? 40 : sT.a}" data-shade aria-label="Сила тени"></label>` : "")
         + (sel ? `<button type="button" data-act="deselect" class="pf-sq on" aria-label="Снять активность"></button>`
           : `<button type="button" data-act="reselect" class="pf-sq" aria-label="Сделать активной"${canBack ? "" : " disabled"}></button>`)
         + `<button type="button" data-act="del" class="pf-del" aria-label="Удалить"${sel ? "" : " disabled"}>×</button>`;
