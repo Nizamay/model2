@@ -443,11 +443,13 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 .pic-viewer .pv-prev { left: 8px; } .pic-viewer .pv-next { right: 8px; }
 .pic-viewer .pv-bar { position: fixed; left: 0; right: 0; bottom: 14px; z-index: 10000; display: flex; gap: 12px; justify-content: center; align-items: center; color: #fff; font-weight: 700; }
 .pic-viewer .pv-bar button { padding: 8px 12px; border-radius: 8px; border: none; background: rgba(255,255,255,.9); font-weight: 700; }
-.fs-row .fs-btn.icon-btn { flex: 0 0 auto; width: 44px; padding: 2px 0; font-size: 18px; display: inline-flex; align-items: center; justify-content: center; }
-.fs-row #s_fsBtn { white-space: nowrap; }
-.fs-row { display: flex; gap: 6px; align-items: stretch; }
+/* Кнопки-значки узкие, чтобы «Во весь экран» помещалась целиком и при
+   крупном шрифте телефона. */
+.fs-row .fs-btn.icon-btn { flex: 0 0 auto; width: 34px; padding: 2px 0; font-size: 15px; display: inline-flex; align-items: center; justify-content: center; }
+.fs-row #s_fsBtn { white-space: nowrap; min-width: 0; padding: 4px 6px; }
+.fs-row { display: flex; gap: 4px; align-items: stretch; }
 .fs-row .fs-btn { width: auto; flex: 1; }
-.fs-row .two-btn { flex: 0 0 auto; padding: 2px 10px; display: inline-flex; align-items: center; justify-content: center; }
+.fs-row .two-btn { flex: 0 0 auto; padding: 2px 5px; display: inline-flex; align-items: center; justify-content: center; }
 .fs-btn.active { border-color: var(--accent); color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--bg)); }
 .scene-tabs { display: flex; gap: 8px; margin: 8px 0; }
 .scene-tabs button { flex: 1; padding: 10px 12px; font-size: 15px; font-weight: 700; border-radius: 10px; border: 1px solid var(--border); background: var(--bg); color: var(--text); cursor: pointer; }
@@ -1638,7 +1640,7 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
         </svg>
       </div>
       <div class="fs-row">
-        <button type="button" id="s_twoBtn" class="fs-btn two-btn" title="Две двери рядом (санузел)" aria-label="Две двери рядом (санузел)"><svg viewBox="0 0 24 16" width="26" height="17" aria-hidden="true"><rect x="2" y="2" width="8" height="13" rx="0.8" fill="none" stroke="currentColor" stroke-width="1.6"/><rect x="14" y="2" width="8" height="13" rx="0.8" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="8" cy="9" r="0.9" fill="currentColor"/><circle cx="20" cy="9" r="0.9" fill="currentColor"/></svg></button>
+        <button type="button" id="s_twoBtn" class="fs-btn two-btn" title="Две двери рядом (санузел)" aria-label="Две двери рядом (санузел)"><svg viewBox="0 0 24 16" width="22" height="15" aria-hidden="true"><rect x="2" y="2" width="8" height="13" rx="0.8" fill="none" stroke="currentColor" stroke-width="1.6"/><rect x="14" y="2" width="8" height="13" rx="0.8" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="8" cy="9" r="0.9" fill="currentColor"/><circle cx="20" cy="9" r="0.9" fill="currentColor"/></svg></button>
         <button type="button" id="s_roomLightBtn" class="fs-btn icon-btn" title="Свет в комнате за дверью" aria-label="Свет в комнате за дверью">💡</button>
         <button type="button" id="s_toSpecBtn" class="fs-btn icon-btn" title="Сохранить картинку в спецификацию" aria-label="Сохранить картинку в спецификацию">📋</button>
         <button type="button" id="s_galleryBtn" class="fs-btn icon-btn" title="Фото из галереи" aria-label="Фото из галереи">🖼️</button>
