@@ -675,8 +675,11 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 .parts-mm { position: fixed; z-index: 1003; pointer-events: none; font: 700 13px/1 system-ui, sans-serif; color: rgba(255, 236, 150, .95);
   text-shadow: 0 0 2px rgba(0,0,0,.95), 0 0 5px rgba(0,0,0,.6); opacity: .85; }
 .parts-mm[hidden] { display: none; }
-.parts-tip { position: absolute; z-index: 5; transform: translate(-50%, -120%); padding: 2px 6px; border-radius: 8px; font-size: 12px; font-weight: 700;
-  color: #fff; background: rgba(20,20,20,.85); pointer-events: none; white-space: nowrap; }
+/* Число у пальца и «на фото N» под ним — один блок, плывут вместе. Размер
+   постоянный при любом увеличении страницы (scale = 1/visualViewport.scale). */
+.parts-mm { transform-origin: 0 0; white-space: nowrap; }
+.parts-mm .pm-s { display: block; margin-top: 3px; font-size: 12px; }
+.parts-mm .pm-s:empty, .parts-mm .pm-n:empty { display: none; }
 .parts-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; width: 100%; }
 .parts-col { display: flex; flex-direction: column; gap: 4px; }
 .parts-col button { width: 100%; text-align: left; }
@@ -8186,7 +8189,6 @@ const DB = {
   function partsShadeTip(p, drag) {
     const stage = document.getElementById("s_partsStage");
     if (!stage) return;
-    let tip = stage.querySelector(".parts-tip");
     const box = drag.box, vert = p.h * box.height >= p.w * box.width;
     const a0 = vert ? p.x : p.y, a1 = vert ? p.x + p.w : p.y + p.h;
     const b0 = vert ? p.y : p.x, b1 = vert ? p.y + p.h : p.x + p.w;
@@ -8201,15 +8203,14 @@ const DB = {
         if (!best || mid < best.mid) best = { v: v, mid: mid };
       });
     });
-    if (!best) { if (tip) tip.remove(); return; }
+    if (!best) { partsMmShade(""); return; }
     // Тень на снимке у этого штриха — в единицах шкалы: сила 100 темнит на 80 %.
     const dk = partsPhotoShade(best.v, b0, b1, vert, (a1 - a0) / 2);
-    if (dk === null) { if (tip) tip.remove(); return; }
-    if (!tip) { tip = document.createElement("div"); tip.className = "parts-tip"; stage.appendChild(tip); }
-    tip.textContent = "на фото " + Math.round(Math.min(100, dk / 0.8 * 100));
-    // Подсказка посередине тени, а не у края: там жёлтые углы.
-    tip.style.left = ((vert ? best.v : (b0 + b1) / 2) * 100) + "%";
-    tip.style.top = ((vert ? (b0 + b1) / 2 : best.v) * 100) + "%";
+    if (dk === null) { partsMmShade(""); return; }
+    // Подсказка — под счётчиком мм у пальца, плывёт вместе с ним.
+    partsMmShade("на фото " + Math.round(Math.min(100, dk / 0.8 * 100)));
+    const el = partsMmEl();
+    if (!el.hidden && drag.last) partsMmPlace(el, drag.last.x, drag.last.y);
   }
 
   // Четырёхугольник наклонной детали внутри её прямоугольника (в процентах) и
@@ -8235,10 +8236,37 @@ const DB = {
   // верхним и нижним. У наклонной — ширина на высоте двигаемого угла.
   // Только цифры, бледно-жёлтые и полупрозрачные: при увеличении снимка они
   // у пальца, и одинаковые тонкие стёкла/тени выставляются по числу.
-  function partsMmTip(p, drag) {
+  let partsMmTimer = 0;
+  function partsMmEl() {
     let el = document.getElementById("s_partsMm");
-    if (!el) { el = document.createElement("div"); el.id = "s_partsMm"; el.className = "parts-mm"; el.hidden = true; document.body.appendChild(el); }
+    if (!el) {
+      el = document.createElement("div"); el.id = "s_partsMm"; el.className = "parts-mm"; el.hidden = true;
+      el.innerHTML = '<span class="pm-n"></span><span class="pm-s"></span>';
+      document.body.appendChild(el);
+    }
+    return el;
+  }
+  function partsMmShade(txt) { partsMmEl().querySelector(".pm-s").textContent = txt; }
+  // Блок у пальца в координатах экрана (clientX/Y): при увеличении страницы
+  // он того же размера и не выходит за видимую часть экрана.
+  function partsMmPlace(el, x, y) {
+    const vv = window.visualViewport;
+    const sc = vv ? vv.scale : 1, ox = vv ? vv.offsetLeft : 0, oy = vv ? vv.offsetTop : 0;
+    const vw = vv ? vv.width : window.innerWidth, vh = vv ? vv.height : window.innerHeight;
+    el.style.transform = "scale(" + (1 / sc).toFixed(4) + ")";
+    const w = el.offsetWidth / sc, h = el.offsetHeight / sc, m = 4 / sc;
+    let l = x + 26 / sc, t = y - 54 / sc;
+    if (l + w > ox + vw - m) l = x - 26 / sc - w;   // справа не влезло — слева от пальца
+    if (t < oy + m) t = y + 40 / sc;                // сверху не влезло — под пальцем
+    l = Math.max(ox + m, Math.min(ox + vw - w - m, l));
+    t = Math.max(oy + m, Math.min(oy + vh - h - m, t));
+    el.style.left = l + "px"; el.style.top = t + "px";
+  }
+  function partsMmTip(p, drag) {
+    const el = partsMmEl();
+    clearTimeout(partsMmTimer);
     if (!drag.last || (drag.mode !== "move" && drag.mode !== "resize" && drag.mode !== "quad")) { el.hidden = true; return; }
+    if (!(p.k === "t" && drag.guides)) partsMmShade("");
     const W = FRAME_MM.w, H = FRAME_MM.h, tall = p.h * H >= p.w * W;
     let mm = tall ? p.w * W : p.h * H;
     if (p.q) {
@@ -8247,10 +8275,9 @@ const DB = {
       const sp = quadSpan(pts, tall ? c[1] * H : c[0] * W, tall);
       if (sp) mm = sp[1] - sp[0];
     }
-    el.textContent = mm < 10 ? mm.toFixed(1).replace(".", ",") : String(Math.round(mm));
-    el.style.left = (drag.last.x + 26) + "px";
-    el.style.top = (drag.last.y - 54) + "px";
+    el.querySelector(".pm-n").textContent = mm < 10 ? mm.toFixed(1).replace(".", ",") : String(Math.round(mm));
     el.hidden = false;
+    partsMmPlace(el, drag.last.x, drag.last.y);
   }
 
   function partsZinApply(p, zin) {
@@ -8282,8 +8309,17 @@ const DB = {
     partsDrag = null;
     const stg = document.getElementById("s_partsStage");
     // Подсказку «на фото N» оставляем ещё на 3 с — успеть прочесть число.
-    if (stg) { stg.classList.remove("dragging"); const tip = stg.querySelector(".parts-tip"); if (tip) setTimeout(() => tip.remove(), 3000); }
-    { const mm = document.getElementById("s_partsMm"); if (mm) mm.hidden = true; }
+    if (stg) stg.classList.remove("dragging");
+    {
+      const mm = document.getElementById("s_partsMm");
+      if (mm) {
+        const sh = mm.querySelector(".pm-s");
+        if (!mm.hidden && sh && sh.textContent) {
+          clearTimeout(partsMmTimer);
+          partsMmTimer = setTimeout(() => { mm.hidden = true; sh.textContent = ""; }, 3000);
+        } else mm.hidden = true;
+      }
+    }
     const doc = partsOf(drag.modelId);
     if (!doc) return;
     // В режиме подгонки полотна ничего не записываем: запись и каркас — по
