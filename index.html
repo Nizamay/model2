@@ -436,7 +436,14 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 }
 
 .wall-swatch.active { outline: 2px solid var(--accent); outline-offset: 1px; }
-.scene-group.solo-off { display: none; }
+.scene-group.solo-off, .scene-group.tab-off { display: none; }
+.fs-row { display: flex; gap: 6px; align-items: stretch; }
+.fs-row .fs-btn { width: auto; flex: 1; }
+.fs-row .two-btn { flex: 0 0 auto; padding: 2px 10px; display: inline-flex; align-items: center; justify-content: center; }
+.fs-btn.active { border-color: var(--accent); color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--bg)); }
+.scene-tabs { display: flex; gap: 8px; margin: 8px 0; }
+.scene-tabs button { flex: 1; padding: 10px 12px; font-size: 15px; font-weight: 700; border-radius: 10px; border: 1px solid var(--border); background: var(--bg); color: var(--text); cursor: pointer; }
+.scene-tabs button.active { border-color: var(--accent); background: var(--accent); color: #fff; }
 .light-label { animation: lightLabel 2.2s ease forwards; }
 @keyframes lightLabel { 0% { opacity: 0; } 12% { opacity: 1; } 75% { opacity: 1; } 100% { opacity: 0; } }
 .wall-own-note { margin: 8px 0 0; font-size: 12px; color: var(--muted, #6b7280); }
@@ -688,7 +695,7 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
    открыть соседнюю (см. doorSolo). Закрыл — все снова видны. */
 .adjust-panel.solo-hide { display: none !important; }
 /* Настройка двери: картинку на стене и «Во весь экран» прячем (см. doorSolo). */
-#viewScene.door-tuning .door-preview, #viewScene.door-tuning #s_fsBtn { display: none !important; }
+#viewScene.door-tuning .door-preview, #viewScene.door-tuning #s_fsBtn, #viewScene.door-tuning .fs-row { display: none !important; }
 .parts-kind.k-z { background: rgba(255,120,0,.16); }
 .part.k-t > span { background: rgba(40,40,40,.85); }
 .parts-kind.k-t { background: rgba(0,0,0,.14); }
@@ -1599,7 +1606,10 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
           <g id="s_doorLabelGroup" pointer-events="none"></g>
         </svg>
       </div>
-      <button type="button" id="s_fsBtn" class="fs-btn">⛶ Во весь экран</button>
+      <div class="fs-row">
+        <button type="button" id="s_twoBtn" class="fs-btn two-btn" title="Две двери рядом (санузел)" aria-label="Две двери рядом (санузел)"><svg viewBox="0 0 24 16" width="26" height="17" aria-hidden="true"><rect x="2" y="2" width="8" height="13" rx="0.8" fill="none" stroke="currentColor" stroke-width="1.6"/><rect x="14" y="2" width="8" height="13" rx="0.8" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="8" cy="9" r="0.9" fill="currentColor"/><circle cx="20" cy="9" r="0.9" fill="currentColor"/></svg></button>
+        <button type="button" id="s_fsBtn" class="fs-btn">⛶ Во весь экран</button>
+      </div>
       <!-- Команды разметки — под плавающей кнопкой ☰ (см. partsFabSync): под
            снимком остаются только ползунки выбранной детали. -->
       <button type="button" class="parts-fab" id="s_partsFab" aria-label="Команды разметки" hidden><span></span><span></span><span></span></button>
@@ -1617,6 +1627,10 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
         <div class="fs-body" id="s_fsBody"></div>
       </div>
       <div class="scene-controls">
+        <div class="scene-tabs" id="s_sceneTabs">
+          <button type="button" data-tab="2d">2D</button>
+          <button type="button" data-tab="set">Настройка</button>
+        </div>
         <!-- Всё, кроме самой картинки, свёрнуто: программой пользуются с
              телефона, и раскрытые списки образцов занимали целый экран. -->
         <!-- Две группы, обе свёрнуты: «Стена» — комната вокруг двери, «Дверь» —
@@ -1831,7 +1845,7 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
           <summary>Свет и декор</summary>
           <div class="scene-group-body">
             <details class="adjust-panel" id="s_viewPanel" open>
-              <summary>Картинка</summary>
+              <summary>Ручка и выключатель</summary>
               <div class="adjust-body"><div class="wall-textures" id="s_viewKinds"></div></div>
             </details>
             <details class="adjust-panel" id="s_lightPanel" open>
@@ -2638,6 +2652,8 @@ const DB = {
     furniture: "",
     decorColor: {},
     twoDoors: false,
+    // сторона ручки на сцене: "left" | "right"; выключатель — с той же стороны
+    handleSide: "left",
     // Наличник в 2D: "" — обычный (три доски), "///" — с тремя полосками из
     // деталей со снимков; к «///» — капитель и банкетка (см. casingSceneSvg).
     casingStyle: "",
@@ -8723,12 +8739,15 @@ const DB = {
     const handleY = y + h * 0.47;
     const handleThickness = Math.max(2, w * 0.018);
     const plateH = h * 0.09;
-    const plateX = x + w - stileW * 0.62;
+    // Ручка слева или справа (state.handleSide, на сцене; выключатель — с
+    // той же стороны); рычаг смотрит к середине полотна.
+    const handleLeft = sceneMode && state.handleSide !== "right";
+    const plateX = handleLeft ? x + stileW * 0.62 : x + w - stileW * 0.62;
     const leverLen = w * 0.14;
 
     c.handleGroup.innerHTML = modelPhoto ? "" : `
       <rect x="${plateX - handleThickness}" y="${handleY - plateH / 2}" width="${handleThickness * 2}" height="${plateH}" rx="${handleThickness}" fill="#cfd3d6" stroke="#8b8f93" stroke-width="0.6"/>
-      <rect x="${plateX - leverLen}" y="${handleY - handleThickness / 2}" width="${leverLen}" height="${handleThickness}" rx="${handleThickness / 2}" fill="#cfd3d6" stroke="#8b8f93" stroke-width="0.6"/>
+      <rect x="${handleLeft ? plateX : plateX - leverLen}" y="${handleY - handleThickness / 2}" width="${leverLen}" height="${handleThickness}" rx="${handleThickness / 2}" fill="#cfd3d6" stroke="#8b8f93" stroke-width="0.6"/>
       <circle cx="${plateX}" cy="${handleY + plateH * 0.32}" r="${handleThickness * 0.55}" fill="#6f7377"/>
     `;
 
@@ -9457,6 +9476,11 @@ const DB = {
     const poly = (a, fill, extra) => `<polygon points="${pts(a)}" fill="${fill}"${extra || ""}/>`;
     const sc = (D) => (k * C) / (C - D); // единиц на мм в плоскости D
     const left = (door.x - casingW - cx) / k; // левый край наличника, мм
+    // Выключатель 80×80 мм — со стороны ручки (чтобы не оставался за
+    // открытой дверью), на высоте ручки, в 150 мм от наличника.
+    const swS = 80 * k, swZ = (floorY - (door.y + door.h * 0.47)) / k;
+    const swX = state.handleSide === "right" ? door.x + door.w + casingW + 150 * k : door.x - casingW - 150 * k - swS;
+    const swY = floorY - swZ * k - swS / 2;
     const right = (door.x + door.w + casingW - cx) / k;
     const wallL = -cx / k;
     let seed = 4242;
@@ -9581,7 +9605,15 @@ const DB = {
         }
       }
       // листья: дальние темнее, ближние светлее; у каждого — центральная жилка
-      leaves.sort((a, b) => a[1] - b[1]).forEach(([px, py, ang, L], i) => {
+      // ветки, что закрывают выключатель, «срезаны»: листья, задевающие его,
+      // не рисуем
+      const hitsSwitch = (px, py, ang, L) => {
+        if (!on.switch) return false;
+        const a = (ang - 90) * Math.PI / 180, mx = px + Math.cos(a) * L * 0.5, my = py + Math.sin(a) * L * 0.5;
+        const pad = L * 0.5 + 2;
+        return mx > swX - pad && mx < swX + swS + pad && my > swY - pad && my < swY + swS + pad;
+      };
+      leaves.filter((lf) => !hitsSwitch(...lf)).sort((a, b) => a[1] - b[1]).forEach(([px, py, ang, L], i) => {
         const wv = L * 0.42;
         const d = `M 0 0 C ${wv} ${-L * 0.18} ${wv * 0.9} ${-L * 0.85} 0 ${-L} C ${-wv * 0.9} ${-L * 0.85} ${-wv} ${-L * 0.18} 0 0 Z`;
         h += `<g transform="translate(${px.toFixed(1)} ${py.toFixed(1)}) rotate(${ang.toFixed(0)})">` +
@@ -9600,10 +9632,8 @@ const DB = {
     }
 
     if (on.switch) {
-      // выключатель 80×80 мм — со стороны ручки (справа), на высоте ручки,
-      // в 150 мм от наличника; нажатие переключает свет
-      const handleZ = (floorY - (door.y + door.h * 0.47)) / k;
-      const s = 80 * k, sx = door.x + door.w + casingW + 150 * k, sy = floorY - handleZ * k - s / 2;
+      // нажатие по выключателю переключает свет (см. onSceneDecorClick)
+      const s = swS, sx = swX, sy = swY;
       g += `<g data-act="switch" style="cursor:pointer">` +
         `<rect x="${sx - 3}" y="${sy - 3}" width="${s + 6}" height="${s + 6}" fill="transparent"/>` +
         `<rect x="${sx + 0.6}" y="${sy + 0.8}" width="${s}" height="${s}" rx="${6 * k}" fill="rgba(0,0,0,0.18)" filter="url(#${idf("soft")})"/>` +
@@ -10120,7 +10150,7 @@ const DB = {
 
     // --- Декор у стены (комод, картина, растение, выключатель).
     // у двух дверей — только выключатель (у правой двери)
-    s += decorSVG(W, H, floorY, two ? { x: door.x + dx2, y: door.y, w: door.w, h: door.h } : door, casingW || 0, idf, vp, two);
+    s += decorSVG(W, H, floorY, two && state.handleSide === "right" ? { x: door.x + dx2, y: door.y, w: door.w, h: door.h } : door, casingW || 0, idf, vp, two);
 
     // Отражение полотна на полу убрано: оно выглядело нереалистично и
     // создавало ложное ощущение «выпуклости» двери снизу (см. отчёт
@@ -13273,8 +13303,14 @@ const DB = {
         `<button type="button" class="wall-tex-var${h === (state.plinthH || 80) ? " active" : ""}" data-plinth-h="${h}">${h} мм</button>`).join("")}</div>`;
     document.getElementById("s_lightModes").innerHTML = LIGHT_MODES.map((x) =>
       `<button type="button" class="wall-texture${x.id === (state.light || "day") ? " active" : ""}" data-light="${x.id}">${x.name}</button>`).join("");
-    document.getElementById("s_viewKinds").innerHTML = [["one", "Одна дверь"], ["two", "Две двери рядом (санузел)"]].map(([id, nm]) =>
-      `<button type="button" class="wall-texture${(state.twoDoors ? "two" : "one") === id ? " active" : ""}" data-view-kind="${id}">${nm}</button>`).join("");
+    document.getElementById("s_viewKinds").innerHTML = [["left", "Ручка слева"], ["right", "Ручка справа"]].map(([id, nm]) =>
+      `<button type="button" class="wall-texture${(state.handleSide === "right" ? "right" : "left") === id ? " active" : ""}" data-hside="${id}">${nm}</button>`).join("");
+    const tb = document.getElementById("s_twoBtn");
+    if (tb) {
+      tb.classList.toggle("active", !!state.twoDoors);
+      tb.title = state.twoDoors ? "Одна дверь" : "Две двери рядом (санузел)";
+      tb.setAttribute("aria-label", tb.title);
+    }
     // у двух дверей — только выключатель: мебель и декор прячем
     const dp = document.getElementById("s_decorPanel");
     if (dp) dp.hidden = !!state.twoDoors;
@@ -13323,9 +13359,34 @@ const DB = {
       renderFloorPanels(); render();
     });
     on("s_viewKinds", (e) => {
-      const b = e.target.closest("[data-view-kind]");
-      if (b) { state.twoDoors = b.dataset.viewKind === "two"; renderFloorPanels(); render(); }
+      const b = e.target.closest("[data-hside]");
+      if (b) { state.handleSide = b.dataset.hside; renderFloorPanels(); render(); }
     });
+    // Кнопка у «Во весь экран»: одна дверь ↔ две двери рядом
+    on("s_twoBtn", () => { state.twoDoors = !state.twoDoors; renderFloorPanels(); render(); });
+    // Группы под картинкой — под двумя кнопками: «2D» (наличник, стена, пол,
+    // свет и декор) и «Настройка» (дверь, стекло, плёнка). Нажал ещё раз —
+    // список спрятан.
+    const TAB_2D = ["s_groupCasing", "s_groupWall", "s_groupFloor", "s_groupRoom"];
+    let tab = "";
+    const applyTab = () => {
+      document.querySelectorAll("#viewScene .scene-group").forEach((g) => {
+        const in2d = TAB_2D.includes(g.id);
+        g.classList.toggle("tab-off", !tab || (tab === "2d") !== in2d);
+      });
+      document.querySelectorAll("#s_sceneTabs [data-tab]").forEach((b) => b.classList.toggle("active", b.dataset.tab === tab));
+    };
+    on("s_sceneTabs", (e) => {
+      const b = e.target.closest("[data-tab]");
+      if (!b) return;
+      tab = tab === b.dataset.tab ? "" : b.dataset.tab;
+      // раскрытая группа из другого списка прятала бы все остальные — сворачиваем
+      document.querySelectorAll("#viewScene .scene-group[open]").forEach((g) => {
+        if ((tab === "2d") !== TAB_2D.includes(g.id)) g.open = false;
+      });
+      applyTab();
+    });
+    applyTab();
     // Нажатия по предметам на самой картинке: цвет мебели и горшка по кругу
     // пастельного ряда, выключатель — следующий свет и его название на полу.
     const svg = document.getElementById("s_doorPreview");
