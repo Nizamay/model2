@@ -8860,14 +8860,29 @@ const DB = {
           });
         }
         if (shapes.length) {
+          // Сила света — по стеклу: прозрачное/матовое пропускает свет (но
+          // так, чтобы рисунок стекла остался виден), тёмное и чёрное — еле
+          // заметно. Лампа одна, за дверью: одно пятно света на всю дверь
+          // (градиент в координатах сцены), а не своё на каждом стекле.
+          const m = getModel(state.modelId);
+          const mg = m ? modelGlasses(m).find((gl) => gl.id === state.glassId) : null;
+          const gp = glassPaint(state.glassId, mg && mg.name, mg);
+          const gl = luminanceHex(gp.fill || "#cccccc");
+          const k = gl < 0.25 ? 0.12 : gl < 0.45 ? 0.25 : 0.32;
           const gid = c.pfx + "roomGlowG", fid = c.pfx + "roomGlowF";
-          // свет «просвечивает» стекло (screen): рисунок стекла остаётся
-          // виден, вокруг — мягкий ореол
-          const one = (dx) => `<g transform="translate(${dx} 0)">` +
-            `<g filter="url(#${fid})" opacity="0.35" fill="#ffcf73" style="mix-blend-mode:screen">${shapes.join("")}</g>` +
-            `<g style="mix-blend-mode:screen" fill="url(#${gid})">${shapes.join("")}</g></g>`;
-          glow = `<defs><radialGradient id="${gid}" cx="50%" cy="40%" r="75%"><stop offset="0" stop-color="#ffe9b0" stop-opacity="0.85"/><stop offset="1" stop-color="#ffb24a" stop-opacity="0.45"/></radialGradient>` +
-            `<filter id="${fid}" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="3"/></filter></defs>` +
+          const one = (dx) => {
+            const cxL = x + dx + w / 2, cyL = y + h * 0.3;
+            return `<radialGradient id="${gid}${dx ? "b" : ""}" gradientUnits="userSpaceOnUse" cx="${cxL}" cy="${cyL}" r="${h * 0.6}">` +
+              `<stop offset="0" stop-color="#ffe7a8" stop-opacity="${(0.9 * k).toFixed(2)}"/><stop offset="0.6" stop-color="#ffc56a" stop-opacity="${(0.45 * k).toFixed(2)}"/><stop offset="1" stop-color="#ffb24a" stop-opacity="${(0.15 * k).toFixed(2)}"/></radialGradient>` +
+              `<g transform="translate(${dx} 0)">` +
+              `<g filter="url(#${fid})" opacity="${(0.4 * k).toFixed(2)}" fill="#ffcf73" style="mix-blend-mode:screen">${shapes.join("")}</g></g>` +
+              // градиент уже в координатах сцены — сдвиг второй двери в нём учтён
+              // тёплый тон (soft-light — рисунок стекла остаётся контрастным)
+              // и немного света поверх (screen)
+              ((sh) => `<g style="mix-blend-mode:soft-light" fill="#ffb347" opacity="${Math.min(1, 1.6 * k).toFixed(2)}">${sh}</g>` +
+                `<g style="mix-blend-mode:screen" fill="url(#${gid}${dx ? "b" : ""})">${sh}</g>`)(dx ? shapes.map((sh) => sh.replace(/<(rect|polygon) /, `<$1 transform="translate(${dx} 0)" `)).join("") : shapes.join(""));
+          };
+          glow = `<defs><filter id="${fid}" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="3"/></filter></defs>` +
             one(0) + (twoDoors ? one(dx2) : "");
         }
       }
