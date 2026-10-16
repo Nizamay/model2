@@ -635,6 +635,8 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
   width: max-content; max-width: 94vw; padding: 0; box-sizing: border-box; background: none; border: 0; box-shadow: none;
   transform-origin: 0 0; }
 .parts-float .pf-sl { width: 200px; }
+/* Прижаты к углу видимой части экрана скриптом (partsFloatPlace). */
+.vv-pin { left: 0 !important; right: auto !important; top: 0 !important; transform-origin: 0 0; }
 .parts-float .pf-sl b { text-shadow: 0 0 3px #fff, 0 0 3px #fff, 0 0 2px #fff; }
 .parts-float[hidden] { display: none; }
 .parts-float .pf-sl { flex: 0 0 auto; display: flex; align-items: center; gap: 6px; min-width: 0; }
@@ -6191,17 +6193,37 @@ const DB = {
   // увеличении страницы пальцами fixed-элементы остаются у краёв «большой»
   // страницы и уходят за экран, поэтому сдвигаем их за visualViewport и
   // ужимаем обратно на его масштаб — на экране они всегда одного размера.
+  // То же для кнопок ☰ (меню программы и команды разметки) и их меню: они
+  // прижаты к правому верхнему углу видимой части экрана и не растут при
+  // увеличении. [id, отступ справа, сверху] — как в CSS при обычном масштабе.
+  const VV_PINNED = [["menuBtn", 12, 10], ["menu", 12, 60], ["s_partsFab", 12, 62], ["s_partsMenu", 10, 112]];
   function partsFloatPlace() {
-    const fl = document.getElementById("s_partsFloat"), vv = window.visualViewport;
-    if (!fl || fl.hidden) return;
+    const vv = window.visualViewport;
     const sc = vv ? vv.scale : 1, ox = vv ? vv.offsetLeft : 0, oy = vv ? vv.offsetTop : 0, vw = vv ? vv.width : window.innerWidth;
-    fl.style.transform = `translate(${ox + vw / 2}px, ${oy + 10 / sc}px) scale(${1 / sc}) translateX(-50%)`;
+    const fl = document.getElementById("s_partsFloat");
+    if (fl && !fl.hidden) fl.style.transform = `translate(${ox + vw / 2}px, ${oy + 10 / sc}px) scale(${1 / sc}) translateX(-50%)`;
+    VV_PINNED.forEach(([id, right, top]) => {
+      const n = document.getElementById(id);
+      if (!n || n.hidden) return;
+      n.classList.add("vv-pin");
+      n.style.transform = `translate(${ox + vw - (right + n.offsetWidth) / sc}px, ${oy + top / sc}px) scale(${1 / sc})`;
+    });
   }
   if (window.visualViewport) {
     window.visualViewport.addEventListener("resize", partsFloatPlace);
     window.visualViewport.addEventListener("scroll", partsFloatPlace);
   }
   window.addEventListener("scroll", partsFloatPlace, { passive: true });
+  window.addEventListener("resize", partsFloatPlace);
+  // показали меню или кнопку — сразу ставим на место
+  {
+    const mo = new MutationObserver(() => partsFloatPlace());
+    VV_PINNED.concat([["s_partsFloat"]]).forEach(([id]) => {
+      const n = document.getElementById(id);
+      if (n) mo.observe(n, { attributes: true, attributeFilter: ["hidden"] });
+    });
+    partsFloatPlace();
+  }
 
   function partsEditorCtx() {
     const m = getModel(state.modelId);
