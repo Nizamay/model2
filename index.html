@@ -646,7 +646,7 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 .parts-float { position: fixed; top: 0; left: 0; z-index: 1000; display: flex; align-items: center; gap: 10px;
   width: max-content; max-width: 94vw; padding: 0; box-sizing: border-box; background: none; border: 0; box-shadow: none;
   transform-origin: 0 0; }
-.parts-float .pf-sl { width: 200px; }
+.parts-float .pf-sl { width: 130px; }
 /* Прижаты к углу видимой части экрана скриптом (partsFloatPlace). */
 .vv-pin { left: 0 !important; right: auto !important; top: 0 !important; transform-origin: 0 0; }
 .parts-float .pf-sl b { text-shadow: 0 0 3px #fff, 0 0 3px #fff, 0 0 2px #fff; }
@@ -6237,7 +6237,12 @@ const DB = {
     const vv = window.visualViewport;
     const sc = vv ? vv.scale : 1, ox = vv ? vv.offsetLeft : 0, oy = vv ? vv.offsetTop : 0, vw = vv ? vv.width : window.innerWidth;
     const fl = document.getElementById("s_partsFloat");
-    if (fl && !fl.hidden) fl.style.transform = `translate(${ox + vw / 2}px, ${oy + 10 / sc}px) scale(${1 / sc}) translateX(-50%)`;
+    // посередине места слева от кнопок ☰ (справа 66 px экрана заняты ими),
+    // чтобы «×» не уходил под них
+    if (fl && !fl.hidden) {
+      fl.style.maxWidth = Math.max(160, vw * sc - 80) + "px";
+      fl.style.transform = `translate(${ox + vw / 2 - 33 / sc}px, ${oy + 10 / sc}px) scale(${1 / sc}) translateX(-50%)`;
+    }
     VV_PINNED.forEach(([id, right, top]) => {
       const n = document.getElementById(id);
       if (!n || n.hidden) return;
