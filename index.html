@@ -3717,6 +3717,7 @@ const DB = {
   // Середина двери на сцене — правее середины стены (180): слева от двери
   // место для мебели и декора.
   const SCENE_DOOR_CX = 228;
+  let scenePlinthDoorHex = null; // см. render — цвет двери для плинтуса
 
   // Контекст рисования — набор ссылок на элементы конкретного SVG и его
   // id-строки (используются в url(#...)). Позволяет рисовать одну и ту же
@@ -6217,6 +6218,19 @@ const DB = {
   }
   window.addEventListener("scroll", partsFloatPlace, { passive: true });
   window.addEventListener("resize", partsFloatPlace);
+  // Не все мобильные браузеры шлют события visualViewport во время жеста
+  // увеличения — поэтому ещё и сверяем масштаб и сдвиг на каждом кадре
+  // (дёшево: пересчёт только когда что-то изменилось).
+  {
+    let last = "";
+    const tick = () => {
+      const vv = window.visualViewport;
+      const key = vv ? [vv.scale, vv.offsetLeft, vv.offsetTop, vv.width].join("|") : "";
+      if (key !== last) { last = key; partsFloatPlace(); }
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  }
   // показали меню или кнопку — сразу ставим на место
   {
     const mo = new MutationObserver(() => partsFloatPlace());
@@ -8828,6 +8842,14 @@ const DB = {
     // остался, — то есть когда дверь на снимке не нашлась и кадр показан
     // целиком. Нашлась — фон обрезан, и стена живёт своей жизнью.
     const photoWallHex = photoAsIsModel && !photoBox && !photoFramed ? modelPhotoEdgeHex(modelPhoto) : null;
+    // Цвет двери для плинтуса «В цвет двери» — тот, каким дверь видна на
+    // картинке: у перекрашенного снимка и нарисованной двери — средний тон
+    // плёнки/эмали (как у наличника «///», doorFilmRgb), у снимка «как есть» —
+    // цвет с его кромки. Цвет образца (hex) брать нельзя: у «Белоснежной
+    // эмали» он серый (#c1c0c5), а дверь на картинке белая.
+    scenePlinthDoorHex = gridImage || !modelPhoto
+      ? "#" + doorFilmRgb().map((v) => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, "0")).join("")
+      : baseHex;
     const sceneWallColor = photoWallHex || wallTexOwnHex() || state.wallColor;
     c.sceneGroup.innerHTML = sceneMode
       ? buildScene(layout, { x: x, y: y, w: w, h: h }, baseHex, casingFill, sceneWallColor, state.wallTexture, c.pfx, doorFilter, gap, photoCasing, Math.max(3, CASING_MM * unitsPerMm))
@@ -10189,12 +10211,19 @@ const DB = {
 
     // --- Плинтус с лёгким профилем.
     const plinthHex = state.plinth === "floor" ? shade(floorColorNow(), -6)
-      : state.plinth === "door" ? baseHex : "#f4f0e7";
-    // высота плинтуса — 60/80/100 мм в масштабе стены
-    const pH = (state.plinthH || 80) * (floorY / WALL_MM);
-    s += `<rect x="0" y="${floorY - pH}" width="${W}" height="${pH}" fill="${plinthHex}"/>`;
-    s += `<rect x="0" y="${floorY - pH}" width="${W}" height="${pH * 0.2}" fill="#ffffff" opacity="0.6"/>`;
-    s += `<rect x="0" y="${floorY - pH * 0.22}" width="${W}" height="${pH * 0.22}" fill="rgba(0,0,0,0.14)"/>`;
+      : state.plinth === "door" ? (scenePlinthDoorHex || baseHex) : "#f4f0e7";
+    // Плинтус 60–150 мм: ровная лицевая сторона в один цвет, сверху — фаска
+    // и тонкий блик (их высота в мм постоянная, не растёт с плинтусом), снизу
+    // — волосяная тень у пола. Раньше блик и тень были долей высоты, и
+    // высокий плинтус выглядел толще и в полоску.
+    const mmP = floorY / WALL_MM;
+    const pH = (state.plinthH || 80) * mmP;
+    const top = floorY - pH;
+    s += `<rect x="0" y="${top - 2 * mmP}" width="${W}" height="${4 * mmP}" fill="rgba(0,0,0,0.10)" filter="url(#${idf("soft")})"/>`;
+    s += `<rect x="0" y="${top}" width="${W}" height="${pH}" fill="${plinthHex}"/>`;
+    s += `<rect x="0" y="${top}" width="${W}" height="${Math.max(0.6, 6 * mmP)}" fill="#ffffff" opacity="0.45"/>`;
+    s += `<rect x="0" y="${top + 6 * mmP}" width="${W}" height="${Math.max(0.4, 3 * mmP)}" fill="#000000" opacity="0.07"/>`;
+    s += `<rect x="0" y="${floorY - Math.max(0.5, 3 * mmP)}" width="${W}" height="${Math.max(0.5, 3 * mmP)}" fill="#000000" opacity="0.10"/>`;
 
     // --- Декор у стены (комод, картина, растение, выключатель).
     // у двух дверей — только выключатель (у правой двери)
