@@ -1349,10 +1349,12 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
     <button type="button" class="pv-nav pv-next" id="picViewerNext" aria-label="Вперёд">›</button>
     <div class="pv-bar"><span id="picViewerCount"></span><button type="button" id="picViewerDel" hidden>🗑 Удалить из спецификации</button></div>
   </div>
-  <!-- Расширения, а не image/*: с image/* Android открывает «Выбор фото»
-       (сразу «Скриншоты»), а с расширениями — «Файлы», где удобно идти по
-       папкам Pictures/ЩИТОВЫЕ/… (просьба заказчика). -->
-  <input type="file" id="galleryInput" accept=".jpg,.jpeg,.png,.webp,.heic,.heif,.gif,.bmp" multiple hidden>
+  <!-- Chrome на Android 13+ открывает «Выбор фото» (сразу «Скриншоты»),
+       если принимаются только картинки — даже по расширениям. Лишний тип
+       (application/octet-stream) заставляет его открыть «Файлы», где удобно
+       идти по папкам Pictures/ЩИТОВЫЕ/… (просьба заказчика). Не-картинки
+       отсеиваются при выборе. -->
+  <input type="file" id="galleryInput" accept=".jpg,.jpeg,.png,.webp,.heic,.heif,application/octet-stream" multiple hidden>
   <main class="calc-card">
     <div class="topbar" id="topbar">
       <h1 id="viewTitle"><span id="viewTitleText">Расчет — межком&shy;натные двери</span><button type="button" class="info-btn" id="viewInfoBtn" aria-label="Пояснение к странице" aria-expanded="false" hidden>i</button><button type="button" class="spec-pics-btn" id="specPicsBtn" hidden aria-label="2D-картинки спецификации">2D</button></h1>
