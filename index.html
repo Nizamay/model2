@@ -851,7 +851,7 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
    смены тона касанием (см. onFilmPanelClick: editAdjust). */
 .adjust-body input[type="range"].adj:disabled { opacity: .45; }
 /* Движки защищены от случайного касания: сам ползунок пальца не ловит, пока
-   его не подержали 1 с (см. rangeHoldGuard). Пока держат — кольцо
+   его не подержали 0,75 с (см. rangeHoldGuard). Пока держат — кольцо
    заполняется, готов — подсвечен и идёт за пальцем. */
 input[type="range"]:not([data-free]):not(.rg-armed) { pointer-events: none; }
 input[type="range"].rg-arming { outline: 2px dashed var(--accent); outline-offset: 3px; border-radius: 8px; }
@@ -16716,11 +16716,11 @@ const DB = {
   }
 
   // Защита движков (input range) от случайного касания: менять можно только
-  // после 1 с удержания пальца на движке — затем он идёт за пальцем до
+  // после 0,75 с удержания пальца на движке — затем он идёт за пальцем до
   // отпускания. Без удержания касание и прокрутка страницы его не трогают
   // (сам движок пальца не ловит — pointer-events: none, см. CSS). Движки с
   // data-free (поворот 3D) — без защиты.
-  const RANGE_HOLD_MS = 1000;
+  const RANGE_HOLD_MS = 750;
   (function rangeHoldGuard() {
     let hold = null;   // { el, x, y, id, timer, drag }
     const pick = (x, y) => {
