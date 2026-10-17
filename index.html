@@ -7756,6 +7756,22 @@ const DB = {
       } else partsPanStart(e, els, null);
       return;
     }
+    // Активная деталь двигается за любое её место (кроме жёлтых квадратиков —
+    // они выше): касание внутри неё — с запасом 10 точек, чтобы тонкую
+    // планку или стекло было легко взять, — сдвигает именно её, даже если
+    // рядом метка или поверх лежит другая деталь (вложенные зоны фрезеровки,
+    // Венеция ПГ). Неактивные детали по-прежнему включаются двойным касанием.
+    {
+      const sp = partsSel !== null ? doc.parts[partsSel] : null;
+      const mx = 10 / box.width, my = 10 / box.height;
+      if (sp && partsVisible(sp) && fx >= sp.x - mx && fx <= sp.x + sp.w + mx && fy >= sp.y - my && fy <= sp.y + sp.h + my
+        && (!sp.q || partsOnQuad(sp, fx, fy, box, 12)) && !(framePartRect(sp.k) && !partsResizable(sp.k))) {
+        partsDragStart({ mode: "move", i: partsSel, dx: fx - sp.x, dy: fy - sp.y, modelId: ctx.model.id, moved: false }, doc, els, box);
+        els.stage.setPointerCapture(e.pointerId);
+        e.preventDefault();
+        return;
+      }
+    }
     // Метка детали (буква в её середине): нажал — деталь активна и сразу
     // едет за пальцем, не отпуская. Так можно взять любую деталь, в том числе
     // лежащую под другими (тень под стойкой), и не терять размеры.
@@ -7778,22 +7794,6 @@ const DB = {
         updatePartsEditor();
         if (framePartRect(p.k) && !partsResizable(p.k)) { e.preventDefault(); return; }
         partsDragStart({ mode: "move", i: best.i, dx: fx - p.x, dy: fy - p.y, modelId: ctx.model.id, moved: false }, doc, els, box);
-        els.stage.setPointerCapture(e.pointerId);
-        e.preventDefault();
-        return;
-      }
-    }
-    // Деталь берётся в два касания: первое делает её активной, и только
-    // после этого она двигается. Иначе любое касание фотографии сдвигало
-    // деталь под пальцем, и поставленную на место было не удержать.
-    // Касание внутри АКТИВНОЙ детали двигает её, даже если поверх лежит
-    // другая (вложенные зоны фрезеровки, Венеция ПГ: большая рамка не
-    // двигалась — касание доставалось маленькой зоне сверху).
-    {
-      const sp = partsSel !== null ? doc.parts[partsSel] : null;
-      if (sp && partsVisible(sp) && fx >= sp.x && fx <= sp.x + sp.w && fy >= sp.y && fy <= sp.y + sp.h
-        && (!sp.q || partsOnQuad(sp, fx, fy, box, 12)) && !(framePartRect(sp.k) && !partsResizable(sp.k))) {
-        partsDragStart({ mode: "move", i: partsSel, dx: fx - sp.x, dy: fy - sp.y, modelId: ctx.model.id, moved: false }, doc, els, box);
         els.stage.setPointerCapture(e.pointerId);
         e.preventDefault();
         return;
