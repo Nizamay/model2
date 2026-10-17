@@ -7757,13 +7757,16 @@ const DB = {
       return;
     }
     // Активная деталь двигается за любое её место (кроме жёлтых квадратиков —
-    // они выше): касание внутри неё — с запасом 10 точек, чтобы тонкую
-    // планку или стекло было легко взять, — сдвигает именно её, даже если
+    // они выше): касание внутри неё или по линии её края (запас 4 точки
+    // экрана при любом увеличении страницы) сдвигает именно её, даже если
     // рядом метка или поверх лежит другая деталь (вложенные зоны фрезеровки,
-    // Венеция ПГ). Неактивные детали по-прежнему включаются двойным касанием.
+    // Венеция ПГ). Мимо детали палец её не берёт (жалоба заказчика: при
+    // увеличении филёнка ехала от касания далеко от неё). Неактивные детали
+    // по-прежнему включаются двойным касанием.
     {
       const sp = partsSel !== null ? doc.parts[partsSel] : null;
-      const mx = 10 / box.width, my = 10 / box.height;
+      const vsc = (window.visualViewport && window.visualViewport.scale) || 1;
+      const mx = 4 / vsc / box.width, my = 4 / vsc / box.height;
       if (sp && partsVisible(sp) && fx >= sp.x - mx && fx <= sp.x + sp.w + mx && fy >= sp.y - my && fy <= sp.y + sp.h + my
         && (!sp.q || partsOnQuad(sp, fx, fy, box, 12)) && !(framePartRect(sp.k) && !partsResizable(sp.k))) {
         partsDragStart({ mode: "move", i: partsSel, dx: fx - sp.x, dy: fy - sp.y, modelId: ctx.model.id, moved: false }, doc, els, box);
