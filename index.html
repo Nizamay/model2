@@ -9,6 +9,12 @@
      сервера при этом не качается заново, если ничего не изменилось. -->
 <meta http-equiv="Cache-Control" content="no-cache, must-revalidate">
 <title>DoorCalc Pro — Расчет межкомнатных дверей</title>
+<!-- Установка на телефон как приложение: значок, свой экран, работа без
+     сети (manifest.webmanifest, sw.js; см. installApp). -->
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#2f6fde">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
 <style>
 :root {
   --bg: #f4f5f7;
@@ -1385,6 +1391,8 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
              importSettings). -->
         <button type="button" class="menu-item" id="exportSettingsBtn">📤 Скачать проект</button>
         <button type="button" class="menu-item" id="importSettingsBtn">📂 Открыть проект</button>
+        <!-- Видна, только когда браузер готов установить программу. -->
+        <button type="button" class="menu-item" id="installAppBtn" hidden>📲 Установить на телефон</button>
         <input type="file" id="importSettingsInput" accept=".json,application/json,application/octet-stream" hidden>
         <!-- Версия страницы: чтобы при разборе «у меня не так» сразу было
              видно, свежая ли она открыта или браузер подсунул старую из
@@ -14070,6 +14078,24 @@ const DB = {
   // подтверждения; затем страница перезапускается. Настройки 2D-картинки
   // между сеансами не хранятся, поэтому передаются через sessionStorage и
   // ставятся при запуске (applyImportedScene).
+  // Установка как приложение: офлайн-копия (sw.js) и кнопка в меню, когда
+  // браузер предлагает установку (beforeinstallprompt — Chrome на Android).
+  // С диска (file://) ни то, ни другое не работает — только с сайта.
+  if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
+    window.addEventListener("load", () => { navigator.serviceWorker.register("sw.js").catch(() => {}); });
+  }
+  {
+    let installEv = null;
+    const b = document.getElementById("installAppBtn");
+    window.addEventListener("beforeinstallprompt", (e) => { e.preventDefault(); installEv = e; if (b) b.hidden = false; });
+    window.addEventListener("appinstalled", () => { installEv = null; if (b) b.hidden = true; });
+    if (b) b.addEventListener("click", async () => {
+      if (!installEv) return;
+      installEv.prompt();
+      try { await installEv.userChoice; } catch (e) { }
+      installEv = null; b.hidden = true;
+    });
+  }
   const IMPORT_SCENE_KEY = "doorcalc_import_scene";
   async function importSettings(file) {
     let j;
