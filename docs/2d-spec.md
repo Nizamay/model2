@@ -1569,3 +1569,5 @@ _Документ живой: дополняется по мере уточне�
 **Установка (PWA).** `manifest.webmanifest` (standalone, значки `icons/icon-192.png`, `icon-512.png`, any maskable), `sw.js` — сначала сеть (`cache: no-cache`), копия в кэш `doorcalc-v1`; без сети — из кэша. Регистрация только по http(s). Кнопка «📲 Установить на телефон» (`#installAppBtn`) появляется по `beforeinstallprompt`.
 
 **Свет за дверью и зеркало.** Сила свечения стекла умножается на `pass`: у стекла каталога «Зеркало» (`glassLookFor(...).id === "mirror"`) — 0, свечения нет (щель под дверью светится как прежде); у остальных — `1 − room/100` (поле `room` — отражение комнаты, напр. «Золото» 25 → 0,75).
+
+**Защита движков.** `rangeHoldGuard`: все `input[type=range]` без `data-free` не ловят палец (`pointer-events: none`). `pointerdown` (capture) над движком (±6 px по бокам, ±14 px по высоте) ставит таймер `RANGE_HOLD_MS` = 2000 мс (класс `rg-arming`); сдвиг > 10 px до срока отменяет. По сроку — `rg-armed`, вибрация 25 мс; `pointermove` ставит значение по X пальца с шагом `step` и шлёт `input`, `touchmove` гасится (страница не едет), отпускание шлёт `change`. `data-free` — у `#r3_rotate`.

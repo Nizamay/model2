@@ -850,6 +850,13 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 /* Ползунки заблокированы, пока не нажата «Изменить» — защита от случайной
    смены тона касанием (см. onFilmPanelClick: editAdjust). */
 .adjust-body input[type="range"].adj:disabled { opacity: .45; }
+/* Движки защищены от случайного касания: сам ползунок пальца не ловит, пока
+   его не подержали 2 с (см. rangeHoldGuard). Пока держат — кольцо
+   заполняется, готов — подсвечен и идёт за пальцем. */
+input[type="range"]:not([data-free]):not(.rg-armed) { pointer-events: none; }
+input[type="range"].rg-arming { outline: 2px dashed var(--accent); outline-offset: 3px; border-radius: 8px; }
+*:has(> input[type="range"]) { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+input[type="range"].rg-armed { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 8px; }
 /* Крупная кнопка ползунка (удобно на телефоне). touch-action: pan-y —
    вертикальный свайп/скролл проходит мимо ползунка (уходит в прокрутку
    страницы), значение меняет только горизонтальное движение по нему — без
@@ -1939,7 +1946,7 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
       <div class="r3-stage"><canvas id="r3_c"></canvas></div>
       <div class="r3-rotate">
         <label for="r3_rotate">Поворот</label>
-        <input type="range" id="r3_rotate" min="-180" max="180" value="-30" step="1">
+        <input type="range" data-free id="r3_rotate" min="-180" max="180" value="-30" step="1">
       </div>
       <div class="r3-grid">
         <div class="r3-card">
@@ -16707,6 +16714,61 @@ const DB = {
       typeRow.style.display = anyVisible ? "" : "none";
     });
   }
+
+  // Защита движков (input range) от случайного касания: менять можно только
+  // после 2 с удержания пальца на движке — затем он идёт за пальцем до
+  // отпускания. Без удержания касание и прокрутка страницы его не трогают
+  // (сам движок пальца не ловит — pointer-events: none, см. CSS). Движки с
+  // data-free (поворот 3D) — без защиты.
+  const RANGE_HOLD_MS = 2000;
+  (function rangeHoldGuard() {
+    let hold = null;   // { el, x, y, id, timer, drag }
+    const pick = (x, y) => {
+      for (const el of document.querySelectorAll('input[type="range"]:not([data-free])')) {
+        if (el.disabled || !el.offsetParent) continue;
+        const r = el.getBoundingClientRect();
+        if (x >= r.left - 6 && x <= r.right + 6 && y >= r.top - 14 && y <= r.bottom + 14) return el;
+      }
+      return null;
+    };
+    const setFrom = (el, x) => {
+      const r = el.getBoundingClientRect();
+      const min = Number(el.min) || 0, max = el.max === "" ? 100 : Number(el.max), st = Number(el.step) || 1;
+      const f = Math.max(0, Math.min(1, (x - r.left) / Math.max(1, r.width)));
+      const v = Math.max(min, Math.min(max, min + Math.round((f * (max - min)) / st) * st));
+      if (Number(el.value) !== v) { el.value = String(v); el.dispatchEvent(new Event("input", { bubbles: true })); hold.changed = true; }
+    };
+    const stop = () => {
+      if (!hold) return;
+      clearTimeout(hold.timer);
+      hold.el.classList.remove("rg-arming", "rg-armed");
+      if (hold.drag && hold.changed) hold.el.dispatchEvent(new Event("change", { bubbles: true }));
+      hold = null;
+    };
+    document.addEventListener("pointerdown", (e) => {
+      if (hold || (e.pointerType === "mouse" && e.button !== 0)) return;
+      const el = pick(e.clientX, e.clientY);
+      if (!el) return;
+      hold = { el: el, x: e.clientX, y: e.clientY, id: e.pointerId, drag: false, changed: false };
+      el.classList.add("rg-arming");
+      hold.timer = setTimeout(() => {
+        if (!hold) return;
+        hold.drag = true;
+        el.classList.remove("rg-arming"); el.classList.add("rg-armed");
+        try { if (navigator.vibrate) navigator.vibrate(25); } catch (err) { }
+      }, RANGE_HOLD_MS);
+    }, true);
+    document.addEventListener("pointermove", (e) => {
+      if (!hold || e.pointerId !== hold.id) return;
+      if (hold.drag) { setFrom(hold.el, e.clientX); return; }
+      // повёл пальцем раньше срока — это прокрутка или случайное касание
+      if (Math.abs(e.clientX - hold.x) > 10 || Math.abs(e.clientY - hold.y) > 10) stop();
+    }, true);
+    // Пока движок идёт за пальцем, страница не прокручивается.
+    document.addEventListener("touchmove", (e) => { if (hold && hold.drag) e.preventDefault(); }, { passive: false, capture: true });
+    ["pointerup", "pointercancel"].forEach((t) => document.addEventListener(t, (e) => { if (hold && e.pointerId === hold.id) stop(); }, true));
+    document.addEventListener("contextmenu", (e) => { if (hold) e.preventDefault(); }, true);
+  })();
 
   function init() {
     applyImportedScene();
