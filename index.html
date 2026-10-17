@@ -8928,7 +8928,12 @@ const DB = {
           const mg = m ? modelGlasses(m).find((gl) => gl.id === state.glassId) : null;
           const gp = glassPaint(state.glassId, mg && mg.name, mg);
           const gl = luminanceHex(gp.fill || "#cccccc");
-          const k = gl < 0.25 ? 0.12 : gl < 0.45 ? 0.25 : 0.32;
+          // Зеркало непрозрачное — свет за ним не виден; у стекла с
+          // отражением комнаты (поле room, напр. «Золото») свет слабее на ту
+          // же долю.
+          const look = glassLookFor(state.glassId, mg && mg.name, mg);
+          const pass = look && look.id === "mirror" ? 0 : Math.max(0, 1 - (Number(look && look.room) || 0) / 100);
+          const k = (gl < 0.25 ? 0.12 : gl < 0.45 ? 0.25 : 0.32) * pass;
           const gid = c.pfx + "roomGlowG", fid = c.pfx + "roomGlowF";
           const one = (dx) => {
             const cxL = x + dx + w / 2, cyL = y + h * 0.3;
@@ -8942,7 +8947,7 @@ const DB = {
               ((sh) => `<g style="mix-blend-mode:soft-light" fill="#ffb347" opacity="${Math.min(1, 1.6 * k).toFixed(2)}">${sh}</g>` +
                 `<g style="mix-blend-mode:screen" fill="url(#${gid}${dx ? "b" : ""})">${sh}</g>`)(dx ? shapes.map((sh) => sh.replace(/<(rect|polygon) /, `<$1 transform="translate(${dx} 0)" `)).join("") : shapes.join(""));
           };
-          glow = `<defs><filter id="${fid}" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="3"/></filter></defs>` +
+          if (k > 0) glow = `<defs><filter id="${fid}" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="3"/></filter></defs>` +
             one(0) + (twoDoors ? one(dx2) : "");
         }
       }
