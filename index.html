@@ -7664,27 +7664,6 @@ const DB = {
     }
   }
 
-  // Ближайший край соседних деталей: детали в двери стоят встык, поэтому
-  // край сам прилипает к соседнему — пальцем в точку иначе не попасть.
-  function partsSnap(v, others, tol) {
-    let best = v, d = tol;
-    others.forEach((c) => {
-      const dist = Math.abs(c - v);
-      if (dist < d) { d = dist; best = c; }
-    });
-    return best;
-  }
-
-  function partsEdges(parts, skip, axis) {
-    const out = [0, 1];
-    parts.forEach((p, i) => {
-      if (i === skip) return;
-      out.push(axis === "x" ? p.x : p.y);
-      out.push(axis === "x" ? p.x + p.w : p.y + p.h);
-    });
-    return out;
-  }
-
   function onPartsPointerDown(e) {
     // Первый палец нового касания: всё, что осталось от прежнего жеста (если
     // «палец вверх» потерялся), сбрасываем — иначе забытый сдвиг снимка мешал
@@ -7777,6 +7756,22 @@ const DB = {
       } else partsPanStart(e, els, null);
       return;
     }
+    // Активная деталь двигается за любое её место (кроме жёлтых квадратиков —
+    // они выше): касание внутри неё — с запасом 10 точек, чтобы тонкую
+    // планку или стекло было легко взять, — сдвигает именно её, даже если
+    // рядом метка или поверх лежит другая деталь (вложенные зоны фрезеровки,
+    // Венеция ПГ). Неактивные детали по-прежнему включаются двойным касанием.
+    {
+      const sp = partsSel !== null ? doc.parts[partsSel] : null;
+      const mx = 10 / box.width, my = 10 / box.height;
+      if (sp && partsVisible(sp) && fx >= sp.x - mx && fx <= sp.x + sp.w + mx && fy >= sp.y - my && fy <= sp.y + sp.h + my
+        && (!sp.q || partsOnQuad(sp, fx, fy, box, 12)) && !(framePartRect(sp.k) && !partsResizable(sp.k))) {
+        partsDragStart({ mode: "move", i: partsSel, dx: fx - sp.x, dy: fy - sp.y, modelId: ctx.model.id, moved: false }, doc, els, box);
+        els.stage.setPointerCapture(e.pointerId);
+        e.preventDefault();
+        return;
+      }
+    }
     // Метка детали (буква в её середине): нажал — деталь активна и сразу
     // едет за пальцем, не отпуская. Так можно взять любую деталь, в том числе
     // лежащую под другими (тень под стойкой), и не терять размеры.
@@ -7799,22 +7794,6 @@ const DB = {
         updatePartsEditor();
         if (framePartRect(p.k) && !partsResizable(p.k)) { e.preventDefault(); return; }
         partsDragStart({ mode: "move", i: best.i, dx: fx - p.x, dy: fy - p.y, modelId: ctx.model.id, moved: false }, doc, els, box);
-        els.stage.setPointerCapture(e.pointerId);
-        e.preventDefault();
-        return;
-      }
-    }
-    // Деталь берётся в два касания: первое делает её активной, и только
-    // после этого она двигается. Иначе любое касание фотографии сдвигало
-    // деталь под пальцем, и поставленную на место было не удержать.
-    // Касание внутри АКТИВНОЙ детали двигает её, даже если поверх лежит
-    // другая (вложенные зоны фрезеровки, Венеция ПГ: большая рамка не
-    // двигалась — касание доставалось маленькой зоне сверху).
-    {
-      const sp = partsSel !== null ? doc.parts[partsSel] : null;
-      if (sp && partsVisible(sp) && fx >= sp.x && fx <= sp.x + sp.w && fy >= sp.y && fy <= sp.y + sp.h
-        && (!sp.q || partsOnQuad(sp, fx, fy, box, 12)) && !(framePartRect(sp.k) && !partsResizable(sp.k))) {
-        partsDragStart({ mode: "move", i: partsSel, dx: fx - sp.x, dy: fy - sp.y, modelId: ctx.model.id, moved: false }, doc, els, box);
         els.stage.setPointerCapture(e.pointerId);
         e.preventDefault();
         return;
@@ -7993,14 +7972,11 @@ const DB = {
   const PARTS_CORNER_REACH = 32;
 
   // Всё, что не меняется, пока палец ведёт деталь, считаем один раз в начале:
-  // положение фотографии на экране, рамку прямоугольника и края соседних деталей
-  // (к ним деталь «прилипает»). Раньше это пересчитывалось на каждое движение,
+  // положение фотографии на экране и рамку прямоугольника. Раньше это пересчитывалось на каждое движение,
   // и getBoundingClientRect каждый раз заставлял браузер заново считать вёрстку.
   function partsDragStart(drag, doc, els, box) {
     drag.box = box;
     drag.at = Date.now();
-    drag.xs = partsEdges(doc.parts, drag.i, "x");
-    drag.ys = partsEdges(doc.parts, drag.i, "y");
     drag.el = els.layer.querySelector('.part[data-i="' + drag.i + '"]');
     drag.tailEl = els.layer.querySelector('.ztail[data-tail="' + drag.i + '"]');
     drag.orig = JSON.parse(JSON.stringify(doc.parts[drag.i]));
@@ -8052,22 +8028,15 @@ const DB = {
     const box = drag.box;
     const fx = (drag.last.x - box.left) / box.width + (drag.offX || 0);
     const fy = (drag.last.y - box.top) / box.height + (drag.offY || 0);
-    const tolX = 8 / box.width, tolY = 8 / box.height;
-    const xs = drag.xs, ys = drag.ys;
     // Наименьший размер детали — 3 мм настоящей двери по каждой оси (было
     // 1.5 % кадра, то есть 31 мм по высоте: тонкое горизонтальное стекло —
     // канавка на снимке в 4–6 мм — сузить до неё было нельзя, жалоба
     // заказчика). Полотно не меньше десятой части кадра, иначе масштаб
     // миллиметров от него уходит в бесконечность.
     const MIN_X = p.k === "d" ? 0.1 : 3 / FRAME_MM.w, MIN_Y = p.k === "d" ? 0.1 : 3 / FRAME_MM.h;
-    // У царги прилипания к краям соседних деталей нет: между двумя царгами
-    // бывает зазор в несколько миллиметров, а прилипание в 8 точек стягивало
-    // их края вплотную, и выставить зазор было нельзя (жалоба заказчика).
-    // У полотна его тоже нет: его края должны лечь на край двери на снимке, а
-    // не на край случайной детали рядом. Остальные детали прилипают, как раньше.
-    // Стекло тоже без прилипания: тонкие стёкла ставят по снимку и по счётчику
-    // мм, а прилипание к соседней планке сбивало их (жалоба заказчика).
-    const snap = ["p", "s", "d", "t", "z", "nv", "nh", "g"].includes(p.k) ? (v) => v : partsSnap;
+    // Прилипания к краям соседних деталей нет ни у одной детали: тонкие
+    // детали (раскладки, стёкла, филёнки) ставят точно по снимку и счётчику
+    // мм, а прилипание стягивало их края к соседям (жалоба заказчика).
     if (partsDrag.mode === "tail" && p.tl) {
       // Дальний конец хвоста — за пальцем; верх или низ — тот, за чей угол
       // взяли. Хвост можно перекинуть и на другой бок зоны.
@@ -8111,12 +8080,8 @@ const DB = {
     }
     const ox = p.x, oy = p.y;
     if (partsDrag.mode === "move") {
-      let nx = Math.max(0, Math.min(1 - p.w, fx - partsDrag.dx));
-      let ny = Math.max(0, Math.min(1 - p.h, fy - partsDrag.dy));
-      const sxL = snap(nx, xs, tolX), sxR = snap(nx + p.w, xs, tolX) - p.w;
-      nx = Math.abs(sxL - nx) <= Math.abs(sxR - nx) ? sxL : sxR;
-      const syT = snap(ny, ys, tolY), syB = snap(ny + p.h, ys, tolY) - p.h;
-      ny = Math.abs(syT - ny) <= Math.abs(syB - ny) ? syT : syB;
+      const nx = Math.max(0, Math.min(1 - p.w, fx - partsDrag.dx));
+      const ny = Math.max(0, Math.min(1 - p.h, fy - partsDrag.dy));
       p.x = Math.max(0, Math.min(1 - p.w, nx));
       p.y = Math.max(0, Math.min(1 - p.h, ny));
       if (p.q) { const dx = p.x - ox, dy = p.y - oy; p.q = p.q.map((c) => [c[0] + dx, c[1] + dy]); }
@@ -8126,17 +8091,17 @@ const DB = {
       const north = partsDrag.corner === "nw" || partsDrag.corner === "ne";
       const right = p.x + p.w, bottom = p.y + p.h;
       if (west) {
-        const nx = Math.max(0, Math.min(right - MIN_X, snap(fx, xs, tolX)));
+        const nx = Math.max(0, Math.min(right - MIN_X, fx));
         p.w = right - nx; p.x = nx;
       } else {
-        const nr = Math.max(p.x + MIN_X, Math.min(1, snap(fx, xs, tolX)));
+        const nr = Math.max(p.x + MIN_X, Math.min(1, fx));
         p.w = nr - p.x;
       }
       if (north) {
-        const ny = Math.max(0, Math.min(bottom - MIN_Y, snap(fy, ys, tolY)));
+        const ny = Math.max(0, Math.min(bottom - MIN_Y, fy));
         p.h = bottom - ny; p.y = ny;
       } else {
-        const nb = Math.max(p.y + MIN_Y, Math.min(1, snap(fy, ys, tolY)));
+        const nb = Math.max(p.y + MIN_Y, Math.min(1, fy));
         p.h = nb - p.y;
       }
     }
