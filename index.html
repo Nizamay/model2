@@ -586,6 +586,9 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
    листаться пальцем, а начатое на детали движение уже не перехватывается
    прокруткой. */
 .part, .part .ph { touch-action: none; }
+/* Удержание пальца на неактивной детали (см. partsPanStart): через 0,75 с
+   она станет активной; пока держат — пунктирная жёлтая обводка. */
+.pt-arming { position: absolute; z-index: 6; pointer-events: none; outline: 3px dashed #ffd23f; outline-offset: 2px; }
 .parts-stage.leaf-edit { margin-top: 26px; margin-bottom: 26px; }
 .part { position: absolute; display: flex; align-items: center; justify-content: center; box-sizing: border-box; border: 1px solid rgba(0,0,0,.7); }
 .part > span { min-width: 16px; padding: 1px 4px; border-radius: 9px; font-size: 10px; font-weight: 700; color: #fff; text-align: center; text-shadow: 0 1px 2px rgba(0,0,0,.6); pointer-events: none; }
@@ -7876,7 +7879,7 @@ const DB = {
       // Метка неактивной детали включает её только двойным нажатием (меток
       // много, и случайное касание хватало деталь и сдвигало — жалоба
       // заказчика). У активной детали метка берётся и тянется, как раньше.
-      if (best && best.i !== partsSel) { const bi = best.i; partsPanStart(e, els, () => partsTapTry(bi)); return; }
+      if (best && best.i !== partsSel) { const bi = best.i; partsPanStart(e, els, () => partsTapTry(bi), bi); return; }
       if (best) {
         const p = doc.parts[best.i];
         partsSel = best.i;
@@ -7898,7 +7901,7 @@ const DB = {
         // Не активная деталь: касание без сдвига делает её активной, а
         // движение пальцем сдвигает снимок (увеличенный) или страницу.
         if (i !== partsSel) {
-          partsPanStart(e, els, () => partsTapTry(i));
+          partsPanStart(e, els, () => partsTapTry(i), i);
           return;
         }
         // Полотно, стойки и наличники в рамке стоят на своём единственном
@@ -7981,8 +7984,44 @@ const DB = {
     }
     if (Math.abs(rest) > 0.5) window.scrollBy(0, rest);
   }
-  function partsPanStart(e, els, tap) {
+  // holdI — номер неактивной детали под пальцем: удержание 0,75 с (как у
+  // движков и кружков рамки) делает её активной — пока держат, она обведена
+  // пунктиром, готово — вибрация и жёлтые квадратики. Двойное касание тоже
+  // работает. Заказчик при увеличенной странице держал палец на тени, а
+  // она выбиралась только двойным касанием — казалось, что всё «зависло».
+  const PARTS_SEL_HOLD_MS = 750;
+  function partsSelHoldStop(pan) {
+    if (!pan || !pan.selT) return;
+    clearTimeout(pan.selT); pan.selT = 0;
+    if (pan.armEl) { pan.armEl.remove(); pan.armEl = null; }
+  }
+  function partsPanStart(e, els, tap, holdI) {
     partsPan = { id: e.pointerId, x0: e.clientX, y0: e.clientY, lx: e.clientX, ly: e.clientY, moved: false, tap: tap };
+    if (holdI != null) {
+      const pan = partsPan;
+      pan.holdI = holdI;
+      // Обводка — отдельный слой поверх снимка: разметку могут перерисовать
+      // посреди удержания, а этот слой останется.
+      const ctxP = partsEditorCtx(), docP = ctxP && partsOf(ctxP.model.id), q = docP && docP.parts[holdI];
+      if (q) {
+        const n = document.createElement("div");
+        n.className = "pt-arming";
+        n.style.left = (q.x * 100) + "%"; n.style.top = (q.y * 100) + "%";
+        n.style.width = (q.w * 100) + "%"; n.style.height = (q.h * 100) + "%";
+        els.stage.appendChild(n);
+        pan.armEl = n;
+      }
+      pan.selT = setTimeout(() => {
+        pan.selT = 0;
+        if (pan.armEl) { pan.armEl.remove(); pan.armEl = null; }
+        if (partsPan !== pan || pan.moved) return;
+        pan.tap = null;          // отпускание после выбора ничего не делает
+        partsLastTap = null;
+        partsSel = holdI;
+        try { if (navigator.vibrate) navigator.vibrate(25); } catch (err) { }
+        updatePartsEditor();
+      }, PARTS_SEL_HOLD_MS);
+    }
     try { els.stage.setPointerCapture(e.pointerId); } catch (_) {}
     e.preventDefault();
   }
@@ -8096,6 +8135,7 @@ const DB = {
       e.preventDefault();
       if (!partsPan.moved && Math.hypot(e.clientX - partsPan.x0, e.clientY - partsPan.y0) < 8) return;
       partsPan.moved = true;
+      partsSelHoldStop(partsPan);
       partsScrollBy(partsPan.lx - e.clientX, partsPan.ly - e.clientY);
       partsPan.lx = e.clientX; partsPan.ly = e.clientY;
       return;
@@ -8126,22 +8166,47 @@ const DB = {
     PARTS_DIAG.ev.push([Date.now(), kind, e ? e.pointerId : null, e ? (e.isPrimary ? 1 : 0) : null, e ? Math.round(e.clientX) : null, e ? Math.round(e.clientY) : null,
       partsDrag ? partsDrag.mode : 0, partsPan ? 1 : 0, partsPinch ? 1 : 0, partsPtrs.size, partsSel, ctx ? 1 : 0, leafEdit ? 1 : 0, partsMode,
       (window.visualViewport ? Math.round(window.visualViewport.scale * 100) / 100 : 1), partsZoom]);
-    if (PARTS_DIAG.ev.length > 120) PARTS_DIAG.ev.shift();
+    if (PARTS_DIAG.ev.length > 160) PARTS_DIAG.ev.shift();
   }
   // Касания по всей странице (куда попал палец) и смена масштаба страницы —
   // видно, доходит ли касание до снимка, когда он «не реагирует».
   ["pointerdown", "pointerup", "pointercancel"].forEach((t) => document.addEventListener(t, (e) => {
     const n = e.target, tag = n && n.nodeType === 1 ? (n.id ? "#" + n.id : n.tagName.toLowerCase() + (n.className && typeof n.className === "string" ? "." + n.className.split(" ")[0] : "")) : "?";
     PARTS_DIAG.ev.push([Date.now(), "doc-" + t.replace("pointer", ""), e.pointerId, e.isPrimary ? 1 : 0, Math.round(e.clientX), Math.round(e.clientY), tag]);
-    if (PARTS_DIAG.ev.length > 120) PARTS_DIAG.ev.shift();
+    if (PARTS_DIAG.ev.length > 160) PARTS_DIAG.ev.shift();
   }, true));
+  // Движения пальца — не чаще раза в 150 мс: точка на странице (client) и
+  // на экране (screen) — видно, едет ли палец или страница под ним; и можно
+  // ли было запретить прокрутку (cancelable) и запретила ли её программа.
+  {
+    let mvT = 0, tmT = 0;
+    document.addEventListener("pointermove", (e) => {
+      const now = Date.now(); if (now - mvT < 150) return; mvT = now;
+      PARTS_DIAG.ev.push([now, "doc-move", e.pointerId, Math.round(e.clientX), Math.round(e.clientY), Math.round(e.screenX), Math.round(e.screenY)]);
+      if (PARTS_DIAG.ev.length > 160) PARTS_DIAG.ev.shift();
+    }, true);
+    document.addEventListener("touchmove", (e) => {
+      const now = Date.now(); if (now - tmT < 300) return; tmT = now;
+      PARTS_DIAG.ev.push([now, "touchmove", e.touches.length, e.cancelable ? 1 : 0, e.defaultPrevented ? 1 : 0]);
+      if (PARTS_DIAG.ev.length > 160) PARTS_DIAG.ev.shift();
+    }, { passive: true });
+  }
+  if (window.visualViewport) {
+    let vsT = 0;
+    window.visualViewport.addEventListener("scroll", () => {
+      const now = Date.now(); if (now - vsT < 200) return; vsT = now;
+      const vv = window.visualViewport;
+      PARTS_DIAG.ev.push([now, "vv-scroll", Math.round(vv.offsetLeft), Math.round(vv.offsetTop), Math.round(window.scrollY)]);
+      if (PARTS_DIAG.ev.length > 160) PARTS_DIAG.ev.shift();
+    });
+  }
   if (window.visualViewport) {
     let vvT = 0;
     window.visualViewport.addEventListener("resize", () => {
       const now = Date.now(); if (now - vvT < 300) return; vvT = now;
       const vv = window.visualViewport;
       PARTS_DIAG.ev.push([now, "vv", Math.round(vv.scale * 100) / 100, Math.round(vv.offsetLeft), Math.round(vv.offsetTop), Math.round(vv.width), Math.round(vv.height)]);
-      if (PARTS_DIAG.ev.length > 120) PARTS_DIAG.ev.shift();
+      if (PARTS_DIAG.ev.length > 160) PARTS_DIAG.ev.shift();
     });
   }
   window.addEventListener("error", (e) => { PARTS_DIAG.err.push([Date.now(), String(e.message || ""), (e.filename || "").slice(-20) + ":" + e.lineno]); if (PARTS_DIAG.err.length > 20) PARTS_DIAG.err.shift(); });
@@ -8410,8 +8475,9 @@ const DB = {
     if (partsPinch) { if (partsPtrs.size < 2) { if (partsPinch.raf) partsFrameCancel(partsPinch.raf); partsPinch = null; } return; }
     if (partsPan) {
       const pan = partsPan;
-      if (e && e.pointerId !== pan.id) { if (!partsDrag) return; partsPan = null; }
+      if (e && e.pointerId !== pan.id) { if (!partsDrag) return; partsSelHoldStop(pan); partsPan = null; }
       else {
+        partsSelHoldStop(pan);
         partsPan = null;
         if (!pan.moved && pan.tap && !(e && e.type === "pointercancel")) pan.tap();
         return;
