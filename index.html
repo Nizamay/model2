@@ -543,12 +543,12 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
    ним (жалоба заказчика), поэтому кружок сначала стал в 2,6 раза крупнее и
    пустым, а теперь ещё и стоит СНАРУЖИ угла по диагонали и касается его
    только краем: палец лежит на кружке, а сам угол и линии у него остаются на
-   виду. Кружок 72 px; центр сдвинут от угла на --s по каждой оси (радиус на
+   виду. Кружок 36 px; центр сдвинут от угла на --s по каждой оси (радиус на
    корень из двух, минус 2 px, чтобы край честно заходил на угол). Касание
    ловит весь круг (border-radius у самой ручки, иначе ловил бы квадрат).
    touch-action только у ручек: страница под снимком прокручивается. Поля
    вокруг снимка в панели (margin у .frame-stage) оставлены под кружки. */
-.fh { --d: 72px; --s: 23px; position: absolute; width: var(--d); height: var(--d); border-radius: 50%;
+.fh { --d: 36px; --s: 11px; position: absolute; width: var(--d); height: var(--d); border-radius: 50%;
   touch-action: none; cursor: grab; z-index: 2; }
 .fh-nw { margin: calc(var(--d) / -2 - var(--s)) 0 0 calc(var(--d) / -2 - var(--s)); }
 .fh-ne { margin: calc(var(--d) / -2 - var(--s)) 0 0 calc(var(--d) / -2 + var(--s)); }
@@ -557,6 +557,10 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 .fh::after { content: ""; position: absolute; inset: 0; box-sizing: border-box; border-radius: 50%;
   background: rgba(255, 255, 255, .10); border: 4px solid rgba(232, 74, 14, .95);
   box-shadow: 0 0 0 1px rgba(255, 255, 255, .75), 0 1px 5px rgba(0, 0, 0, .35); }
+/* Кружок берётся после 0,75 с удержания (см. fhHoldWrap): пока держат —
+   пунктир, готов — залит. */
+.fh.fh-arming::after { border-style: dashed; }
+.fh.fh-armed::after { background: rgba(232, 74, 14, .35); }
 .straight-box .frame-stage { margin-top: 40px; }
 .straight-box svg.straight-quad { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
 .straight-box svg.straight-quad polygon { fill: rgba(232, 74, 14, .10); stroke: rgba(232, 74, 14, .95); stroke-width: 2; vector-effect: non-scaling-stroke; }
@@ -7110,6 +7114,49 @@ const DB = {
   // сохраняется.
   let frameDrag = null;
 
+  // Кружки углов («Фото в рамке», «Выпрямить фото») берутся только после
+  // 0,75 с удержания пальца — как движки (RANGE_HOLD_MS): случайное касание
+  // рамку не сдвигает. Сдвиг пальца раньше срока — отмена.
+  const FH_HOLD_MS = 750;
+  function fhHoldWrap(down, move, up) {
+    let hold = null;
+    return {
+      down(e) {
+        const h = e.target.closest ? e.target.closest(".fh") : null;
+        if (!h) return;
+        e.preventDefault();
+        if (hold) { clearTimeout(hold.timer); hold.h.classList.remove("fh-arming", "fh-armed"); }
+        hold = { h: h, id: e.pointerId, x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY, armed: false };
+        try { h.setPointerCapture(e.pointerId); } catch (err) { }
+        h.classList.add("fh-arming");
+        const cur = hold;
+        cur.timer = setTimeout(() => {
+          if (hold !== cur) return;
+          cur.armed = true;
+          h.classList.remove("fh-arming"); h.classList.add("fh-armed");
+          try { if (navigator.vibrate) navigator.vibrate(25); } catch (err) { }
+          down({ target: h, pointerId: cur.id, clientX: cur.x, clientY: cur.y, preventDefault() { } });
+        }, FH_HOLD_MS);
+      },
+      move(e) {
+        if (!hold || e.pointerId !== hold.id) { move(e); return; }
+        hold.x = e.clientX; hold.y = e.clientY;
+        if (hold.armed) { move(e); return; }
+        if (Math.hypot(e.clientX - hold.x0, e.clientY - hold.y0) > 10) {
+          clearTimeout(hold.timer); hold.h.classList.remove("fh-arming"); hold = null;
+        }
+      },
+      up(e) {
+        if (hold && e.pointerId === hold.id) {
+          clearTimeout(hold.timer); hold.h.classList.remove("fh-arming", "fh-armed");
+          const was = hold.armed; hold = null;
+          if (!was) return;
+        }
+        up(e);
+      }
+    };
+  }
+
   function onFrameHandleDown(e) {
     const h = e.target.closest ? e.target.closest(".fh") : null;
     if (!h) return;
@@ -13212,10 +13259,12 @@ const DB = {
     if (framePanel) framePanel.addEventListener("toggle", () => updateFrameEditor());
     const frameStage = document.getElementById("s_frameStage");
     if (frameStage) {
-      frameStage.addEventListener("pointerdown", onFrameHandleDown);
-      frameStage.addEventListener("pointermove", onFrameHandleMove);
-      frameStage.addEventListener("pointerup", onFrameHandleUp);
-      frameStage.addEventListener("pointercancel", onFrameHandleUp);
+      const fw = fhHoldWrap(onFrameHandleDown, onFrameHandleMove, onFrameHandleUp);
+      frameStage.addEventListener("pointerdown", fw.down);
+      frameStage.addEventListener("pointermove", fw.move);
+      frameStage.addEventListener("pointerup", fw.up);
+      frameStage.addEventListener("pointercancel", fw.up);
+      frameStage.addEventListener("contextmenu", (e) => e.preventDefault());
     }
     // Размер панели зависит от экрана (см. frameLayout).
     window.addEventListener("resize", () => {
@@ -13226,10 +13275,12 @@ const DB = {
     if (frameReset) frameReset.addEventListener("click", onFrameReset);
     const straightStage = document.getElementById("s_straightStage");
     if (straightStage) {
-      straightStage.addEventListener("pointerdown", onStraightDown);
-      straightStage.addEventListener("pointermove", onStraightMove);
-      straightStage.addEventListener("pointerup", onStraightUp);
-      straightStage.addEventListener("pointercancel", onStraightUp);
+      const sw = fhHoldWrap(onStraightDown, onStraightMove, onStraightUp);
+      straightStage.addEventListener("pointerdown", sw.down);
+      straightStage.addEventListener("pointermove", sw.move);
+      straightStage.addEventListener("pointerup", sw.up);
+      straightStage.addEventListener("pointercancel", sw.up);
+      straightStage.addEventListener("contextmenu", (e) => e.preventDefault());
     }
     [["s_straightOpen", onStraightOpen], ["s_straightApply", onStraightApply], ["s_straightCancel", straightClose], ["s_straightRestore", onStraightRestore]]
       .forEach(([id, fn]) => { const b = document.getElementById(id); if (b) b.addEventListener("click", fn); });
