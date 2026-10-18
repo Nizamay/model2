@@ -1402,6 +1402,9 @@ input[type="range"].rg-armed { outline: 2px solid var(--accent); outline-offset:
              importSettings). -->
         <button type="button" class="menu-item" id="exportSettingsBtn">📤 Скачать проект</button>
         <button type="button" class="menu-item" id="importSettingsBtn">📂 Открыть проект</button>
+        <!-- Маленький файл только с журналом касаний и ошибок (см. PARTS_DIAG) —
+             для разбора «зависаний»; проект целиком с фото весит десятки МБ. -->
+        <button type="button" class="menu-item" id="diagBtn">🩺 Журнал для разработчика</button>
         <!-- Видна, только когда браузер готов установить программу. -->
         <button type="button" class="menu-item" id="installAppBtn" hidden>📲 Установить на телефон</button>
         <input type="file" id="importSettingsInput" accept=".json,application/json,application/octet-stream" hidden>
@@ -6303,6 +6306,20 @@ const DB = {
   if (window.visualViewport) {
     window.visualViewport.addEventListener("resize", partsFloatPlace);
     window.visualViewport.addEventListener("scroll", partsFloatPlace);
+    // После увеличения страницы двумя пальцами браузер на телефоне иногда
+    // перестаёт отдавать касания снимку разметки, пока страницу не
+    // прокрутят (заказчик: «приходится двигать экран вверх-вниз, как бы
+    // разбудить»). Делаем это сами: через 0,3 с после конца увеличения
+    // страница сдвигается на точку и обратно — глазом не видно.
+    let wakeT = 0;
+    window.visualViewport.addEventListener("resize", () => {
+      clearTimeout(wakeT);
+      wakeT = setTimeout(() => {
+        const y = window.scrollY;
+        window.scrollTo(window.scrollX, y + 1);
+        requestAnimationFrame(() => window.scrollTo(window.scrollX, y));
+      }, 300);
+    });
   }
   window.addEventListener("scroll", partsFloatPlace, { passive: true });
   window.addEventListener("resize", partsFloatPlace);
@@ -8109,7 +8126,23 @@ const DB = {
     PARTS_DIAG.ev.push([Date.now(), kind, e ? e.pointerId : null, e ? (e.isPrimary ? 1 : 0) : null, e ? Math.round(e.clientX) : null, e ? Math.round(e.clientY) : null,
       partsDrag ? partsDrag.mode : 0, partsPan ? 1 : 0, partsPinch ? 1 : 0, partsPtrs.size, partsSel, ctx ? 1 : 0, leafEdit ? 1 : 0, partsMode,
       (window.visualViewport ? Math.round(window.visualViewport.scale * 100) / 100 : 1), partsZoom]);
-    if (PARTS_DIAG.ev.length > 80) PARTS_DIAG.ev.shift();
+    if (PARTS_DIAG.ev.length > 120) PARTS_DIAG.ev.shift();
+  }
+  // Касания по всей странице (куда попал палец) и смена масштаба страницы —
+  // видно, доходит ли касание до снимка, когда он «не реагирует».
+  ["pointerdown", "pointerup", "pointercancel"].forEach((t) => document.addEventListener(t, (e) => {
+    const n = e.target, tag = n && n.nodeType === 1 ? (n.id ? "#" + n.id : n.tagName.toLowerCase() + (n.className && typeof n.className === "string" ? "." + n.className.split(" ")[0] : "")) : "?";
+    PARTS_DIAG.ev.push([Date.now(), "doc-" + t.replace("pointer", ""), e.pointerId, e.isPrimary ? 1 : 0, Math.round(e.clientX), Math.round(e.clientY), tag]);
+    if (PARTS_DIAG.ev.length > 120) PARTS_DIAG.ev.shift();
+  }, true));
+  if (window.visualViewport) {
+    let vvT = 0;
+    window.visualViewport.addEventListener("resize", () => {
+      const now = Date.now(); if (now - vvT < 300) return; vvT = now;
+      const vv = window.visualViewport;
+      PARTS_DIAG.ev.push([now, "vv", Math.round(vv.scale * 100) / 100, Math.round(vv.offsetLeft), Math.round(vv.offsetTop), Math.round(vv.width), Math.round(vv.height)]);
+      if (PARTS_DIAG.ev.length > 120) PARTS_DIAG.ev.shift();
+    });
   }
   window.addEventListener("error", (e) => { PARTS_DIAG.err.push([Date.now(), String(e.message || ""), (e.filename || "").slice(-20) + ":" + e.lineno]); if (PARTS_DIAG.err.length > 20) PARTS_DIAG.err.shift(); });
   window.addEventListener("unhandledrejection", (e) => { PARTS_DIAG.err.push([Date.now(), "promise: " + String(e.reason && e.reason.message || e.reason)]); if (PARTS_DIAG.err.length > 20) PARTS_DIAG.err.shift(); });
@@ -14154,6 +14187,27 @@ const DB = {
     a.href = URL.createObjectURL(blob); a.download = name;
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+  }
+  async function shareSmallJson(obj, name, title) {
+    const blob = new Blob([JSON.stringify(obj)], { type: "application/json" });
+    const file = typeof File === "function" ? new File([blob], name, { type: "application/json" }) : null;
+    if (file && navigator.canShare && navigator.canShare({ files: [file] })) {
+      try { await navigator.share({ files: [file], title: title }); return; }
+      catch (e) { if (e && e.name === "AbortError") return; }
+    }
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob); a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+  }
+  {
+    const b = document.getElementById("diagBtn");
+    if (b) b.addEventListener("click", () => {
+      const d = new Date(), pad = (n) => String(n).padStart(2, "0");
+      shareSmallJson({ app: "doorcalc", kind: "diag", at: d.toISOString(), ua: navigator.userAgent, standalone: matchMedia("(display-mode: standalone)").matches,
+        ev: PARTS_DIAG.ev.slice(), err: PARTS_DIAG.err.slice() },
+        `doorcalc-zhurnal-${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}.json`, "Журнал DoorCalc");
+    });
   }
   {
     const b = document.getElementById("exportSettingsBtn");
