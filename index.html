@@ -7739,13 +7739,13 @@ const DB = {
     // закончить следующее движение детали, и разметка «зависала».
     if (e.isPrimary) {
       partsPtrs.clear(); partsPan = null;
-      if (partsPinch) { if (partsPinch.raf) cancelAnimationFrame(partsPinch.raf); partsPinch = null; }
+      if (partsPinch) { if (partsPinch.raf) partsFrameCancel(partsPinch.raf); partsPinch = null; }
     }
     partsPtrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (partsPtrs.size >= 2) { partsPinchStart(e); return; }
     partsNote = "";
     // Новое касание — прежний жест закончен, даже если «палец вверх» потерялся.
-    if (partsDrag) { if (partsDrag.raf) cancelAnimationFrame(partsDrag.raf); partsDrag = null; }
+    if (partsDrag) { if (partsDrag.raf) partsFrameCancel(partsDrag.raf); partsDrag = null; }
     { const stg = document.getElementById("s_partsStage"); if (stg) stg.classList.remove("dragging"); }
     const ctx = partsEditorCtx();
     const els = partsStageEls();
@@ -7907,7 +7907,7 @@ const DB = {
     if (!p || p.k !== "z" || p.v !== "photo") return;
     // Начатое движение отменяем: палец всё это время стоял на месте.
     if (partsDrag) {
-      if (partsDrag.raf) cancelAnimationFrame(partsDrag.raf);
+      if (partsDrag.raf) partsFrameCancel(partsDrag.raf);
       if (partsDrag.i === i && partsDrag.orig) Object.assign(p, partsDrag.orig);
       partsDrag = null;
     }
@@ -7975,7 +7975,7 @@ const DB = {
     // Начатое одним пальцем движение детали отменяется: деталь — на прежнее место.
     if (partsDrag) {
       const d = partsDrag, doc = partsOf(d.modelId);
-      if (d.raf) cancelAnimationFrame(d.raf);
+      if (d.raf) partsFrameCancel(d.raf);
       if (doc && d.orig && doc.parts[d.i]) Object.assign(doc.parts[d.i], d.orig);
       partsDrag = null;
       if (stage) stage.classList.remove("dragging");
@@ -8074,7 +8074,7 @@ const DB = {
   function onPartsPointerMove(e) {
     if (partsPtrs.has(e.pointerId)) partsPtrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (partsHold && (partsHold.id !== e.pointerId || Math.hypot(e.clientX - partsHold.x0, e.clientY - partsHold.y0) > 10)) partsHoldStop();
-    if (partsPinch) { if (!partsPinch.raf) partsPinch.raf = requestAnimationFrame(partsPinchApply); e.preventDefault(); return; }
+    if (partsPinch) { if (!partsPinch.raf) partsPinch.raf = partsFrame(partsPinchApply); e.preventDefault(); return; }
     if (partsPan && partsPan.id === e.pointerId) {
       e.preventDefault();
       if (!partsPan.moved && Math.hypot(e.clientX - partsPan.x0, e.clientY - partsPan.y0) < 8) return;
@@ -8085,9 +8085,35 @@ const DB = {
     }
     if (!partsDrag) return;
     partsDrag.last = { x: e.clientX, y: e.clientY };
-    if (!partsDrag.raf) partsDrag.raf = requestAnimationFrame(partsDragApply);
+    if (!partsDrag.raf) partsDrag.raf = partsFrame(partsDragApply);
     e.preventDefault();
   }
+  // Кадр для движения детали и щипка: requestAnimationFrame, а если кадр не
+  // пришёл за 40 мс — таймер. После увеличения страницы браузер на телефоне
+  // иногда перестаёт давать кадры, пока страницу не прокрутят, — деталь
+  // «вставала» (жалоба заказчика). Отмена — partsFrameCancel.
+  function partsFrame(fn) {
+    const f = { done: false, raf: 0, t: 0 };
+    const run = () => { if (f.done) return; f.done = true; cancelAnimationFrame(f.raf); clearTimeout(f.t); fn(); };
+    f.raf = requestAnimationFrame(run);
+    f.t = setTimeout(run, 40);
+    return f;
+  }
+  // Журнал для разбора «зависаний»: последние касания снимка разметки с
+  // состоянием редактора и ошибки программы. Уходит в файл «Скачать проект»
+  // (поле diag) — скачать прямо в момент, когда не реагирует.
+  const PARTS_DIAG = { ev: [], err: [] };
+  function partsDiag(kind, e) {
+    let ctx = false;
+    try { ctx = !!partsEditorCtx(); } catch (err) { }
+    PARTS_DIAG.ev.push([Date.now(), kind, e ? e.pointerId : null, e ? (e.isPrimary ? 1 : 0) : null, e ? Math.round(e.clientX) : null, e ? Math.round(e.clientY) : null,
+      partsDrag ? partsDrag.mode : 0, partsPan ? 1 : 0, partsPinch ? 1 : 0, partsPtrs.size, partsSel, ctx ? 1 : 0, leafEdit ? 1 : 0, partsMode,
+      (window.visualViewport ? Math.round(window.visualViewport.scale * 100) / 100 : 1), partsZoom]);
+    if (PARTS_DIAG.ev.length > 80) PARTS_DIAG.ev.shift();
+  }
+  window.addEventListener("error", (e) => { PARTS_DIAG.err.push([Date.now(), String(e.message || ""), (e.filename || "").slice(-20) + ":" + e.lineno]); if (PARTS_DIAG.err.length > 20) PARTS_DIAG.err.shift(); });
+  window.addEventListener("unhandledrejection", (e) => { PARTS_DIAG.err.push([Date.now(), "promise: " + String(e.reason && e.reason.message || e.reason)]); if (PARTS_DIAG.err.length > 20) PARTS_DIAG.err.shift(); });
+  function partsFrameCancel(f) { if (!f) return; f.done = true; cancelAnimationFrame(f.raf); clearTimeout(f.t); }
 
   function partsDragApply() {
     const drag = partsDrag;
@@ -8348,7 +8374,7 @@ const DB = {
   function onPartsPointerUp(e) {
     partsHoldStop();
     if (e && e.pointerId != null) partsPtrs.delete(e.pointerId);
-    if (partsPinch) { if (partsPtrs.size < 2) { if (partsPinch.raf) cancelAnimationFrame(partsPinch.raf); partsPinch = null; } return; }
+    if (partsPinch) { if (partsPtrs.size < 2) { if (partsPinch.raf) partsFrameCancel(partsPinch.raf); partsPinch = null; } return; }
     if (partsPan) {
       const pan = partsPan;
       if (e && e.pointerId !== pan.id) { if (!partsDrag) return; partsPan = null; }
@@ -8362,7 +8388,7 @@ const DB = {
     const drag = partsDrag;
     // Последнюю точку применяем сразу, не дожидаясь кадра: иначе палец успел
     // бы отпуститься раньше, чем прямоугольник дошёл до неё.
-    if (drag.raf) { cancelAnimationFrame(drag.raf); drag.raf = 0; }
+    if (drag.raf) { partsFrameCancel(drag.raf); drag.raf = 0; }
     if (drag.last) partsDragApply();
     partsDrag = null;
     const stg = document.getElementById("s_partsStage");
@@ -13369,6 +13395,7 @@ const DB = {
       else if (!partsAnyOpen()) { clearTimeout(partsRedrawTimer); partsRedrawTimer = null; drawDoor(sceneCtx, true); }
     });
     if (partsStage) {
+      ["pointerdown", "pointerup", "pointercancel", "lostpointercapture"].forEach((t) => partsStage.addEventListener(t, (e) => partsDiag(t.replace("pointer", "p").replace("lostpcapture", "lost"), e), true));
       partsStage.addEventListener("pointerdown", onPartsPointerDown);
       partsStage.addEventListener("pointermove", onPartsPointerMove);
       partsStage.addEventListener("pointerup", onPartsPointerUp);
@@ -14113,6 +14140,8 @@ const DB = {
       } catch (e) {}
     }
     EXPORT_SCENE_FIELDS.forEach((f) => { out.scene[f] = state[f]; });
+    // журнал касаний разметки и ошибок — для разбора зависаний
+    out.diag = { ua: navigator.userAgent, standalone: matchMedia("(display-mode: standalone)").matches, ev: PARTS_DIAG.ev.slice(), err: PARTS_DIAG.err.slice() };
     const d = new Date(), pad = (n) => String(n).padStart(2, "0");
     const name = `doorcalc-proekt-${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}.json`;
     const blob = new Blob([JSON.stringify(out)], { type: "application/json" });
@@ -16776,7 +16805,16 @@ const DB = {
       }
       return null;
     };
+    // Движок мог перерисоваться посреди движения (плавающая полоска
+    // разметки строится заново после сохранения) — берём новый на том же месте.
+    const live = () => {
+      if (hold.el.isConnected) return hold.el;
+      const n = pick(hold.lx, hold.ly);
+      if (n) { hold.el = n; n.classList.add("rg-armed"); }
+      return n;
+    };
     const setFrom = (el, x) => {
+      if (!el) return;
       const r = el.getBoundingClientRect();
       const min = Number(el.min) || 0, max = el.max === "" ? 100 : Number(el.max), st = Number(el.step) || 1;
       const f = Math.max(0, Math.min(1, (x - r.left) / Math.max(1, r.width)));
@@ -16791,10 +16829,19 @@ const DB = {
       hold = null;
     };
     document.addEventListener("pointerdown", (e) => {
+      // Новое касание первым пальцем — прежнее удержание точно кончилось,
+      // даже если «палец вверх» до нас не дошёл (узел под пальцем убрали
+      // со страницы). Иначе оно оставалось «включённым» и гасило все
+      // движения пальцем: снимок не увеличивался, страница не ехала, пока
+      // её не перезагрузить (жалоба заказчика).
+      if (hold && e.isPrimary) stop();
       if (hold || (e.pointerType === "mouse" && e.button !== 0)) return;
       const el = pick(e.clientX, e.clientY);
       if (!el) return;
-      hold = { el: el, x: e.clientX, y: e.clientY, id: e.pointerId, drag: false, changed: false };
+      hold = { el: el, x: e.clientX, y: e.clientY, lx: e.clientX, ly: e.clientY, id: e.pointerId, drag: false, changed: false, at: Date.now() };
+      // Палец ведём на корне страницы: события дойдут, даже если узел под
+      // пальцем перерисуют.
+      try { document.documentElement.setPointerCapture(e.pointerId); } catch (err) { }
       el.classList.add("rg-arming");
       hold.timer = setTimeout(() => {
         if (!hold) return;
@@ -16805,12 +16852,19 @@ const DB = {
     }, true);
     document.addEventListener("pointermove", (e) => {
       if (!hold || e.pointerId !== hold.id) return;
-      if (hold.drag) { setFrom(hold.el, e.clientX); return; }
+      hold.lx = e.clientX; hold.ly = e.clientY; hold.at = Date.now();
+      if (hold.drag) { setFrom(live(), e.clientX); return; }
       // повёл пальцем раньше срока — это прокрутка или случайное касание
       if (Math.abs(e.clientX - hold.x) > 10 || Math.abs(e.clientY - hold.y) > 10) stop();
     }, true);
     // Пока движок идёт за пальцем, страница не прокручивается.
-    document.addEventListener("touchmove", (e) => { if (hold && hold.drag) e.preventDefault(); }, { passive: false, capture: true });
+    // Два пальца — это уже не движок (увеличение снимка): удержание снимаем.
+    document.addEventListener("touchmove", (e) => {
+      if (!hold) return;
+      if (e.touches.length > 1 || Date.now() - hold.at > 10000) { stop(); return; }
+      if (hold.drag) e.preventDefault();
+    }, { passive: false, capture: true });
+    document.addEventListener("touchend", (e) => { if (hold && !e.touches.length) stop(); }, true);
     ["pointerup", "pointercancel"].forEach((t) => document.addEventListener(t, (e) => { if (hold && e.pointerId === hold.id) stop(); }, true));
     document.addEventListener("contextmenu", (e) => { if (hold) e.preventDefault(); }, true);
   })();
