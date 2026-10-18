@@ -16776,7 +16776,16 @@ const DB = {
       }
       return null;
     };
+    // Движок мог перерисоваться посреди движения (плавающая полоска
+    // разметки строится заново после сохранения) — берём новый на том же месте.
+    const live = () => {
+      if (hold.el.isConnected) return hold.el;
+      const n = pick(hold.lx, hold.ly);
+      if (n) { hold.el = n; n.classList.add("rg-armed"); }
+      return n;
+    };
     const setFrom = (el, x) => {
+      if (!el) return;
       const r = el.getBoundingClientRect();
       const min = Number(el.min) || 0, max = el.max === "" ? 100 : Number(el.max), st = Number(el.step) || 1;
       const f = Math.max(0, Math.min(1, (x - r.left) / Math.max(1, r.width)));
@@ -16791,10 +16800,19 @@ const DB = {
       hold = null;
     };
     document.addEventListener("pointerdown", (e) => {
+      // Новое касание первым пальцем — прежнее удержание точно кончилось,
+      // даже если «палец вверх» до нас не дошёл (узел под пальцем убрали
+      // со страницы). Иначе оно оставалось «включённым» и гасило все
+      // движения пальцем: снимок не увеличивался, страница не ехала, пока
+      // её не перезагрузить (жалоба заказчика).
+      if (hold && e.isPrimary) stop();
       if (hold || (e.pointerType === "mouse" && e.button !== 0)) return;
       const el = pick(e.clientX, e.clientY);
       if (!el) return;
-      hold = { el: el, x: e.clientX, y: e.clientY, id: e.pointerId, drag: false, changed: false };
+      hold = { el: el, x: e.clientX, y: e.clientY, lx: e.clientX, ly: e.clientY, id: e.pointerId, drag: false, changed: false, at: Date.now() };
+      // Палец ведём на корне страницы: события дойдут, даже если узел под
+      // пальцем перерисуют.
+      try { document.documentElement.setPointerCapture(e.pointerId); } catch (err) { }
       el.classList.add("rg-arming");
       hold.timer = setTimeout(() => {
         if (!hold) return;
@@ -16805,12 +16823,19 @@ const DB = {
     }, true);
     document.addEventListener("pointermove", (e) => {
       if (!hold || e.pointerId !== hold.id) return;
-      if (hold.drag) { setFrom(hold.el, e.clientX); return; }
+      hold.lx = e.clientX; hold.ly = e.clientY; hold.at = Date.now();
+      if (hold.drag) { setFrom(live(), e.clientX); return; }
       // повёл пальцем раньше срока — это прокрутка или случайное касание
       if (Math.abs(e.clientX - hold.x) > 10 || Math.abs(e.clientY - hold.y) > 10) stop();
     }, true);
     // Пока движок идёт за пальцем, страница не прокручивается.
-    document.addEventListener("touchmove", (e) => { if (hold && hold.drag) e.preventDefault(); }, { passive: false, capture: true });
+    // Два пальца — это уже не движок (увеличение снимка): удержание снимаем.
+    document.addEventListener("touchmove", (e) => {
+      if (!hold) return;
+      if (e.touches.length > 1 || Date.now() - hold.at > 10000) { stop(); return; }
+      if (hold.drag) e.preventDefault();
+    }, { passive: false, capture: true });
+    document.addEventListener("touchend", (e) => { if (hold && !e.touches.length) stop(); }, true);
     ["pointerup", "pointercancel"].forEach((t) => document.addEventListener(t, (e) => { if (hold && e.pointerId === hold.id) stop(); }, true));
     document.addEventListener("contextmenu", (e) => { if (hold) e.preventDefault(); }, true);
   })();
