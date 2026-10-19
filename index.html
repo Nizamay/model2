@@ -588,6 +588,9 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 .part, .part .ph { touch-action: none; }
 /* Удержание пальца на неактивной детали (см. partsPanStart): через 0,75 с
    она станет активной; пока держат — пунктирная жёлтая обводка. */
+/* Нажатие по выключателю на 2D-картинке: красное свечение вокруг него. */
+.switch-flash { fill: rgba(225, 20, 20, .85); stroke: #ff2a2a; stroke-width: 3; animation: switchFlash 1s ease-out forwards; }
+@keyframes switchFlash { 0% { opacity: 1; } 70% { opacity: 1; } 100% { opacity: 0; } }
 .pt-arming { position: absolute; z-index: 6; pointer-events: none; outline: 3px dashed #ffd23f; outline-offset: 2px; }
 .parts-stage.leaf-edit { margin-top: 26px; margin-bottom: 26px; }
 .part { position: absolute; display: flex; align-items: center; justify-content: center; box-sizing: border-box; border: 1px solid rgba(0,0,0,.7); }
@@ -10015,8 +10018,12 @@ const DB = {
     if (on.switch) {
       // нажатие по выключателю переключает свет (см. onSceneDecorClick)
       const s = swS, sx = swX, sy = swY;
-      g += `<g data-act="switch" style="cursor:pointer">` +
-        `<rect x="${sx - 3}" y="${sy - 3}" width="${s + 6}" height="${s + 6}" fill="transparent"/>` +
+      // Область нажатия — около 50 точек, шире пальца: сам выключатель на
+      // картинке в несколько точек, и палец попадал мимо (журнал заказчика —
+      // десятки касаний по стене рядом).
+      const hit = 24;
+      g += `<g data-act="switch" data-sx="${sx + s / 2}" data-sy="${sy + s / 2}" style="cursor:pointer">` +
+        `<rect x="${sx - hit}" y="${sy - hit}" width="${s + 2 * hit}" height="${s + 2 * hit}" fill="transparent"/>` +
         `<rect x="${sx + 0.6}" y="${sy + 0.8}" width="${s}" height="${s}" rx="${6 * k}" fill="rgba(0,0,0,0.18)" filter="url(#${idf("soft")})"/>` +
         `<rect x="${sx}" y="${sy}" width="${s}" height="${s}" rx="${6 * k}" fill="#f8f7f4" stroke="rgba(0,0,0,0.15)" stroke-width="0.4"/>` +
         `<rect x="${sx + s * 0.22}" y="${sy + s * 0.22}" width="${s * 0.56}" height="${s * 0.56}" rx="${3 * k}" fill="#ffffff" stroke="rgba(0,0,0,0.12)" stroke-width="0.3"/>` +
@@ -13825,15 +13832,27 @@ const DB = {
         const m = LIGHT_MODES[(i + 1) % LIGHT_MODES.length];
         state.light = m.id;
         showLightLabel(m.name);
+        switchFlash = { x: Number(t.dataset.sx), y: Number(t.dataset.sy) };
       } else {
         const dc = { ...(state.decorColor || {}) };
         dc[act] = ((dc[act] || 0) + 1) % 10;
         state.decorColor = dc;
       }
       renderFloorPanels(); render();
+      // Красная вспышка вокруг выключателя — шире пальца, видно из-под него.
+      if (switchFlash && Number.isFinite(switchFlash.x)) {
+        const NS = "http://www.w3.org/2000/svg", c = document.createElementNS(NS, "circle");
+        c.setAttribute("cx", switchFlash.x); c.setAttribute("cy", switchFlash.y); c.setAttribute("r", "22");
+        c.setAttribute("class", "switch-flash");
+        c.setAttribute("pointer-events", "none");
+        svg.appendChild(c);
+        setTimeout(() => c.remove(), 1050);
+      }
+      switchFlash = null;
     });
     renderFloorPanels();
   }
+  let switchFlash = null;
 
   // --- Просмотр картинок (2D-снимки спецификации, фото из галереи) -----
   let pvList = [], pvIdx = 0, pvOnDelete = null;
