@@ -589,8 +589,12 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 /* Удержание пальца на неактивной детали (см. partsPanStart): через 0,75 с
    она станет активной; пока держат — пунктирная жёлтая обводка. */
 /* Нажатие по выключателю на 2D-картинке: красное свечение вокруг него. */
-.switch-flash { fill: rgba(225, 20, 20, .85); stroke: #ff2a2a; stroke-width: 3; animation: switchFlash 1s ease-out forwards; }
-@keyframes switchFlash { 0% { opacity: 1; } 70% { opacity: 1; } 100% { opacity: 0; } }
+.switch-flash { fill: #ff2020; filter: blur(4px); transform-box: fill-box; transform-origin: center; animation: switchFlash .6s ease-out forwards; }
+@keyframes switchFlash { 0% { opacity: 1; transform: scale(.9); } 35% { opacity: .9; transform: scale(1.4); } 100% { opacity: 0; transform: scale(2); } }
+/* Без синей подсветки касания Chrome на нажимаемых предметах картинки
+   (выключатель, мебель, горшок): вместо неё — своя вспышка. */
+#s_doorPreview, #s_doorPreview * { -webkit-tap-highlight-color: transparent; }
+#s_doorPreview [data-act] { outline: none; }
 .pt-arming { position: absolute; z-index: 6; pointer-events: none; outline: 3px dashed #ffd23f; outline-offset: 2px; }
 .parts-stage.leaf-edit { margin-top: 26px; margin-bottom: 26px; }
 .part { position: absolute; display: flex; align-items: center; justify-content: center; box-sizing: border-box; border: 1px solid rgba(0,0,0,.7); }
@@ -13846,7 +13850,7 @@ const DB = {
         c.setAttribute("class", "switch-flash");
         c.setAttribute("pointer-events", "none");
         svg.appendChild(c);
-        setTimeout(() => c.remove(), 1050);
+        setTimeout(() => c.remove(), 650);
       }
       switchFlash = null;
     });
