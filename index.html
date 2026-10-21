@@ -6113,8 +6113,13 @@ const DB = {
     {
       const x0 = Math.max(0, Math.floor(box.x * cw)), x1 = Math.min(cw, Math.ceil((box.x + box.w) * cw));
       const y0 = Math.max(0, Math.floor(box.y * ch)), y1 = Math.min(ch, Math.ceil((box.y + box.h) * ch));
+      // стёкла пропускаем: у модели с крупным тёмным стеклом середина по
+      // яркости уходила в стекло, и плинтус выходил серым (заказчик)
+      const glassR = (doc && doc.parts ? doc.parts : []).filter((q) => q.k === "g")
+        .map((q) => [q.x * cw - 2, q.y * ch - 2, (q.x + q.w) * cw + 2, (q.y + q.h) * ch + 2]);
       const px = [];
       for (let y = y0; y < y1; y += 5) for (let x = x0; x < x1; x += 5) {
+        if (glassR.some((g) => x >= g[0] && x <= g[2] && y >= g[1] && y <= g[3])) continue;
         const i = (y * cw + x) * 4;
         px.push([0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2], d[i], d[i + 1], d[i + 2]]);
       }
@@ -13745,7 +13750,15 @@ const DB = {
     const fsBody = document.getElementById("s_fsBody");
     const fsClose = document.getElementById("s_fsClose");
     if (fsBtn && fsOverlay && fsBody && fsClose) {
-      const closeFs = () => { fsOverlay.hidden = true; fsBody.innerHTML = ""; };
+      // Закрываем, не стирая картинку: если второй палец ещё лежит на ней,
+      // а узел под ним убрать, браузер на телефоне теряет «палец вверх» и
+      // потом минутами считает, что на экране два пальца, — все движки и
+      // касания «зависали» (журнал заказчика).
+      const closeFs = () => { fsOverlay.hidden = true; };
+      // а когда на экране не осталось ни одного пальца — убираем копию
+      const fsTidy = (e) => { if (fsOverlay.hidden && fsBody.firstChild && !(e.touches && e.touches.length)) fsBody.innerHTML = ""; };
+      document.addEventListener("touchend", fsTidy, true);
+      document.addEventListener("touchcancel", fsTidy, true);
       fsBtn.addEventListener("click", () => {
         const svg = document.getElementById("s_doorPreview");
         if (!svg) return;
