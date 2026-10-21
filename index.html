@@ -608,12 +608,15 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
    стоит СНАРУЖИ угла по диагонали и касается его только своим углом (раньше
    его центр был на самом углу, и палец с квадратиком закрывали то место, куда
    стекло или филёнку нужно было поставить точно — жалоба заказчика). */
-.part .ph { position: absolute; width: 22px; height: 22px; box-sizing: border-box; background: #ffd54a; border: 2px solid #6b5200;
-  border-radius: 5px; box-shadow: 0 1px 4px rgba(0, 0, 0, .4); z-index: 3; }
-.part .ph-nw { left: -22px; top: -22px; }
-.part .ph-ne { right: -22px; top: -22px; }
-.part .ph-sw { left: -22px; bottom: -22px; }
-.part .ph-se { right: -22px; bottom: -22px; }
+/* Размер квадратика растёт с увеличением снимка (--pz, см. partsZoomSet) —
+   как при увеличении страницы: при 3× он втрое крупнее (просьба заказчика). */
+.parts-stage { --phs: calc(22px * var(--pz, 1)); --phb: calc(2px * var(--pz, 1)); }
+.part .ph { position: absolute; width: var(--phs); height: var(--phs); box-sizing: border-box; background: #ffd54a; border: var(--phb) solid #6b5200;
+  border-radius: calc(var(--phs) * .23); box-shadow: 0 1px 4px rgba(0, 0, 0, .4); z-index: 3; }
+.part .ph-nw { left: calc(var(--phs) * -1); top: calc(var(--phs) * -1); }
+.part .ph-ne { right: calc(var(--phs) * -1); top: calc(var(--phs) * -1); }
+.part .ph-sw { left: calc(var(--phs) * -1); bottom: calc(var(--phs) * -1); }
+.part .ph-se { right: calc(var(--phs) * -1); bottom: calc(var(--phs) * -1); }
 /* Цвет детали = её вид. Те же цвета у кнопок вида ниже. Заливка нарочно
    очень слабая: под ней фотография, по которой и ведётся разметка, — при
    плотной заливке дверь под ней пропадала и ориентиров не оставалось.
@@ -729,12 +732,12 @@ select:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 /* «Хвост» зоны «Как на фото» — прямоугольник сбоку от неё (под ручку-рычаг),
    см. zoneTail. Углы — только на дальнем конце. */
 .ztail { position: absolute; box-sizing: border-box; border: 1px dashed rgba(0,90,200,.9); background: rgba(0,120,255,.10); pointer-events: none; }
-.ztail .ph { position: absolute; width: 22px; height: 22px; box-sizing: border-box; background: #ffd54a; border: 2px solid #6b5200;
-  border-radius: 5px; box-shadow: 0 1px 4px rgba(0, 0, 0, .4); z-index: 3; }
-.ztail .ph-nw { left: -22px; top: -22px; }
-.ztail .ph-ne { right: -22px; top: -22px; }
-.ztail .ph-sw { left: -22px; bottom: -22px; }
-.ztail .ph-se { right: -22px; bottom: -22px; }
+.ztail .ph { position: absolute; width: var(--phs); height: var(--phs); box-sizing: border-box; background: #ffd54a; border: var(--phb) solid #6b5200;
+  border-radius: calc(var(--phs) * .23); box-shadow: 0 1px 4px rgba(0, 0, 0, .4); z-index: 3; }
+.ztail .ph-nw { left: calc(var(--phs) * -1); top: calc(var(--phs) * -1); }
+.ztail .ph-ne { right: calc(var(--phs) * -1); top: calc(var(--phs) * -1); }
+.ztail .ph-sw { left: calc(var(--phs) * -1); bottom: calc(var(--phs) * -1); }
+.ztail .ph-se { right: calc(var(--phs) * -1); bottom: calc(var(--phs) * -1); }
 /* Открыта одна подгруппа «Двери» — остальные спрятаны, чтобы случайно не
    открыть соседнюю (см. doorSolo). Закрыл — все снова видны. */
 .adjust-panel.solo-hide { display: none !important; }
@@ -7804,7 +7807,8 @@ const DB = {
       const p = doc.parts[partsSel];
       // Центр квадратика стоит снаружи угла на половину его стороны по каждой
       // оси (см. .ph в CSS): целимся в него, а не в сам угол.
-      const H2 = PARTS_HANDLE_PX / 2;
+      // квадратики растут с увеличением снимка (см. --phs в CSS)
+      const H2 = PARTS_HANDLE_PX * partsZoom / 2;
       const QS = [[-1, -1], [1, -1], [1, 1], [-1, 1]];
       const corners = p.q ? p.q.map((c, k) => ["q" + k, c[0], c[1], QS[k][0], QS[k][1]])
         : [["nw", p.x, p.y, -1, -1], ["ne", p.x + p.w, p.y, 1, -1], ["sw", p.x, p.y + p.h, -1, 1], ["se", p.x + p.w, p.y + p.h, 1, 1]];
@@ -7827,7 +7831,7 @@ const DB = {
       // Радиус захвата — под палец, а не под мышь. Квадратик теперь вне детали,
       // поэтому касание середины даже маленькой детали далеко от него и
       // двигать её по-прежнему можно.
-      const reach = PARTS_CORNER_REACH;
+      const reach = PARTS_CORNER_REACH * partsZoom;
       if (near && near.dist < reach) {
         // Палец лежит на квадратике снаружи угла: запоминаем, насколько он
         // отстоит от самого угла, и ведём угол на столько же позади пальца —
