@@ -10573,7 +10573,7 @@ const DB = {
     const pH = (state.plinthH || 80) * mmP;
     const top = floorY - pH;
     s += `<rect x="0" y="${top - 2 * mmP}" width="${W}" height="${4 * mmP}" fill="rgba(0,0,0,0.10)" filter="url(#${idf("soft")})"/>`;
-    s += `<rect x="0" y="${top}" width="${W}" height="${pH}" fill="${plinthHex}"/>`;
+    s += `<rect x="0" y="${top}" width="${W}" height="${pH}" fill="${plinthHex}"${state.plinth === "door" ? ` class="door-tone"` : ""}/>`;
     s += `<rect x="0" y="${top}" width="${W}" height="${Math.max(0.6, 6 * mmP)}" fill="#ffffff" opacity="0.45"/>`;
     s += `<rect x="0" y="${top + 6 * mmP}" width="${W}" height="${Math.max(0.4, 3 * mmP)}" fill="#000000" opacity="0.07"/>`;
     s += `<rect x="0" y="${floorY - Math.max(0.5, 3 * mmP)}" width="${W}" height="${Math.max(0.5, 3 * mmP)}" fill="#000000" opacity="0.10"/>`;
@@ -10681,8 +10681,10 @@ const DB = {
 
       return s;
     };
-    s += surround(door);
-    if (two) s += `<g transform="translate(${dx2} 0)">${surround(door)}</g>`;
+    // door-tone — наличники (и плинтус «в цвет двери» выше) получают тот же
+    // тон с панели на картинке, что и полотно (см. sceneAdjApply).
+    s += `<g class="door-tone">${surround(door)}</g>`;
+    if (two) s += `<g class="door-tone" transform="translate(${dx2} 0)">${surround(door)}</g>`;
     return s;
   }
 
@@ -11100,9 +11102,10 @@ const DB = {
     };
   }
 
-  // Тон полотна только на 2D-картинке — для каждой плёнки свой (заказчик:
-  // подгонять дверь под образец, видя её, а не на другой странице). Плёнку и
-  // её тон в расчёте не трогает; хранится в localStorage (попадает в проект).
+  // Тон двери только на 2D-картинке — полотно, наличники и плинтус «в цвет
+  // двери»; для каждой плёнки свой (заказчик: подгонять дверь под образец,
+  // видя её, а не на другой странице). Плёнку и её тон в расчёте не трогает;
+  // хранится в localStorage (попадает в проект).
   const SCENE_ADJ_KEY = "doorcalc_scene_adj_v1";
   const SCENE_ADJ_DEF = { h: 0, s: 100, b: 100, c: 100, m: 0 };
   let sceneAdjAll = {};
@@ -11113,7 +11116,10 @@ const DB = {
     if (!g) return;
     const v = sceneAdj();
     const neutral = v.h === 0 && v.s === 100 && v.b === 100 && v.c === 100 && !(v.m > 0);
-    g.style.filter = neutral ? "" : filterCss(v);
+    const f = neutral ? "" : filterCss(v);
+    // полотно, наличники и плинтус «в цвет двери» (класс door-tone)
+    g.style.filter = f;
+    document.querySelectorAll("#s_doorPreview .door-tone").forEach((n) => { n.style.filter = f; });
     const box = document.getElementById("s_sadj");
     if (box && !box.hidden) box.querySelectorAll("input[data-k]").forEach((n) => { if (!n.classList.contains("rg-armed")) n.value = v[n.dataset.k]; });
   }
