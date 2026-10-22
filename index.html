@@ -9205,6 +9205,10 @@ const DB = {
     c.sceneGroup.innerHTML = sceneMode
       ? buildScene(layout, { x: x, y: y, w: w, h: h }, baseHex, casingFill, sceneWallColor, state.wallTexture, c.pfx, doorFilter, gap, photoCasing, Math.max(3, CASING_MM * unitsPerMm))
       : "";
+    // Тон двери с панели на картинке (sceneAdj) — сразу на новые наличники и
+    // плинтус: сцена пересобирается при каждом открытии и после перекраски
+    // двери, и без этого они возвращались к исходному цвету (заказчик).
+    if (c === sceneCtx) sceneAdjApply();
     if (c.lightGroup) c.lightGroup.innerHTML = sceneMode ? lightSVG(layout.vbW, layout.vbH, state.light || "day", c.pfx) : "";
     if (c.doorClone) {
       c.doorClone.setAttribute("transform", `translate(${dx2} 0)`);
